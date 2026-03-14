@@ -62,3 +62,42 @@ export default function HowItWorksPage() {
             <div key={s.step} className="flex items-start gap-4 card">
               <div className="bg-green-600 text-white w-8 h-8 rounded-full flex items-center justify-center font-bold text-sm shrink-0">
                 {s.step}
+              </div>
+              <div>
+                <h3 className="font-semibold text-slate-900">{s.title}</h3>
+                <p className="text-slate-600 text-sm mt-1">{s.desc}</p>
+              </div>
+            </div>
+          ))}
+        </div>
+      </section>
+
+      {/* FAQ */}
+      <section className="mb-14">
+        <div className="flex items-center gap-3 mb-6">
+          <div className="bg-purple-100 p-2 rounded-xl"><HelpCircle className="text-purple-600 w-6 h-6" /></div>
+          <h2 className="text-2xl font-bold text-slate-900">Frequently Asked Questions</h2>
+        </div>
+        <div className="space-y-4">
+          {FAQ.map(({ q, a }) => (
+            <div key={q} className="card">
+              <h3 className="font-semibold text-slate-900 mb-2">{q}</h3>
+              <p className="text-slate-600 text-sm">{a}</p>
+            </div>
+          ))}
+        </div>
+      </section>
+
+      {/* CTA */}
+      <div className="text-center bg-blue-50 rounded-2xl p-8">
+        <h2 className="text-2xl font-bold text-slate-900 mb-3">Ready to start slugging?</h2>
+        <p className="text-slate-600 mb-6">Check live wait counts at your nearest spot.</p>
+        <div className="flex flex-wrap justify-center gap-4">
+          <Link href="/dashboard" className="btn-primary">View Live Board</Link>
+          <Link href="/spots" className="btn-secondary">Find Spots Near Me</Link>
+        </div>
+      </div>
+
+    </div>
+  )
+}
