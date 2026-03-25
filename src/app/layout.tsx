@@ -36,9 +36,7 @@ export default function RootLayout({
                   <div className="w8 h-8 rounded-lg bg-sky-500 flex items-center justify-center text-white font-bold text-sm" style={{ fontFamily: 'Syne, sans-serif' }}>S</div>
                   <span className="font-bold text-lg text-white" style={{ fontFamily: 'Syne, sans-serif' }}>Sluglines</span>
                 </div>
-                <p className="text-sm leading-relaxed mb-4" style={{ color: 'var(--muted)' }}>
-                  Connecting Northern Virginia commuters for HOV-3 carpools since 2015.
-                </p>
+                <p className="text-sm leading-relaxed mb-4" style={{ color: 'var(--muted)' }}>Connecting Northern Virginia commuters for HOV-3 carpools since 2015.</p>
                 <p className="text-xs" style={{ color: 'var(--muted)' }}>admin@sluglines.com</p>
               </div>
               <div>
