@@ -59,7 +59,7 @@ body::after {
     @apply inline-flex items-center gap-2 border border-sky-500/40 text-sky-400 hover:bg-sky-500/10 font-semibold py-3 px-7 rounded-xl transition-all duration-200;
   }
   .card {
-    @apply rounded-2xl border p6;
+    @apply rounded-2xl border p-6;
     background: var(--surface);
     border-color: var(--border);
   }
