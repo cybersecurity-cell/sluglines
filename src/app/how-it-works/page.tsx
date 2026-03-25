@@ -1,103 +1,50 @@
-import { Car, Users, MapPin, CheckCircle, AlertCircle, HelpCircle } from 'lucide-react'
 import Link from 'next/link'
+import { MapPin, Users, Car, ArrowRight } from 'lucide-react'
 
 export const metadata = {
-  title: 'How It Works — Sluglines',
-  description: 'Learn how HOV-3 slug lines work in Northern Virginia.',
+  title: 'How It Works â Sluglines',
+  description: 'Learn how slugging works for Northern Virginia HOV-3 carpooling.',
 }
-
-const FAQ = [
-  {
-    q: 'Is slugging safe?',
-    a: 'Slugging has an excellent decades-long safety record. It happens in high-visibility public areas. There have been very few reported incidents over millions of rides.',
-  },
-  {
-    q: 'Do I pay for the ride?',
-    a: 'No money is ever exchanged. Both drivers and riders benefit equally — drivers get HOV-3 access, riders get a free ride to their destination.',
-  },
-  {
-    q: 'Who calls the destination?',
-    a: "The rider announces their destination when the car pulls up. The driver accepts only if it is on their route. Common destinations: Pentagon, L'Enfant Plaza, 14th & New York, Rosslyn.",
-  },
-  {
-    q: 'What are the etiquette rules?',
-    a: 'Keep the ride quiet unless the driver initiates conversation. No smoking, strong scents, or eating. Have your phone or bag ready so you can board quickly.',
-  },
-  {
-    q: 'What hours does slugging happen?',
-    a: 'Primarily weekday rush hours: 6:00–9:30 AM inbound and 4:00–7:00 PM outbound. Volume depends on the spot and season.',
-  },
-  {
-    q: 'Can I use the Sluglines app?',
-    a: 'Yes! Download the Sluglines app on iOS or Android to see real-time wait counts, get spot directions, and set your commute preferences.',
-  },
-]
 
 export default function HowItWorksPage() {
   return (
     <div className="max-w-4xl mx-auto px-4 py-12">
-
-      {/* Header */}
-      <div className="text-center mb-14">
-        <h1 className="text-4xl font-extrabold text-slate-900 mb-4">How Slugging Works</h1>
-        <p className="text-lg text-slate-600 max-w-2xl mx-auto leading-relaxed">
-          Slugging is Northern Virginia's informal HOV carpool system — a decades-old commuter tradition 
-          that lets strangers share rides to use the express HOV-3 lanes.
-        </p>
+      <div className="mb-14">
+        <p className="section-label mb-3">The process</p>
+        <h1 className="text-4xl md:text-5xl text-white mb-4" style={{ fontFamily: 'Syne, sans-serif', fontWeight: 800, letterSpacing: '-0.02em' }}>HowSlugging Works</h1>
+        <p className="text-lg" style={{ color: 'var(--muted)' }}>Slugging is Northern Virginia&apos;s unofficial carpool system that has operated for decades on trust and mutual benefit.</p>
       </div>
-
-      {/* For Riders */}
-      <section className="mb-14">
-        <div className="flex items-center gap-3 mb-6">
-          <div className="bg-green-100 p-2 rounded-xl"><Users className="w-6 h-6 text-green-600" /></div>
-          <h2 className="text-2xl font-bold text-slate-900">For Riders</h2>
-        </div>
+      <div className="space-y-6 mb-16">
+        {[{ step: '01', icon: <MapPin className="w-6 h-6" />, title: 'Go to a Slug Line Spot', desc: 'Head to one of the designated pickup locations across Northern Virginia. Riders form a line and wait quietly.' },{ step: '02', icon: <Car className="w-6 h-6" />, title: 'Driver Announces Destination', desc: "A driver pulls up and announces their destination â either with a sign or by calling it out. Riders at the front of the line for that destination get in." },{ step: '03', icon: <Users className="w6 h-6" />, title: 'Fill the HOV-3 Requirement', desc: 'The driver picks up 2 riders to qualify for HOV-3 status. All three now have access to the express lanes.' },{ step: '04', icon: <ArrowRight className="w-6 h-6" />, title: 'Drop Off at Destination', desc: 'Driver drops riders at the agreed-upon location. No money exchanged â ever. Everyone saved time.' }].map(s => (
+          <div key={s.step} className="flex gap-5 p-6 rounded-xl border" style={{ background: 'var(--surface)', borderColor: 'var(--border)' }}>
+            <div className="w41 h-11 rounded-xl flex items-center justify-center shrink-0 mt-0.5" style={{ background: 'rgba(99,179,237,0.1)', color: 'var(--accent)', border: '1px solid rgba(99,179,237,0.2)' }}>{s.icon}</div>
+            <div>
+              <div className="text-xs font-semibold mb-1" style={{ color: 'var(--accent)', fontFamily: 'monospace' }}>{s.step}</div>
+              <h3 className="font-bold text-white text-lg mb-2" style={{ fontFamily: 'Syne, sans-serif' }}>{s.title}</h3>
+              <p className="text-sm leading-relaxed" style={{ color: 'var(--muted)' }}>{s.desc}</p>
+            </div>
+          </div>
+        ))}
+      </div>
+      <div className="mb-14">
+        <h2 className="text-2xl font-bold text-white mb-6" style={{ fontFamily: 'Syne, sans-serif' }}>Common Questions</h2>
         <div className="space-y-4">
-          {[
-            { step: 1, title: 'Go to a slug line spot', desc: 'Head to one of the designated pickup spots near you. Use the Spots page to find the closest one.' },
-            { step: 2, title: 'Form a line and wait', desc: 'Stand in the queue at the spot. The line is first-come, first-served. Spots are well-known — locals know where to wait.' },
-            { step: 3, title: 'Call your destination', desc: 'When a car pulls up, the driver or a passenger asks "Where are you going?" — call out your destination clearly.' },
-            { step: 4, title: 'Ride for free', desc: 'You get a free ride to your destination. No payment, no app required. Just hop in and enjoy the commute.' },
-          ].map((s) => (
-            <div key={s.step} className="flex items-start gap-4 card">
-              <div className="bg-green-600 text-white w-8 h-8 rounded-full flex items-center justify-center font-bold text-sm shrink-0">
-                {s.step}
-              </div>
-              <div>
-                <h3 className="font-semibold text-slate-900">{s.title}</h3>
-                <p className="text-slate-600 text-sm mt-1">{s.desc}</p>
-              </div>
+          {[{ q: 'Is slugging safe?', a: "Slugging has operated in Northern Virginia since the 1970s with an excellent safety record." },{ q: 'Do I need to register or pay?', a: 'No. Slugging is completely free and informal. No money is ever exchanged between drivers and riders.' },{ q: 'What are the peak hours?', a: 'Morning slugging runs 6-9 AM (suburbs to DC). Afternoon runs 4-7 PM (DC to suburbs).' },{ q: 'Can I request a specific route?', a: 'No â riders take the first car heading to their destination.' }].map(faq => (
+            <div key={faq.q} className="p-5 rounded-xl border" style={{ background: 'var(--surface)', borderColor: 'var(--border)' }}>
+              <h3 className="font-semibold text-white mb-2" style={{ fontFamily: 'Syne, sans-serif' }}>{faq.q}</h3>
+              <p className="text-sm leading-relaxed" style={{ color: 'var(--muted)' }}>{faq.a}</p>
             </div>
           ))}
         </div>
-      </section>
-
-      {/* FAQ */}
-      <section className="mb-14">
-        <div className="flex items-center gap-3 mb-6">
-          <div className="bg-purple-100 p-2 rounded-xl"><HelpCircle className="text-purple-600 w-6 h-6" /></div>
-          <h2 className="text-2xl font-bold text-slate-900">Frequently Asked Questions</h2>
-        </div>
-        <div className="space-y-4">
-          {FAQ.map(({ q, a }) => (
-            <div key={q} className="card">
-              <h3 className="font-semibold text-slate-900 mb-2">{q}</h3>
-              <p className="text-slate-600 text-sm">{a}</p>
-            </div>
-          ))}
-        </div>
-      </section>
-
-      {/* CTA */}
-      <div className="text-center bg-blue-50 rounded-2xl p-8">
-        <h2 className="text-2xl font-bold text-slate-900 mb-3">Ready to start slugging?</h2>
-        <p className="text-slate-600 mb-6">Check live wait counts at your nearest spot.</p>
-        <div className="flex flex-wrap justify-center gap-4">
-          <Link href="/dashboard" className="btn-primary">View Live Board</Link>
-          <Link href="/spots" className="btn-secondary">Find Spots Near Me</Link>
+      </div>
+      <div className="rounded-2xl border p-8 text-center" style={{ background: 'var(--surface)', borderColor: 'rgba(99,179,237,0.2)' }}>
+        <h2 className="text-2xl font-bold text-white mb-3" style={{ fontFamily: 'Syne, sans-serif' }}>Ready to try it?</h2>
+        <p className="text-sm mb-6" style={{ color: 'var(--muted)' }}>Find your nearest pickup spot and check live wait times.</p>
+        <div className="flex flex-col sm:flex-row gap-3 justify-center">
+          <Link href="/spots" className="btn-primary text-sm">View Slug Spots</Link>
+          <Link href="/slugging-rules" className="btn-secondary text-sm">Read the Rules</Link>
         </div>
       </div>
-
     </div>
   )
 }
