@@ -4,11 +4,11 @@ import Navbar from '@/components/Navbar'
 import Link from 'next/link'
 
 export const metadata: Metadata = {
-  title: 'Sluglines â HOV-3 Carpool for Northern Virginia',
+  title: 'Sluglines — HOV-3 Carpool for Northern Virginia',
   description: 'Real-time driver and rider matching for Northern Virginia HOV-3 commuters on I-95, I-395, and I-66.',
   keywords: 'slug lines, slugging, HOV-3, carpool, Northern Virginia, commute, I-95, I-395, I-66, Pentagon',
   openGraph: {
-    title: 'Sluglines â HOV-3 Carpool for Northern Virginia',
+    title: 'Sluglines — HOV-3 Carpool for Northern Virginia',
     description: 'Real-time driver and rider matching for Northern Virginia HOV-3 commuters.',
     url: 'https://sluglines.com',
     siteName: 'Sluglines',
@@ -33,7 +33,7 @@ export default function RootLayout({
             <div className="grid grid-cols-1 md:grid-cols-4 gap-10">
               <div className="md:col-span-1">
                 <div className="flex items-center gap-2 mb-4">
-                  <div className="w8 h-8 rounded-lg bg-sky-500 flex items-center justify-center text-white font-bold text-sm" style={{ fontFamily: 'Syne, sans-serif' }}>S</div>
+                  <div className="w-8 h-8 rounded-lg bg-sky-500 flex items-center justify-center text-white font-bold text-sm" style={{ fontFamily: 'Syne, sans-serif' }}>S</div>
                   <span className="font-bold text-lg text-white" style={{ fontFamily: 'Syne, sans-serif' }}>Sluglines</span>
                 </div>
                 <p className="text-sm leading-relaxed mb-4" style={{ color: 'var(--muted)' }}>Connecting Northern Virginia commuters for HOV-3 carpools since 2015.</p>
@@ -67,8 +67,8 @@ export default function RootLayout({
               </div>
             </div>
             <div className="mt-12 pt-6 flex flex-col md:flex-row items-center justify-between gap-3 border-t" style={{ borderColor: 'var(--border)' }}>
-              <p className="text-xs" style={{ color: 'var(--muted)' }}>Â© {new Date().getFullYear()} Sluglines. All rights reserved.</p>
-              <p className="text-xs" style={{ color: 'var(--muted)' }}>Serving Northern Virginia commuters on I-95 Â· I-395 Â· I-66</p>
+              <p className="text-xs" style={{ color: 'var(--muted)' }}>© {new Date().getFullYear()} Sluglines. All rights reserved.</p>
+              <p className="text-xs" style={{ color: 'var(--muted)' }}>Serving Northern Virginia commuters on I-95 · I-395 · I-66</p>
             </div>
           </div>
         </footer>
