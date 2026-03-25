@@ -10,22 +10,23 @@ export default function HomePage() {
         <div className="relative z-10 max-w-6xl mx-auto px-4 pt-20 pb-24 w-full">
           <div className="max-w-3xl">
             <div className="inline-flex items-center gap-2.5 mb-8 px-4 py-2 rounded-full text-sm font-medium border" style={{ background: 'rgba(16,185,129,0.08)', borderColor: 'rgba(16,185,129,0.2)', color: '#4ade80' }}>
-              <span className="live-dot"></span>Riders &amp; drivers updating live right now
+              <span className="live-dot"></span>
+              Riders &amp; drivers updating live right now
             </div>
             <h1 className="text-6xl md:text-7xl lg:text-8xl text-white mb-7 leading-none" style={{ fontFamily: 'Syne, sans-serif', fontWeight: 800, letterSpacing: '-0.03em' }}>
-              Skip the<br /><span style={{ color: 'var(--accent)' }}>Traffic.</span>
+              Skip the<br />
+              <span style={{ color: 'var(--accent)' }}>Traffic.</span>
             </h1>
-            <p className="text-xl md:text-2xl mb-10 max-w-xl leading-relaxed" style={{ color: 'var(--muted)' }}>Northern Virginia&apos;s HOV-3 carpool network. Find a driver or a rider at your nearest slug line spot in seconds â free, trusted, and decades-proven.</p>
+            <p className="text-xl md:text-2xl mb-10 max-w-xl leading-relaxed" style={{ color: 'var(--muted)' }}>
+              Northern Virginia&apos;s HOV-3 carpool network. Find a driver or rider at your nearest slug line spot in seconds â free, trusted, and decades-proven.
+            </p>
             <div className="flex flex-col sm:flex-row gap-4">
-              <Link href="/dashboard" className="btn-primary text-base shadow-lg shadow-sky-500/25"><Zap className="w-4 h-4" />View Live Board<ArrowRight className="w4 h-4" /></Link>
+              <Link href="/dashboard" className="btn-primary text-base shadow-lg shadow-sky-500/25"><Zap className="w-4 h-4" />View Live Board<ArrowRight className="w-4 h-4" /></Link>
               <Link href="/how-it-works" className="btn-secondary text-base">How It Works</Link>
             </div>
             <div className="flex flex-wrap gap-10 mt-16 pt-10 border-t" style={{ borderColor: 'var(--border)' }}>
-              {[{ value: '40+', label: 'Active spots' },{ value: '2,000+', label: 'Daily commuters' },{ value: '< 5 min', label: 'Average wait' },{ value: 'Free', label: 'Always' }].map(s => (
-                <div key={s.label}>
-                  <div className="text-3xl font-bold text-white" style={{ fontFamily: 'Syne, sans-serif' }}>{s.value}</div>
-                  <div className="text-sm mt-0.5" style={{ color: 'var(--muted)' }}>{s.label}</div>
-                </div>
+              {[{value:'40+',label:'Active spots'},{value:'2,000+',label:'Daily commuters'},{value:'< 5 min',label:'Average wait'},{value:'Free',label:'Always'}].map(s => (
+                <div key={s.label}><div className="text-3xl font-bold text-white" style={{ fontFamily: 'Syne, sans-serif' }}>{s.value}</div><div className="text-sm mt-0.5" style={{ color: 'var(--muted)' }}>{s.label}</div></div>
               ))}
             </div>
           </div>
@@ -40,12 +41,13 @@ export default function HomePage() {
         <div className="text-center mb-16">
           <p className="section-label mb-3">The system</p>
           <h2 className="text-4xl md:text-5xl text-white" style={{ fontFamily: 'Syne, sans-serif', fontWeight: 800, letterSpacing: '-0.02em' }}>What is Slugging?</h2>
-          <p className="mt-5 max-w-xl mx-auto text-lg" style={{ color: 'var(--muted)' }}>A time-honored commuter tradition where strangers share rides to use HOV-3 lanes &#8212; saving up to 45 minutes each way.</p>
+          <p className="mt-5 max-w-xl mx-auto text-lg" style={{ color: 'var(--muted)' }}>A time-honored commuter tradition where strangers share rides to use HOV-3 lanes â saving up to 45 minutes each way.</p>
         </div>
         <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-          {[{ step: '01', icon: <MapPin className="w6 h-6" style={{ color: 'var(--accent)' }} />, title: 'Go to a Spot', desc: 'Head to any of the established slug line pickup locations across Northern Virginia.' },{ step: '02', icon: <Users className="w-6 h-6" style={{ color: 'var(--accent)' }} />, title: 'Match Up', desc: 'Drivers pick up 2 riders going to the same destination to qualify for HOV-3.' },{ step: '03', icon: <Car className="w-6 h-6" style={{ color: 'var(--accent)' }} />, title: 'Save Time', desc: 'Glide past gridlock in the express HOV-3 lane. No money exchanged. Ever.' }].map(s => (
+          {[{ step:'01', icon:<=apPin className="w6 h-6" style={{ color: 'var(--accent)' }} />,title:'Go to a Spot',desc:'Head to any of the established slug line pickup locations across Northern Virginia.'},{ step:'02', icon:<Users className="w6 h-6" style={{ color: 'var(--accent)' }} />,title:'Match Up',desc:'Drivers pick up 2 riders going to the same destination to qualify for HOV-3.'},{step:'03',icon:<Car className="w6 h-6" style={{ color: 'var(--accent)' }} />,title:'Save Time',desc:'Glide past gridlock in the express HOV-3 lane. No money exchanged. Ever.'}].map(s => (
             <div key={s.step} className="card card-hover relative overflow-hidden group">
-              <div className="wo11 h-11 rounded-xl flex items-center justify-center mb-5" style={{ background: 'rgba(99,179,237,0.1)', border: '1px solid rgba(99,179,237,0.2)' }}>{s.icon}</div>
+              <div className="absolute top-4 right-4 text-5xl font-bold opacity-5 group-hover:opacity-10 transition-opacity" style={{ fontFamily: 'Syne, sans-serif', color: 'var(--accent)' }}>{s.step}</div>
+              <div className="w-11 h-11 rounded-xl flex items-center justify-center mb-5" style={{ background: 'rgba(99,179,237,0.1)', border: '1px solid rgba(99,179,237,0.2)' }}>{s.icon}</div>
               <h3 className="font-bold text-lg text-white mb-2" style={{ fontFamily: 'Syne, sans-serif' }}>{s.title}</h3>
               <p className="text-sm leading-relaxed" style={{ color: 'var(--muted)' }}>{s.desc}</p>
             </div>
@@ -56,8 +58,8 @@ export default function HomePage() {
         <div className="max-w-6xl mx-auto px-4">
           <div className="text-center mb-16"><p className="section-label mb-3">Why Sluglines</p><h2 className="text-4xl md:text-5xl text-white" style={{ fontFamily: 'Syne, sans-serif', fontWeight: 800, letterSpacing: '-0.02em' }}>Everything you need</h2></div>
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
-            {[{ icon: <Clock className="w5 h-5" />, title: 'Real-Time Updates', desc: 'Live driver and rider counts at every spot, updated by real commuters.' },{ icon: <MapPin className="w-5 h-5" />, title: 'All Major Spots', desc: 'Pentagon, Crystal City, Rosslyn, Woodbridge, Horner Rd, and 35+ more.' },{ icon: <Smartphone className="w-5 h-5" />, title: 'Mobile App', desc: 'iOS &amp; Android. Check wait times from home before you head out.' },{ icon: <Shield className="w-5 h-5" />, title: 'Safe &amp; Trusted', desc: 'Decades-long safety record. A time-honored Northern Virginia tradition.' },{ icon: <Users className="w-5 h-5" />, title: 'Community Driven', desc: 'Updates come from real commuters keeping each other informed.' },{ icon: <Car className="w-5 h-5" />, title: 'Always Free', desc: 'No fares exchanged. Drivers and riders both win with HOV-3 time savings.' }].map(f => (
-              <div key={f.title} className="card card-hover"><div className="w-9 h-9 rounded-lg flex items-center justify-center mb-4" style={{ background: 'rgba(99,179,237,0.08)', color: 'var(--accent)' }}>{f.icon}</div><h3 className="font-semibold text-white mb-2" style={{ fontFamily: 'Syne, sans-serif' }}>{f.title}</h3><p className="text-sm leading-relaxed" style={{ color: 'var(--muted)' }}>{f.desc}</p></div>
+            {[{icon:<Clock className="w-5 h-5" />,title:'Real-Time Updates',desc:'Live driver and rider counts at every spot, updated by real commuters in the field.'},{icon:<MapPin className="w-5 h-5" />,title:'All Major Spots',desc:'Pentagon, Crystal City, Rsslyn, Woodbridge, Horner Rd, and 35+ more.'},{icon: <Smartphone className="w-5 h-5" />,title:'Mobile App',desc:'iOS & Android. Check wait times from home.'},{icon:<Shield className="w5 h-5" />,title:'Safe & Trusted',desc:'Decades-long safety record. A time-honored Northern Virginia tradition.'},{icon:<Users className="w5 h-5" />,title:'Community Driven',desc:'Updates come from real commuters keeping each other informed.'},{icon: <Car className="w5 h-5" />,title:'Always Free',desc:'No fares exchanged. Drivers and riders both win with HOV-3 time savings.'}].map(f => (
+              <div key={f.title} className="card card-hover"><div className="w9 h-9 rounded-lg flex items-center justify-center mb-4" style={{ background: 'rgba(99,179,237,0.08)', color: 'var(--accent)' }}>{f.icon}</div><h3 className="font-semibold text-white mb-2" style={{ fontFamily: 'Syne, sans-serif' }}>{f.title}</h3><p className="text-sm leading-relaxed" style={{ color: 'var(--muted)' }}>{f.desc}</p></div>
             ))}
           </div>
         </div>
