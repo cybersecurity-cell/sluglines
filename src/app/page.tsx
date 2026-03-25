@@ -1,125 +1,76 @@
 import Link from 'next/link'
-import { Car, Users, MapPin, Clock, Shield, Smartphone } from 'lucide-react'
+import { Car, Users, MapPin, Clock, Shield, Smartphone, ArrowRight, Zap } from 'lucide-react'
 
 export default function HomePage() {
   return (
-    <div className="bg-gradient-to-br from-slate-50 to-blue-50">
-
-      {/* Hero Section */}
-      <section className="max-w-6xl mx-auto px-4 pt-20 pb-24 text-center">
-        <div className="inline-flex items-center gap-2 bg-green-100 text-green-700 text-sm font-semibold px-4 py-2 rounded-full mb-6">
-          <span className="w-2 h-2 bg-green-500 rounded-full animate-pulse"></span>
-          Live riders &amp; drivers updating now
+    <div>
+      <section className="relative overflow-hidden min-h-[92vh] flex items-center">
+        <div className="orb w-[600px] h-[600px] -top-40 -right-32 opacity-20" style={{ background: 'radial-gradient(circle, #0ea5e9 0%, transparent 70%)' }}></div>
+        <div className="orb w-[400px] h-[400px] bottom-0 left-0 opacity-10" style={{ background: 'radial-gradient(circle, #f6ad55 0%, transparent 70%)' }}></div>
+        <div className="relative z-10 max-w-6xl mx-auto px-4 pt-20 pb-24 w-full">
+          <div className="max-w-3xl">
+            <div className="inline-flex items-center gap-2.5 mb-8 px-4 py-2 rounded-full text-sm font-medium border" style={{ background: 'rgba(16,185,129,0.08)', borderColor: 'rgba(16,185,129,0.2)', color: '#4ade80' }}>
+              <span className="live-dot"></span>Riders &amp; drivers updating live right now
+            </div>
+            <h1 className="text-6xl md:text-7xl lg:text-8xl text-white mb-7 leading-none" style={{ fontFamily: 'Syne, sans-serif', fontWeight: 800, letterSpacing: '-0.03em' }}>
+              Skip the<br /><span style={{ color: 'var(--accent)' }}>Traffic.</span>
+            </h1>
+            <p className="text-xl md:text-2xl mb-10 max-w-xl leading-relaxed" style={{ color: 'var(--muted)' }}>Northern Virginia&apos;s HOV-3 carpool network. Find a driver or a rider at your nearest slug line spot in seconds â free, trusted, and decades-proven.</p>
+            <div className="flex flex-col sm:flex-row gap-4">
+              <Link href="/dashboard" className="btn-primary text-base shadow-lg shadow-sky-500/25"><Zap className="w-4 h-4" />View Live Board<ArrowRight className="w4 h-4" /></Link>
+              <Link href="/how-it-works" className="btn-secondary text-base">How It Works</Link>
+            </div>
+            <div className="flex flex-wrap gap-10 mt-16 pt-10 border-t" style={{ borderColor: 'var(--border)' }}>
+              {[{ value: '40+', label: 'Active spots' },{ value: '2,000+', label: 'Daily commuters' },{ value: '< 5 min', label: 'Average wait' },{ value: 'Free', label: 'Always' }].map(s => (
+                <div key={s.label}>
+                  <div className="text-3xl font-bold text-white" style={{ fontFamily: 'Syne, sans-serif' }}>{s.value}</div>
+                  <div className="text-sm mt-0.5" style={{ color: 'var(--muted)' }}>{s.label}</div>
+                </div>
+              ))}
+            </div>
+          </div>
         </div>
-        <h1 className="text-5xl md:text-6xl font-extrabold text-slate-900 mb-6 leading-tight">
-          Skip the Traffic.<br />
-          <span className="text-blue-600">Ride the HOV-3 Lane.</span>
-        </h1>
-        <p className="text-xl text-slate-600 max-w-2xl mx-auto mb-10 leading-relaxed">
-          Sluglines connects Northern Virginia commuters for instant HOV-3 carpools.
-          Find a driver or rider at your nearest slug line spot in seconds.
-        </p>
-        <div className="flex flex-col sm:flex-row gap-4 justify-center">
-          <Link href="/dashboard" className="btn-primary text-center">
-            View Live Board
-          </Link>
-          <Link href="/how-it-works" className="btn-secondary text-center">
-            How It Works
-          </Link>
+      </section>
+      <div className="border-y py-4 overflow-hidden" style={{ borderColor: 'var(--border)', background: 'var(--surface)' }}>
+        <div className="flex items-center gap-12 px-4 max-w-6xl mx-auto text-sm" style={{ color: 'var(--muted)' }}>
+          {['I-95 Corridor','I-395 Corridor','I-66 Corridor','Pentagon','Crystal City','Rosslyn','Woodbridge','Dale City','Stafford','Herndon'].map(s => <span key={s} className="shrink-0">{s}</span>)}
         </div>
-
-        {/* Stats */}
-        <div className="grid grid-cols-3 gap-6 mt-16 max-w-lg mx-auto">
-          {[
-            { label: 'Active Spots', value: '12+' },
-            { label: 'Daily Commuters', value: '2,000+' },
-            { label: 'Avg Wait', value: '< 5 min' },
-          ].map((s) => (
-            <div key={s.label} className="text-center">
-              <div className="text-3xl font-bold text-blue-600">{s.value}</div>
-              <div className="text-sm text-slate-500 mt-1">{s.label}</div>
+      </div>
+      <section className="py-28 max-w-6xl mx-auto px-4">
+        <div className="text-center mb-16">
+          <p className="section-label mb-3">The system</p>
+          <h2 className="text-4xl md:text-5xl text-white" style={{ fontFamily: 'Syne, sans-serif', fontWeight: 800, letterSpacing: '-0.02em' }}>What is Slugging?</h2>
+          <p className="mt-5 max-w-xl mx-auto text-lg" style={{ color: 'var(--muted)' }}>A time-honored commuter tradition where strangers share rides to use HOV-3 lanes &#8212; saving up to 45 minutes each way.</p>
+        </div>
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+          {[{ step: '01', icon: <MapPin className="w6 h-6" style={{ color: 'var(--accent)' }} />, title: 'Go to a Spot', desc: 'Head to any of the established slug line pickup locations across Northern Virginia.' },{ step: '02', icon: <Users className="w-6 h-6" style={{ color: 'var(--accent)' }} />, title: 'Match Up', desc: 'Drivers pick up 2 riders going to the same destination to qualify for HOV-3.' },{ step: '03', icon: <Car className="w-6 h-6" style={{ color: 'var(--accent)' }} />, title: 'Save Time', desc: 'Glide past gridlock in the express HOV-3 lane. No money exchanged. Ever.' }].map(s => (
+            <div key={s.step} className="card card-hover relative overflow-hidden group">
+              <div className="wo11 h-11 rounded-xl flex items-center justify-center mb-5" style={{ background: 'rgba(99,179,237,0.1)', border: '1px solid rgba(99,179,237,0.2)' }}>{s.icon}</div>
+              <h3 className="font-bold text-lg text-white mb-2" style={{ fontFamily: 'Syne, sans-serif' }}>{s.title}</h3>
+              <p className="text-sm leading-relaxed" style={{ color: 'var(--muted)' }}>{s.desc}</p>
             </div>
           ))}
         </div>
       </section>
-
-      {/* How Slugging Works */}
-      <section className="bg-white py-20">
+      <section className="py-24 border-t" style={{ borderColor: 'var(--border)', background: 'var(--surface)' }}>
         <div className="max-w-6xl mx-auto px-4">
-          <h2 className="text-3xl font-bold text-slate-900 text-center mb-4">What is Slugging?</h2>
-          <p className="text-slate-600 text-center max-w-2xl mx-auto mb-12">
-            Slugging is a unique form of commuter carpooling in Northern Virginia where strangers share rides 
-            to use HOV-3 lanes on I-95, I-395, and I-66 — saving time and money for everyone.
-          </p>
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
-            {[
-              {
-                icon: <MapPin className="w-8 h-8 text-blue-600" />,
-                title: 'Go to a Spot',
-                desc: 'Head to one of the designated slug line pickup spots across Northern Virginia.',
-              },
-              {
-                icon: <Users className="w-8 h-8 text-blue-600" />,
-                title: 'Match Up',
-                desc: 'Drivers pick up 2 riders going to the same destination to qualify for HOV-3.',
-              },
-              {
-                icon: <Car className="w-8 h-8 text-blue-600" />,
-                title: 'Save Time',
-                desc: 'Use the express HOV-3 lane and cut your commute by up to 45 minutes.',
-              },
-            ].map((step) => (
-              <div key={step.title} className="card text-center hover:shadow-md transition-shadow">
-                <div className="flex justify-center mb-4">{step.icon}</div>
-                <h3 className="font-bold text-lg text-slate-900 mb-2">{step.title}</h3>
-                <p className="text-slate-600 text-sm leading-relaxed">{step.desc}</p>
-              </div>
+          <div className="text-center mb-16"><p className="section-label mb-3">Why Sluglines</p><h2 className="text-4xl md:text-5xl text-white" style={{ fontFamily: 'Syne, sans-serif', fontWeight: 800, letterSpacing: '-0.02em' }}>Everything you need</h2></div>
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
+            {[{ icon: <Clock className="w5 h-5" />, title: 'Real-Time Updates', desc: 'Live driver and rider counts at every spot, updated by real commuters.' },{ icon: <MapPin className="w-5 h-5" />, title: 'All Major Spots', desc: 'Pentagon, Crystal City, Rosslyn, Woodbridge, Horner Rd, and 35+ more.' },{ icon: <Smartphone className="w-5 h-5" />, title: 'Mobile App', desc: 'iOS &amp; Android. Check wait times from home before you head out.' },{ icon: <Shield className="w-5 h-5" />, title: 'Safe &amp; Trusted', desc: 'Decades-long safety record. A time-honored Northern Virginia tradition.' },{ icon: <Users className="w-5 h-5" />, title: 'Community Driven', desc: 'Updates come from real commuters keeping each other informed.' },{ icon: <Car className="w-5 h-5" />, title: 'Always Free', desc: 'No fares exchanged. Drivers and riders both win with HOV-3 time savings.' }].map(f => (
+              <div key={f.title} className="card card-hover"><div className="w-9 h-9 rounded-lg flex items-center justify-center mb-4" style={{ background: 'rgba(99,179,237,0.08)', color: 'var(--accent)' }}>{f.icon}</div><h3 className="font-semibold text-white mb-2" style={{ fontFamily: 'Syne, sans-serif' }}>{f.title}</h3><p className="text-sm leading-relaxed" style={{ color: 'var(--muted)' }}>{f.desc}</p></div>
             ))}
           </div>
         </div>
       </section>
-
-      {/* Features */}
-      <section className="py-20 max-w-6xl mx-auto px-4">
-        <h2 className="text-3xl font-bold text-slate-900 text-center mb-12">Why Use Sluglines?</h2>
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-          {[
-            { icon: <Clock className="w-6 h-6 text-blue-600" />, title: 'Real-Time Updates', desc: 'See exactly how many drivers and riders are waiting at each spot right now.' },
-            { icon: <MapPin className="w-6 h-6 text-blue-600" />, title: 'All Major Spots', desc: 'Coverage for Pentagon, Crystal City, Rosslyn, Woodbridge, Horner Road, and more.' },
-            { icon: <Smartphone className="w-6 h-6 text-blue-600" />, title: 'Mobile App', desc: 'Available on iOS and Android. Check wait times from your phone before you leave.' },
-            { icon: <Shield className="w-6 h-6 text-blue-600" />, title: 'Safe & Trusted', desc: 'Slug lines have a decades-long safety record. It is a time-honored commuter tradition.' },
-            { icon: <Users className="w-6 h-6 text-blue-600" />, title: 'Community Driven', desc: 'Updates come from real commuters in the community keeping each other informed.' },
-            { icon: <Car className="w-6 h-6 text-blue-600" />, title: 'Free to Use', desc: 'No fares exchanged. Drivers and riders both benefit from the HOV-3 time savings.' },
-          ].map((f) => (
-            <div key={f.title} className="card hover:shadow-md transition-shadow">
-              <div className="flex items-center gap-3 mb-3">
-                {f.icon}
-                <h3 className="font-semibold text-slate-900">{f.title}</h3>
-              </div>
-              <p className="text-slate-600 text-sm leading-relaxed">{f.desc}</p>
-            </div>
-          ))}
+      <section className="py-28 max-w-6xl mx-auto px-4 text-center">
+        <p className="section-label mb-5">Ready?</p>
+        <h2 className="text-4xl md:text-5xl text-white mb-6" style={{ fontFamily: 'Syne, sans-serif', fontWeight: 800, letterSpacing: '-0.02em' }}>Beat the Beltway<br />every single day.</h2>
+        <p className="text-lg mb-10" style={{ color: 'var(--muted)' }}>Join thousands of Northern Virginia commuters who save time using HOV-3 slug lines.</p>
+        <div className="flex flex-col sm:flex-row gap-4 justify-center">
+          <Link href="/dashboard" className="btn-primary text-base shadow-xl shadow-sky-500/20"><Zap className="w-4 h-4" />View Live Board</Link>
+          <Link href="/spots" className="btn-secondary text-base">Find Spots Near Me</Link>
         </div>
       </section>
-
-      {/* CTA */}
-      <section className="bg-blue-600 py-16 text-center text-white">
-        <div className="max-w-2xl mx-auto px-4">
-          <h2 className="text-3xl font-bold mb-4">Ready to Beat the Beltway?</h2>
-          <p className="text-blue-100 mb-8 text-lg">
-            Join thousands of Northern Virginia commuters who save time every day using the HOV-3 slug lines.
-          </p>
-          <div className="flex flex-col sm:flex-row gap-4 justify-center">
-            <Link href="/dashboard" className="bg-white text-blue-600 font-semibold py-3 px-8 rounded-xl hover:bg-blue-50 transition-colors">
-              View Live Board
-            </Link>
-            <Link href="/spots" className="border-2 border-white text-white font-semibold py-3 px-8 rounded-xl hover:bg-blue-700 transition-colors">
-              Find Spots Near Me
-            </Link>
-          </div>
-        </div>
-      </section>
-
     </div>
   )
 }
