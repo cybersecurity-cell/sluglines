@@ -106,9 +106,9 @@ function SpotItem({ name, lat, lng, active, slug, fbUrl }: Spot) {
       <div className="flex items-center gap-2.5 min-w-0">
         <span className="w-2 h-2 rounded-full shrink-0" style={{ background: active ? 'var(--green)' : 'var(--muted)' }}></span>
         {slug ? (
-          <a href={'https://sluglines.com/slug_pickup/' + slug + '/'} target="_blank" rel="noopener noreferrer" className="text-sm hover:text-white transition-colors truncate" style={{ color: active ? 'var(--text)' : 'var(--muted)' }}>
+          <Link href={'/spots/' + slug} className="text-sm hover:text-white transition-colors truncate" style={{ color: active ? 'var(--text)' : 'var(--muted)' }}>
             {name}
-          </a>
+          </Link>
         ) : (
           <span className="text-sm truncate" style={{ color: active ? 'var(--text)' : 'var(--muted)' }}>{name}</span>
         )}
@@ -153,7 +153,7 @@ export default function SpotsPage() {
         <div className="flex items-center gap-2"><span className="w-2.5 h-2.5 rounded-full" style={{ background: 'var(--muted)' }}></span><span style={{ color: 'var(--muted)' }}>Inactive</span></div>
         <div className="flex items-center gap-2"><Facebook className="w-4 h-4" style={{ color: '#4267B2' }} /><span style={{ color: 'var(--muted)' }}>Facebook group</span></div>
         <div className="flex items-center gap-2"><Navigation className="w-4 h-4" style={{ color: 'var(--accent)' }} /><span style={{ color: 'var(--muted)' }}>Google Maps</span></div>
-        <div className="flex items-center gap-2"><ExternalLink className="w-4 h-4" style={{ color: 'var(--muted)' }} /><span style={{ color: 'var(--muted)' }}>Click name for full details on sluglines.com</span></div>
+        <div className="flex items-center gap-2"><ExternalLink className="w-4 h-4" style={{ color: 'var(--muted)' }} /><span style={{ color: 'var(--muted)' }}>Click name to view full location details</span></div>
       </div>
 
       <section className="mb-14">
