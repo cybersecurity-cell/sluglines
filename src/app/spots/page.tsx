@@ -84,13 +84,13 @@ export default function SpotsPage() {
           <h2 className="text-xl font-bold text-white" style={{ fontFamily: 'Syne, sans-serif' }}>I-395 / I-95 Corridor</h2>
         </div>
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
-          <div><h3 className="text-sm font-semibold mb-4 uppercase tracking-wider" style={{ color: 'var(--muted)' }}>Morning â Suburbs to DC</h3><div className="space-y-4"><SpotGroup county="Fairfax" spots={MORNING_395_FAIRFAX} /><SpotGroup county="Prince William" spots={MORNING_395_PRINCE_WILLIAM} /><SpotGroup county="Stafford / Fredericksburg" spots={MORNING_395_STAFEORD} /></div></div>
+          <div><h3 className="text-sm font-semibold mb-4 uppercase tracking-wider" style={{ color: 'var(--muted)' }}>Morning â Suburbs to DC</h3><div className="space-y-4"><SpotGroup county="Fairfax" spots={MORNING_395_FAIRFAX} /><SpotGroup county="Prince William" spots={MORNING_395_PRINCE_WILLIAM} /><SpotGroup county="Stafford / Fredericksburg" spots={MORNING_395_STAFFORD} /></div></div>
           <div><h3 className="text-sm font-semibold mb-4 uppercase tracking-wider" style={{ color: 'var(--muted)' }}>Afternoon â DC to Suburbs</h3><div className="space-y-4"><SpotGroup county="Fairfax / Alexandria" spots={AFTERNOON_395_FAIRFAX} /><SpotGroup county="Arlington" spots={AFTERNOON_395_ARLINGTON} /><SpotGroup county="Washington DC" spots={AFTERNOON_395_DC} /></div></div>
         </div>
       </section>
       <section className="mb-14">
         <div className="flex items-center gap-3 mb-6">
-          <span className="text-xs font-bold px-3 py-1.5 rounded-full" style={{ background: 'rgba(99,179,237,0.1)', color: 'var(--accent)', border: '1px solid rgba(99,179,237,0.2)' }}>I-63</span>
+          <span className="text-xs font-bold px-3 py-1.5 rounded-full" style={{ background: 'rgba(99,179,237,0.1)', color: 'var(--accent)', border: '1px solid rgba(99,179,237,0.2)' }}>I-66</span>
           <h2 className="text-xl font-bold text-white" style={{ fontFamily: 'Syne, sans-serif' }}>I-66 Corridor</h2>
         </div>
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
