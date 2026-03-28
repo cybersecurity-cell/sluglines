@@ -51,7 +51,7 @@ function SpotItem({ name, lat, lng, active }: Spot) {
         <span className="text-sm" style={{ color: active ? 'var(--text)' : 'var(--muted)' }}>{name}</span>
         {!active && <span className="text-xs px-2 py-0.5 rounded-full" style={{ background: 'rgba(255,255,255,0.06)', color: 'var(--muted)' }}>Inactive</span>}
       </div>
-      <a href={'https://google.com/maps/?q='+lat+','+lng} target="_blank" rel="noopener noreferrer" className="flex items-center gap-1 text-xs transition-colors ml-3 hover:text-white shrink-0" style={{ color: 'var(--accent)' }}><Navigation className="w4 h-4" />Map</a>
+      <a href={'https://google.com/maps/?q='+lat+','+lng} target="_blank" rel="noopener noreferrer" className="flex items-center gap-1 text-xs transition-colors ml-3 hover:text-white shrink-0" style={{ color: 'var(--accent)' }}><Navigation className="w-4 h-4" />Map</a>
     </li>
   )
 }
@@ -76,7 +76,7 @@ export default function SpotsPage() {
       <div className="flex flex-wrap items-center gap-6 mb-10 text-sm p-4 rounded-xl border" style={{ borderColor: 'var(--border)', background: 'var(--surface)' }}>
         <div className="flex items-center gap-2"><span className="w-2.5 h-2.5 rounded-full" style={{ background: 'var(--green)' }}></span><span style={{ color: 'var(--muted)' }}>Active spot</span></div>
         <div className="flex items-center gap-2"><span className="w-2.5 h-2.5 rounded-full" style={{ background: 'var(--muted)' }}></span><span style={{ color: 'var(--muted)' }}>Inactive</span></div>
-        <div className="flex items-center gap-2"><Navigation className="w4 h-4" style={{ color: 'var(--accent)' }} /><span style={{ color: 'var(--muted)' }}>Opens Google Maps</span></div>
+        <div className="flex items-center gap-2"><Navigation className="w-4 h-4" style={{ color: 'var(--accent)' }} /><span style={{ color: 'var(--muted)' }}>Opens Google Maps</span></div>
       </div>
       <section className="mb-14">
         <div className="flex items-center gap-3 mb-6">
