@@ -221,7 +221,7 @@ const SPOT_DATA: Record<string, {
     lat: 38.8310454, lng: -77.1176246, active: true,
     description: 'Mark Center in Alexandria is a major afternoon slug drop-off and pickup point near the Mark Center BRAC facility.',
     peakHours: '3:30 PM – 6:30 PM',
-    linesFrom: ['Bob's - Old Keene Mill Rd', 'Franconia-Springfield', 'Lorton'],
+    linesFrom: ["Bob's - Old Keene Mill Rd", 'Franconia-Springfield', 'Lorton'],
     fbGroups: [{ name: 'Mark Center Slugs', url: 'https://www.facebook.com/groups/markcenterslugs/' }],
     transit: ['Fairfax Connector', 'DASH Bus'],
   },
