@@ -1,7 +1,7 @@
 'use client'
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
-import { Car, Menu, X, ChevronDown } from 'lucide-react'
+import { Menu, X, ChevronDown } from 'lucide-react'
 import { useState } from 'react'
 import clsx from 'clsx'
 
@@ -30,11 +30,8 @@ export default function Navbar() {
       style={{ background: 'rgba(8,13,23,0.85)', borderColor: 'var(--border)' }}
     >
       <div className="max-w-6xl mx-auto px-4 h-16 flex items-center justify-between">
-        <Link href="/" className="flex items-center gap-2.5">
-          <div className="w-8 h-8 rounded-lg bg-sky-500 flex items-center justify-center shadow-lg shadow-sky-500/30">
-            <Car className="w-4 h-4 text-white" />
-          </div>
-          <span className="font-bold text-lg text-white" style={{ fontFamily: 'Syne, sans-serif', letterSpacing: '-0.01em' }}>Sluglines</span>
+        <Link href="/" className="flex items-center">
+          <span className="font-bold text-2xl" style={{ fontFamily: 'Syne, sans-serif', letterSpacing: '-0.02em', color: '#7C5CBF' }}>Sluglines</span>
         </Link>
         <div className="hidden md:flex items-center gap-1">
           {navLinks.map((link) => (
