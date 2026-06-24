@@ -1,30 +1,36 @@
-import RealTimeBoard from '@/components/RealTimeBoard'
+import DashboardClient from '@/components/DashboardClient'
+import { enrichLocation, getActiveFallbackLocations } from '@/lib/location-fallbacks'
+import { createClient } from '@/lib/supabase/server'
+
+export const dynamic = 'force-dynamic'
 
 export const metadata = {
-  title: 'Live Board â Sluglines',
-  description: 'Real-time driver and rider counts at all Northern Virginia slug line spots.',
+  title: 'Fast Board - Sluglines',
+  description: 'Compact live rider and driver counts at all active Northern Virginia slug line spots.',
 }
 
-export default function DashboardPage() {
+export default async function DashboardPage() {
+  const supabase = createClient()
+  const { data: locationRows, error } = await supabase
+    .from('spot_status')
+    .select('id,spot_name,location,destination,highway,last_updated,is_active')
+    .eq('is_active', true)
+    .order('spot_name', { ascending: true })
+  const locations = !error && locationRows && locationRows.length > 0
+    ? locationRows.map(enrichLocation)
+    : getActiveFallbackLocations()
+
   return (
-    <div className="max-w-6xl mx-auto px-4 py-12">
-      <div className="mb-10">
-        <p className="section-label mb-3">Real-time</p>
-        <h1 className="text-4xl md:text-5xl text-white mb-4" style={{ fontFamily: 'Syne, sans-serif', fontWeight: 800, letterSpacing: '-0.02em' }}>Live Board</h1>
-        <p className="text-lg max-w-xl" style={{ color: 'var(--muted)' }}>
-          Driver and rider counts at each slug line spot. Tap{' '}<strong className="text-white">+ I am Driving</strong> or{' '}<strong className="text-white">+ I am Riding</strong> when you arrive.
+    <div className="mx-auto max-w-6xl px-4 py-12">
+      <div className="mb-8">
+        <p className="section-label mb-3">Power user</p>
+        <h1 className="mb-4 text-4xl font-extrabold text-white md:text-5xl">Fast Board</h1>
+        <p className="max-w-2xl text-lg text-slate-400">
+          Compact live counts, your current check-in, and one-tap checkout for regular commuters.
         </p>
       </div>
-      <div className="rounded-xl border p-5 mb-10" style={{ background: 'rgba(99,179,237,0.05)', borderColor: 'rgba(99,179,237,0.2)' }}>
-        <h3 className="font-semibold text-white text-sm mb-3" style={{ fontFamily: 'Syne, sans-serif' }}>Howto use this board</h3>
-        <ul className="text-sm space-y-1.5" style={{ color: 'var(--muted)' }}>
-          <li>â¢ Find your nearest pickup spot below</li>
-          <li>â¢ Tap <strong className="text-white">+ I am Driving</strong> when you arrive ready to pick up 2 riders</li>
-          <li>â¢ Tap <strong className="text-white">+ I am Riding</strong> when you are waiting for a driver</li>
-          <li>â¢ Counts reset automatically every morning at 6 AM</li>
-        </ul>
-      </div>
-      <RealTimeBoard />
+
+      <DashboardClient locations={locations} />
     </div>
   )
 }
