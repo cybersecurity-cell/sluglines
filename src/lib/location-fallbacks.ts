@@ -1,4 +1,6 @@
 import type { LocationCardLocation } from '@/components/LocationCard'
+import type { DirectorySpot } from './spot-directory.ts'
+import { findSpotBySlug } from './spot-directory.ts'
 
 export interface SlugLocation extends LocationCardLocation {
   slug: string
@@ -164,6 +166,26 @@ export function getActiveFallbackLocations() {
 
 export function findFallbackLocationBySlug(slug: string) {
   const normalizedSlug = slug.toLowerCase()
+  const directorySpot = findSpotBySlug(slug)
 
-  return FALLBACK_LOCATIONS.find((location) => location.slug === normalizedSlug)
+  if (directorySpot) {
+    return directorySpotToLocation(directorySpot)
+  }
+
+  return FALLBACK_LOCATIONS.find((location) => location.slug.toLowerCase() === normalizedSlug)
+}
+
+export function directorySpotToLocation(spot: DirectorySpot): SlugLocation {
+  return {
+    id: `fallback-${spot.slug.toLowerCase()}`,
+    spot_name: spot.name,
+    slug: spot.slug,
+    location: `${spot.county} County / ${spot.corridor}`,
+    destination: spot.destination,
+    highway: spot.corridor,
+    latitude: spot.lat,
+    longitude: spot.lng,
+    is_active: spot.active,
+    last_updated: new Date().toISOString(),
+  }
 }
