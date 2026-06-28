@@ -78,19 +78,19 @@ export default function ActivityFeed({ locationId }: ActivityFeedProps) {
   }, [fetchActivity, locationId, supabase])
 
   return (
-    <section className="rounded-2xl border border-sky-400/15 bg-slate-900/80 p-5">
+    <section className="rounded-lg border border-slate-200 bg-white p-5 shadow-sm">
       <div className="mb-4 flex items-center gap-2">
-        <Activity className="h-5 w-5 text-sky-300" />
-        <h2 className="text-lg font-bold text-white">Recent activity</h2>
+        <Activity className="h-5 w-5 text-sky-700" />
+        <h2 className="text-lg font-bold text-slate-950">Recent activity</h2>
       </div>
 
       {items.length === 0 ? (
-        <p className="text-sm text-slate-400">No check-ins yet at this spot.</p>
+        <p className="text-sm text-slate-500">No check-ins yet at this spot.</p>
       ) : (
         <ul className="space-y-3">
           {items.map((item) => (
-            <li key={item.id} className="flex items-center gap-3 text-sm text-slate-300">
-              <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border border-white/10 bg-white/5 text-slate-300">
+            <li key={item.id} className="flex items-center gap-3 text-sm text-slate-700">
+              <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border border-slate-200 bg-slate-50 text-slate-600">
                 {item.role === 'driver' ? <Car className="h-4 w-4" /> : <Users className="h-4 w-4" />}
               </span>
               <span className="min-w-0 flex-1">

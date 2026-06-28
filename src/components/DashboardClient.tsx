@@ -133,7 +133,7 @@ export default function DashboardClient({ locations }: DashboardClientProps) {
       ) : (
         <section className="grid grid-cols-1 gap-4 lg:grid-cols-2">
           {locations.map((location) => (
-            <LocationCard key={location.id} location={location} compact />
+            <LocationCard key={location.id} location={location} compact variant="dashboard" />
           ))}
         </section>
       )}

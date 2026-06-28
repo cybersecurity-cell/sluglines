@@ -19,9 +19,9 @@ interface AlertBannerProps {
 }
 
 const TYPE_STYLES: Record<AlertType, string> = {
-  info: 'border-sky-300/25 bg-sky-300/10 text-sky-200',
-  warning: 'border-amber-300/30 bg-amber-300/10 text-amber-200',
-  urgent: 'border-red-300/30 bg-red-300/10 text-red-200',
+  info: 'border-sky-200 bg-sky-50 text-sky-800',
+  warning: 'border-amber-200 bg-amber-50 text-amber-900',
+  urgent: 'border-red-200 bg-red-50 text-red-800',
 }
 
 export default function AlertBanner({ locationId }: AlertBannerProps) {
@@ -76,12 +76,12 @@ export default function AlertBanner({ locationId }: AlertBannerProps) {
                 <span className={`rounded-full border px-2 py-0.5 text-xs font-bold uppercase ${TYPE_STYLES[alert.type]}`}>
                   {alert.type}
                 </span>
-                <span className="text-xs text-slate-400">{formatRelativeTime(alert.created_at)}</span>
+                <span className="text-xs text-slate-500">{formatRelativeTime(alert.created_at)}</span>
               </div>
-              <p className="text-sm leading-relaxed text-white">{alert.message}</p>
+              <p className="text-sm leading-relaxed text-slate-800">{alert.message}</p>
             </div>
             <button
-              className="shrink-0 rounded-lg p-1.5 text-slate-400 transition-colors hover:bg-white/10 hover:text-white"
+              className="shrink-0 rounded-lg p-1.5 text-slate-500 transition-colors hover:bg-white/80 hover:text-slate-900"
               type="button"
               aria-label="Dismiss alert"
               onClick={() => setDismissedIds((current) => new Set(current).add(alert.id))}
