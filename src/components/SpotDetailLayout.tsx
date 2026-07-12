@@ -1,8 +1,10 @@
 import Link from 'next/link'
 import type { ReactNode } from 'react'
 import { ArrowLeft, MapPinned, Navigation, Users } from 'lucide-react'
+import CommunityLinksCard from '@/components/CommunityLinksCard'
 import SpotLiveModule from '@/components/SpotLiveModule'
 import SpotQuickFacts from '@/components/SpotQuickFacts'
+import { getPrimaryFacebookUrlForSpot } from '@/lib/community-channels'
 import type { SlugLocation } from '@/lib/location-fallbacks'
 import type { DirectorySpot } from '@/lib/spot-directory'
 
@@ -18,6 +20,7 @@ export default function SpotDetailLayout({ location, spot }: SpotDetailLayoutPro
       : `https://google.com/maps/?q=${encodeURIComponent(location.location || location.spot_name)}`
   const isFallback = location.id.startsWith('fallback-')
   const lines = spot?.linesTo || spot?.linesFrom || []
+  const communityUrl = getPrimaryFacebookUrlForSpot(spot?.slug) || spot?.fbUrl
 
   return (
     <div className="bg-slate-50">
@@ -54,9 +57,9 @@ export default function SpotDetailLayout({ location, spot }: SpotDetailLayoutPro
                     <Navigation className="h-4 w-4" />
                     Open in Maps
                   </a>
-                  {spot?.fbUrl && (
+                  {communityUrl && (
                     <a
-                      href={spot.fbUrl}
+                      href={communityUrl}
                       target="_blank"
                       rel="noopener noreferrer"
                       className="inline-flex items-center justify-center gap-2 rounded-lg border border-slate-300 bg-white px-4 py-3 text-sm font-bold text-slate-800 hover:border-sky-300 hover:text-sky-800"
@@ -70,6 +73,8 @@ export default function SpotDetailLayout({ location, spot }: SpotDetailLayoutPro
             </section>
 
             <SpotQuickFacts location={location} spot={spot} />
+
+            <CommunityLinksCard spotSlug={spot?.slug} fallbackUrl={spot?.fbUrl} />
 
             <section className="rounded-lg border border-slate-200 bg-white p-5">
               <h2 className="text-xl font-bold text-slate-950">Location details</h2>

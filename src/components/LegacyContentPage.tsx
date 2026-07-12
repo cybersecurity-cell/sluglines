@@ -1,5 +1,7 @@
 import Link from 'next/link'
+import CommunityLinksCard from '@/components/CommunityLinksCard'
 import type { LegacyRoute } from '@/lib/legacy-content'
+import { findSpotBySlug } from '@/lib/spot-directory'
 
 interface LegacyContentPageProps {
   page: LegacyRoute
@@ -9,6 +11,7 @@ export default function LegacyContentPage({ page }: LegacyContentPageProps) {
   const primaryCtas = page.ctas
     .filter((cta) => cta.href.startsWith('/') && cta.href !== page.path)
     .slice(0, 4)
+  const legacySpot = findLegacySpot(page.path)
 
   return (
     <div className="bg-white text-slate-950">
@@ -48,6 +51,8 @@ export default function LegacyContentPage({ page }: LegacyContentPageProps) {
         />
 
         <aside className="space-y-4">
+          <CommunityLinksCard spotSlug={legacySpot?.slug} fallbackUrl={legacySpot?.fbUrl} />
+
           <div className="rounded-lg border border-slate-200 bg-slate-50 p-4">
             <h2 className="text-sm font-bold uppercase tracking-wide text-slate-500">Source Inventory</h2>
             <dl className="mt-4 space-y-3 text-sm">
@@ -86,4 +91,14 @@ export default function LegacyContentPage({ page }: LegacyContentPageProps) {
       </section>
     </div>
   )
+}
+
+function findLegacySpot(path: string) {
+  if (!path.startsWith('/slug_pickup/') && !path.startsWith('/slug-pickup/')) {
+    return undefined
+  }
+
+  const slug = path.split('/').filter(Boolean).at(-1)
+
+  return slug ? findSpotBySlug(slug) : undefined
 }

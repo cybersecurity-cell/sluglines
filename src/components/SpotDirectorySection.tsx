@@ -1,5 +1,6 @@
 import Link from 'next/link'
-import { Navigation } from 'lucide-react'
+import { Navigation, Users } from 'lucide-react'
+import { getPrimaryFacebookUrlForSpot } from '@/lib/community-channels'
 import {
   DirectorySpot,
   getSpotDetailHref,
@@ -51,25 +52,42 @@ export default function SpotDirectorySection({
                       <div key={`${corridorGroup.corridor}-${directionGroup.direction}-${countyGroup.county}`} className="rounded-lg border border-slate-200">
                         <div className="bg-slate-50 px-3 py-2 text-sm font-bold text-slate-800">{countyGroup.county}</div>
                         <ul className="divide-y divide-slate-100">
-                          {(limitPerCounty ? countyGroup.spots.slice(0, limitPerCounty) : countyGroup.spots).map((spot) => (
-                            <li key={spot.slug} className="flex items-center justify-between gap-3 px-3 py-2.5">
-                              <div className="min-w-0">
-                                <Link href={getSpotDetailHref(spot)} className="block truncate text-sm font-semibold text-slate-950 hover:text-sky-700">
-                                  {spot.name}
-                                </Link>
-                                <p className="truncate text-xs text-slate-500">{spot.destination}</p>
-                              </div>
-                              <a
-                                href={`https://google.com/maps/?q=${spot.lat},${spot.lng}`}
-                                target="_blank"
-                                rel="noopener noreferrer"
-                                className="shrink-0 rounded-md p-2 text-slate-400 hover:bg-slate-100 hover:text-sky-700"
-                                aria-label={`Open ${spot.name} in maps`}
-                              >
-                                <Navigation className="h-4 w-4" />
-                              </a>
-                            </li>
-                          ))}
+                          {(limitPerCounty ? countyGroup.spots.slice(0, limitPerCounty) : countyGroup.spots).map((spot) => {
+                            const communityUrl = getPrimaryFacebookUrlForSpot(spot.slug) || spot.fbUrl
+
+                            return (
+                              <li key={spot.slug} className="flex items-center justify-between gap-3 px-3 py-2.5">
+                                <div className="min-w-0">
+                                  <Link href={getSpotDetailHref(spot)} className="block truncate text-sm font-semibold text-slate-950 hover:text-sky-700">
+                                    {spot.name}
+                                  </Link>
+                                  <p className="truncate text-xs text-slate-500">{spot.destination}</p>
+                                </div>
+                                <div className="flex shrink-0 items-center gap-1">
+                                  {communityUrl && (
+                                    <a
+                                      href={communityUrl}
+                                      target="_blank"
+                                      rel="noopener noreferrer"
+                                      className="rounded-md p-2 text-slate-400 hover:bg-slate-100 hover:text-sky-700"
+                                      aria-label={`Open ${spot.name} community group`}
+                                    >
+                                      <Users className="h-4 w-4" />
+                                    </a>
+                                  )}
+                                  <a
+                                    href={`https://google.com/maps/?q=${spot.lat},${spot.lng}`}
+                                    target="_blank"
+                                    rel="noopener noreferrer"
+                                    className="rounded-md p-2 text-slate-400 hover:bg-slate-100 hover:text-sky-700"
+                                    aria-label={`Open ${spot.name} in maps`}
+                                  >
+                                    <Navigation className="h-4 w-4" />
+                                  </a>
+                                </div>
+                              </li>
+                            )
+                          })}
                         </ul>
                       </div>
                     ))}
