@@ -12,7 +12,6 @@ export interface ResourceModule {
 export const PRIMARY_NAV: NavItem[] = [
   { label: 'Slug Pickup', href: '/slug_pickup' },
   { label: 'App', href: '/app' },
-  { label: 'Forum', href: '/forum' },
   { label: 'Blog', href: '/blog' },
   { label: 'News', href: '/news' },
   { label: 'Rules', href: '/slugging-rules-and-etiquette' },
@@ -33,16 +32,6 @@ export const RESOURCE_MODULES: ResourceModule[] = [
     title: 'Rules & Etiquette',
     description: 'Learn the customs that keep slugging fast, safe, and respectful.',
     href: '/slugging-rules-and-etiquette',
-  },
-  {
-    title: 'Forum',
-    description: 'Community discussion, updates, questions, and local coordination.',
-    href: '/forum',
-  },
-  {
-    title: 'Lost & Found',
-    description: 'A place for riders and drivers to reconnect around forgotten items.',
-    href: '/lost-found',
   },
   {
     title: 'Blog & News',

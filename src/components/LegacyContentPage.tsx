@@ -9,7 +9,7 @@ interface LegacyContentPageProps {
 
 export default function LegacyContentPage({ page }: LegacyContentPageProps) {
   const primaryCtas = page.ctas
-    .filter((cta) => cta.href.startsWith('/') && cta.href !== page.path)
+    .filter((cta) => cta.href.startsWith('/') && cta.href !== page.path && !cta.href.startsWith('/forum'))
     .slice(0, 4)
   const legacySpot = findLegacySpot(page.path)
 
@@ -52,28 +52,6 @@ export default function LegacyContentPage({ page }: LegacyContentPageProps) {
 
         <aside className="space-y-4">
           <CommunityLinksCard spotSlug={legacySpot?.slug} fallbackUrl={legacySpot?.fbUrl} />
-
-          <div className="rounded-lg border border-slate-200 bg-slate-50 p-4">
-            <h2 className="text-sm font-bold uppercase tracking-wide text-slate-500">Source Inventory</h2>
-            <dl className="mt-4 space-y-3 text-sm">
-              <div>
-                <dt className="font-semibold text-slate-950">Original route</dt>
-                <dd className="break-words text-slate-600">{page.path}</dd>
-              </div>
-              <div>
-                <dt className="font-semibold text-slate-950">Content type</dt>
-                <dd className="capitalize text-slate-600">{page.kind}</dd>
-              </div>
-              <div>
-                <dt className="font-semibold text-slate-950">Assets</dt>
-                <dd className="text-slate-600">{page.assets.length}</dd>
-              </div>
-              <div>
-                <dt className="font-semibold text-slate-950">Forms</dt>
-                <dd className="text-slate-600">{page.forms.length}</dd>
-              </div>
-            </dl>
-          </div>
 
           {page.headings.length > 0 && (
             <nav className="rounded-lg border border-slate-200 bg-white p-4">

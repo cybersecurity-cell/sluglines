@@ -68,6 +68,13 @@ export interface LegacySiteInventory {
 
 export const LEGACY_SITE_INVENTORY = inventory as LegacySiteInventory
 
+const MODERN_PUBLIC_PATHS = new Set([
+  '/blog/',
+  '/news/',
+  '/slug_pickup/',
+  '/slugging-rules-and-etiquette/',
+])
+
 const legacyRoutesByPath = new Map(
   LEGACY_SITE_INVENTORY.routes.map((route) => [normalizeLegacyPath(route.path), route])
 )
@@ -98,7 +105,7 @@ export function getLegacyStaticParams() {
   const routePaths = new Set(
     LEGACY_SITE_INVENTORY.routes
       .map((route) => normalizeLegacyPath(route.path))
-      .filter((path) => path !== '/')
+      .filter((path) => path !== '/' && !MODERN_PUBLIC_PATHS.has(path))
   )
 
   for (const route of LEGACY_SITE_INVENTORY.routes) {
@@ -107,7 +114,11 @@ export function getLegacyStaticParams() {
 
       const linkedRoute = getLegacyRouteForPath(link.href)
       if (linkedRoute) {
-        routePaths.add(normalizeLegacyPath(link.href))
+        const normalizedLinkPath = normalizeLegacyPath(link.href)
+
+        if (!MODERN_PUBLIC_PATHS.has(normalizedLinkPath)) {
+          routePaths.add(normalizedLinkPath)
+        }
       }
     }
   }

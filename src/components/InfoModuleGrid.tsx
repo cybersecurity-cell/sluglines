@@ -1,12 +1,10 @@
 import Link from 'next/link'
-import { ArrowRight, BookOpen, MessageCircle, PackageSearch, Newspaper, Smartphone, Map } from 'lucide-react'
+import { ArrowRight, BookOpen, Newspaper, Smartphone, Map } from 'lucide-react'
 import { RESOURCE_MODULES } from '@/lib/site-content'
 
 const ICONS = {
   'Slug Pickup': Map,
   'Rules & Etiquette': BookOpen,
-  Forum: MessageCircle,
-  'Lost & Found': PackageSearch,
   'Blog & News': Newspaper,
   'Mobile App': Smartphone,
 }

@@ -1,103 +1,108 @@
-import { CheckCircle, Users, Car } from 'lucide-react'
+import { AlertTriangle, Car, CheckCircle, ShieldCheck, Users } from 'lucide-react'
 
 export const metadata = {
   title: 'Slugging Rules & Etiquette | Sluglines',
-    description: 'The official slugging rules and etiquette for Northern Virginia slug lines. Learn the do\'s and don\'ts for a smooth, respectful ride.',
-    }
+  description:
+    "The official slugging rules and etiquette for Northern Virginia slug lines. Learn the do's and don'ts for a smooth, respectful ride.",
+}
 
-    const RIDER_RULES = [
-      'Confirm your destination with the driver',
-        'Say hello and thank you',
-          'NO MONEY EXCHANGED — ever',
-            'First come, first served in the line',
-              'Feel free to pass on a ride if you are not comfortable',
-                'Buckle up',
-                  'Keep it clean — personal hygiene and clean attire',
-                    'Keep phone conversations short (under 2 minutes)',
-                      'Do not force conversation — quiet ride is the norm unless driver initiates',
-                        'Do not eat, drink, or smoke in the car',
-                          'Riders do not operate the car',
-                            'No personal grooming in the car',
-                            ]
+const RIDER_RULES = [
+  'Confirm your destination with the driver',
+  'Say hello and thank you',
+  'No money exchanged, ever',
+  'First come, first served in the line',
+  'Feel free to pass on a ride if you are not comfortable',
+  'Buckle up',
+  'Keep phone conversations short',
+  'Do not eat, drink, smoke, or groom in the car',
+  'Keep the ride quiet unless the driver starts conversation',
+]
 
-                            const DRIVER_RULES = [
-                              'Confirm destination before riders board',
-                                'Drive safely — you are responsible for your passengers',
-                                  'Roll up the windows and maintain a comfortable temperature',
-                                    'Play acceptable news or music at a reasonable volume',
-                                      'Drop riders off at the agreed pickup/drop-off location',
-                                        'Feel free to pass on a rider if you have concerns',
-                                          'Keep the car clean and presentable',
-                                            'No smoking in the vehicle',
-                                            ]
+const DRIVER_RULES = [
+  'Confirm destination before riders board',
+  'Drive safely and responsibly',
+  'Maintain a comfortable temperature',
+  'Keep audio at a reasonable volume',
+  'Drop riders at the agreed location',
+  'Feel free to pass on a rider if you have concerns',
+  'Keep the car clean and presentable',
+  'No smoking in the vehicle',
+]
 
-                                            export default function SluggingRulesPage() {
-                                              return (
-                                                  <div className="max-w-4xl mx-auto px-4 py-12">
-                                                        <div className="mb-10">
-                                                                <h1 className="text-4xl font-extrabold text-slate-900 mb-4">Slugging Rules &amp; Etiquette</h1>
-                                                                        <p className="text-lg text-slate-600 leading-relaxed">
-                                                                                  Slug lines are self-governed by their participants. These rules have been established over decades to ensure safe, respectful, and efficient rides for everyone. No money is ever exchanged — drivers and riders both benefit from the HOV-3 time savings.
-                                                                                          </p>
-                                                                                                </div>
+const GOLDEN_RULES = [
+  { title: 'No Money', desc: 'No fares, tips, or payments of any kind' },
+  { title: 'Be Respectful', desc: 'Treat every rider and driver with courtesy' },
+  { title: 'Stay Safe', desc: 'If something feels wrong, feel free to pass' },
+]
 
-                                                                                                      <div className="grid grid-cols-1 md:grid-cols-2 gap-8 mb-10">
-                                                                                                              {/* Rider Rules */}
-                                                                                                                      <section className="bg-white rounded-2xl border border-slate-200 p-6">
-                                                                                                                                <div className="flex items-center gap-3 mb-6">
-                                                                                                                                            <div className="bg-green-100 p-2 rounded-xl">
-                                                                                                                                                          <Users className="w-6 h-6 text-green-600" />
-                                                                                                                                                                      </div>
-                                                                                                                                                                                  <h2 className="text-xl font-bold text-slate-900">For Riders</h2>
-                                                                                                                                                                                            </div>
-                                                                                                                                                                                                      <ul className="space-y-3">
-                                                                                                                                                                                                                  {RIDER_RULES.map((rule, i) => (
-                                                                                                                                                                                                                                <li key={i} className="flex items-start gap-3">
-                                                                                                                                                                                                                                                <CheckCircle className="w-5 h-5 text-green-500 shrink-0 mt-0.5" />
-                                                                                                                                                                                                                                                                <span className="text-slate-700 text-sm leading-relaxed">{rule}</span>
-                                                                                                                                                                                                                                                                              </li>
-                                                                                                                                                                                                                                                                                          ))}
-                                                                                                                                                                                                                                                                                                    </ul>
-                                                                                                                                                                                                                                                                                                            </section>
-                                                                                                                                                                                                                                                                                                            
-                                                                                                                                                                                                                                                                                                                    {/* Driver Rules */}
-                                                                                                                                                                                                                                                                                                                            <section className="bg-white rounded-2xl border border-slate-200 p-6">
-                                                                                                                                                                                                                                                                                                                                      <div className="flex items-center gap-3 mb-6">
-                                                                                                                                                                                                                                                                                                                                                  <div className="bg-blue-100 p-2 rounded-xl">
-                                                                                                                                                                                                                                                                                                                                                                <Car className="w-6 h-6 text-blue-600" />
-                                                                                                                                                                                                                                                                                                                                                                            </div>
-                                                                                                                                                                                                                                                                                                                                                                                        <h2 className="text-xl font-bold text-slate-900">For Drivers</h2>
-                                                                                                                                                                                                                                                                                                                                                                                                  </div>
-                                                                                                                                                                                                                                                                                                                                                                                                            <ul className="space-y-3">
-                                                                                                                                                                                                                                                                                                                                                                                                                        {DRIVER_RULES.map((rule, i) => (
-                                                                                                                                                                                                                                                                                                                                                                                                                                      <li key={i} className="flex items-start gap-3">
-                                                                                                                                                                                                                                                                                                                                                                                                                                                      <CheckCircle className="w-5 h-5 text-blue-500 shrink-0 mt-0.5" />
-                                                                                                                                                                                                                                                                                                                                                                                                                                                                      <span className="text-slate-700 text-sm leading-relaxed">{rule}</span>
-                                                                                                                                                                                                                                                                                                                                                                                                                                                                                    </li>
-                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                ))}
-                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                          </ul>
-                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                  </section>
-                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                        </div>
-                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                        
-                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                              {/* Summary Banner */}
-                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                    <section className="bg-slate-900 text-white rounded-2xl p-6 md:p-8">
-                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                            <h2 className="text-2xl font-bold mb-4">The Golden Rule of Slugging</h2>
-                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 text-center">
-                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                              {[
-                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                          { title: 'No Money', desc: 'No fares, tips, or payments of any kind' },
-                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                      { title: 'Be Respectful', desc: 'Treat every rider and driver with courtesy' },
-                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                  { title: 'Stay Safe', desc: 'If something feels wrong, feel free to pass' },
-                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                            ].map((item) => (
-                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                        <div key={item.title} className="bg-white/10 rounded-xl p-4">
-                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                      <div className="font-bold text-lg text-white mb-1">{item.title}</div>
-                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                    <div className="text-slate-300 text-sm">{item.desc}</div>
-                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                </div>
-                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                          ))}
-                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                  </div>
-                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                          <p className="mt-6 text-slate-300 text-sm text-center">
-                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                    Disclaimer: Slugging is self-governed by its participants and no money is exchanged. Drivers and riders participate at their own risk.
-                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                            </p>
-                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                  </section>
-                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                      </div>
-                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                        )
-                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                        }
+export default function SluggingRulesPage() {
+  return (
+    <div className="bg-white text-slate-950">
+      <section className="border-b border-slate-200 bg-slate-50">
+        <div className="mx-auto max-w-6xl px-4 py-12">
+          <p className="mb-3 text-sm font-semibold uppercase tracking-wide text-sky-700">Rules and etiquette</p>
+          <h1 className="max-w-4xl text-4xl font-bold tracking-tight text-slate-950 md:text-5xl">
+            The customs that keep slugging fast, safe, and respectful.
+          </h1>
+          <p className="mt-4 max-w-3xl text-lg leading-8 text-slate-600">
+            Slug lines are self-governed by their participants. These rules have been established over decades so drivers
+            and riders can coordinate quickly and commute with confidence.
+          </p>
+        </div>
+      </section>
+
+      <section className="mx-auto max-w-6xl px-4 py-10">
+        <div className="mb-8 grid grid-cols-1 gap-5 md:grid-cols-3">
+          {GOLDEN_RULES.map((item) => (
+            <article key={item.title} className="rounded-lg border border-slate-200 bg-slate-50 p-5">
+              <div className="mb-3 flex h-10 w-10 items-center justify-center rounded-lg bg-sky-50 text-sky-700">
+                <ShieldCheck className="h-5 w-5" />
+              </div>
+              <h2 className="text-lg font-bold text-slate-950">{item.title}</h2>
+              <p className="mt-2 text-sm leading-6 text-slate-600">{item.desc}</p>
+            </article>
+          ))}
+        </div>
+
+        <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
+          <RuleList title="For riders" icon="rider" rules={RIDER_RULES} />
+          <RuleList title="For drivers" icon="driver" rules={DRIVER_RULES} />
+        </div>
+
+        <section className="mt-8 rounded-lg border border-amber-200 bg-amber-50 p-5">
+          <div className="flex gap-3">
+            <AlertTriangle className="mt-0.5 h-5 w-5 shrink-0 text-amber-700" />
+            <p className="text-sm leading-7 text-amber-950">
+              Slugging is informal and self-governed. Drivers and riders participate at their own discretion. When in
+              doubt, trust your judgment and pass on a ride.
+            </p>
+          </div>
+        </section>
+      </section>
+    </div>
+  )
+}
+
+function RuleList({ title, icon, rules }: { title: string; icon: 'rider' | 'driver'; rules: string[] }) {
+  const Icon = icon === 'rider' ? Users : Car
+  const color = icon === 'rider' ? 'text-emerald-700 bg-emerald-50' : 'text-sky-700 bg-sky-50'
+
+  return (
+    <section className="rounded-lg border border-slate-200 bg-white p-6 shadow-sm">
+      <div className="mb-6 flex items-center gap-3">
+        <div className={`rounded-lg p-2 ${color}`}>
+          <Icon className="h-6 w-6" />
+        </div>
+        <h2 className="text-xl font-bold text-slate-950">{title}</h2>
+      </div>
+      <ul className="space-y-3">
+        {rules.map((rule) => (
+          <li key={rule} className="flex items-start gap-3">
+            <CheckCircle className="mt-0.5 h-5 w-5 shrink-0 text-emerald-600" />
+            <span className="text-sm leading-6 text-slate-700">{rule}</span>
+          </li>
+        ))}
+      </ul>
+    </section>
+  )
+}

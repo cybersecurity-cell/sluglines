@@ -42,7 +42,6 @@ export default function RootLayout({
               <div>
                 <h4 className="text-white font-semibold text-sm mb-4" style={{ fontFamily: 'Syne, sans-serif' }}>Quick Links</h4>
                 <ul className="space-y-2.5 text-sm" style={{ color: 'var(--muted)' }}>
-                  <li><a href="/forum/viewforum.php?f=4" className="hover:text-white transition-colors">Lost &amp; Found</a></li>
                   <li><Link href="/metroshutdown-2019" className="hover:text-white transition-colors">Metro Shutdown 2019</Link></li>
                   <li><Link href="/slugging-rules-and-etiquette" className="hover:text-white transition-colors">Slugging Rules and Etiquette</Link></li>
                 </ul>
@@ -52,7 +51,6 @@ export default function RootLayout({
                 <ul className="space-y-2.5 text-sm" style={{ color: 'var(--muted)' }}>
                   <li><Link href="/slug_pickup" className="hover:text-white transition-colors">SLUG PICKUP</Link></li>
                   <li><Link href="/app" className="hover:text-white transition-colors">APP</Link></li>
-                  <li><Link href="/forum" className="hover:text-white transition-colors">FORUM</Link></li>
                   <li><Link href="/blog" className="hover:text-white transition-colors">BLOG</Link></li>
                   <li><Link href="/news" className="hover:text-white transition-colors">NEWS</Link></li>
                   <li><a href="/wp-login.php" className="hover:text-white transition-colors">LOGIN</a></li>

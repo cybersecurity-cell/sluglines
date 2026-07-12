@@ -16,7 +16,7 @@ export default function SiteHero() {
         </p>
         <div className="mt-6 flex flex-col gap-3 sm:flex-row">
           <Link
-            href="/spots"
+            href="/slug_pickup"
             className="inline-flex items-center justify-center gap-2 rounded-lg bg-sky-700 px-4 py-3 text-sm font-bold text-white hover:bg-sky-800"
           >
             <Search className="h-4 w-4" />
