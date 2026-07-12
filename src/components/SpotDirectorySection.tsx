@@ -2,6 +2,7 @@ import Link from 'next/link'
 import { Navigation } from 'lucide-react'
 import {
   DirectorySpot,
+  getSpotDetailHref,
   groupSpotsByCorridor,
 } from '@/lib/spot-directory'
 
@@ -53,7 +54,7 @@ export default function SpotDirectorySection({
                           {(limitPerCounty ? countyGroup.spots.slice(0, limitPerCounty) : countyGroup.spots).map((spot) => (
                             <li key={spot.slug} className="flex items-center justify-between gap-3 px-3 py-2.5">
                               <div className="min-w-0">
-                                <Link href={`/spots/${spot.slug}`} className="block truncate text-sm font-semibold text-slate-950 hover:text-sky-700">
+                                <Link href={getSpotDetailHref(spot)} className="block truncate text-sm font-semibold text-slate-950 hover:text-sky-700">
                                   {spot.name}
                                 </Link>
                                 <p className="truncate text-xs text-slate-500">{spot.destination}</p>

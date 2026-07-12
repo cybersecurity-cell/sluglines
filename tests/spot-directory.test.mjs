@@ -2,6 +2,7 @@ import { strict as assert } from 'node:assert'
 import {
   findSpotBySlug,
   getActiveSpotLocations,
+  getSpotDetailHref,
   groupSpotsByCorridor,
 } from '../src/lib/spot-directory.ts'
 
@@ -16,6 +17,11 @@ assert.equal(findSpotBySlug('bobs-old-keene-mill-rd')?.slug, 'Bobs-Old-Keene-Mil
 assert.equal(findSpotBySlug('Horner-Rd')?.county, 'Prince William')
 assert.equal(findSpotBySlug('LEnfant-Plaza')?.direction, 'Afternoon')
 assert.equal(findSpotBySlug('Crystal-City-23rd-St')?.direction, 'Afternoon')
+
+assert.equal(getSpotDetailHref(findSpotBySlug('Franconia-Springfield')), '/slug_pickup/Franconia-Springfield/')
+assert.equal(getSpotDetailHref(findSpotBySlug('Lorton')), '/slug_pickup/Lorton/')
+assert.equal(getSpotDetailHref(findSpotBySlug('Saratoga')), '/slug_pickup/Saratoga/')
+assert.equal(getSpotDetailHref(findSpotBySlug('Horner-Rd')), '/spots/Horner-Rd')
 
 const active = getActiveSpotLocations()
 assert.equal(active.some((spot) => spot.active === false), false)

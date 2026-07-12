@@ -162,6 +162,14 @@ export function findSpotBySlug(slug: string) {
   return SPOT_DIRECTORY.find((spot) => normalizeDirectorySlug(spot.slug) === normalized)
 }
 
+export function getSpotDetailHref(spot?: DirectorySpot | null) {
+  if (!spot) {
+    return '/spots'
+  }
+
+  return spot.active ? `/spots/${spot.slug}` : `/slug_pickup/${spot.slug}/`
+}
+
 export function getActiveSpotLocations() {
   return SPOT_DIRECTORY.filter((spot) => spot.active)
 }

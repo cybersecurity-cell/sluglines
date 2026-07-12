@@ -10,12 +10,12 @@ export interface ResourceModule {
 }
 
 export const PRIMARY_NAV: NavItem[] = [
-  { label: 'Slug Pickup', href: '/spots' },
-  { label: 'Live Board', href: '/dashboard' },
-  { label: 'How It Works', href: '/how-it-works' },
-  { label: 'Rules', href: '/slugging-rules' },
-  { label: 'Community', href: '/community' },
+  { label: 'Slug Pickup', href: '/slug_pickup' },
   { label: 'App', href: '/app' },
+  { label: 'Forum', href: '/forum' },
+  { label: 'Blog', href: '/blog' },
+  { label: 'News', href: '/news' },
+  { label: 'Rules', href: '/slugging-rules-and-etiquette' },
 ]
 
 export const ABOUT_NAV: NavItem[] = [
@@ -27,12 +27,12 @@ export const RESOURCE_MODULES: ResourceModule[] = [
   {
     title: 'Slug Pickup',
     description: 'Find morning and afternoon pickup lines by corridor, county, and destination.',
-    href: '/spots',
+    href: '/slug_pickup',
   },
   {
     title: 'Rules & Etiquette',
     description: 'Learn the customs that keep slugging fast, safe, and respectful.',
-    href: '/slugging-rules',
+    href: '/slugging-rules-and-etiquette',
   },
   {
     title: 'Forum',

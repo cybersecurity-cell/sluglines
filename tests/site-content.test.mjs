@@ -3,11 +3,11 @@ import { PRIMARY_NAV, RESOURCE_MODULES } from '../src/lib/site-content.ts'
 
 assert.deepEqual(PRIMARY_NAV.map((item) => item.label), [
   'Slug Pickup',
-  'Live Board',
-  'How It Works',
-  'Rules',
-  'Community',
   'App',
+  'Forum',
+  'Blog',
+  'News',
+  'Rules',
 ])
 
 assert.equal(RESOURCE_MODULES.some((module) => module.title === 'Lost & Found'), true)
