@@ -14,7 +14,11 @@ The initial product replaces recurring WhatsApp coordination patterns with priva
 
 ## Documentation
 
-- [Phased system design](docs/specs/2026-07-18-sluglines-ai-phased-design.md)
+- [Final architecture v2](docs/specs/2026-07-18-sluglines-ai-final-architecture.md) — current authoritative design
+- [Execution plan](docs/specs/2026-07-18-execution-plan.md) — phases, gates, and skill mapping
+- [Phased system design](docs/specs/2026-07-18-sluglines-ai-phased-design.md) — extended by the final architecture
+
+Development skills live in `.claude/skills/` (domain-state-machine, agent-runtime, voice-pipeline, ai-skill-contract, security-gates).
 
 ## Isolation rule
 
