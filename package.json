@@ -10,6 +10,7 @@
     "start": "next start",
     "lint": "next lint",
     "typecheck": "tsc --noEmit",
+    "sql:check": "node scripts/sql-lint.mjs",
     "audit:check": "node scripts/audit-check.mjs --level=high"
   },
   "dependencies": {

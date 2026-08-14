@@ -350,7 +350,62 @@ That is D-13.
 
 ---
 
-## D-13 — OPEN: does `Sluglines-AI`'s code get transplanted here?
+## D-13 — CLOSED: the core is **rebuilt** inside `sluglines`, not transplanted
+
+> **Decided 2026-08-14 by the human.** The original OPEN text is preserved below the decision, as
+> the record of what the question was. First implementation slice: the rebuild-foundation slice
+> recorded at the end of this file.
+
+**Decision:** the application core is **rebuilt inside the `sluglines` repo from the rev. 5.3
+specification**. `Sluglines-AI`'s code is **not** transplanted.
+
+**Consequences — each is a commitment, not an aspiration:**
+
+1. **`Sluglines-AI` becomes reference and documentation only.** It may be read for design intent;
+   no file is copied into this repo as implementation, and D-5's "explicitly NOT an implementation
+   target" now covers reading-for-transplant as well as writing. Where rev. 5.3 describes a
+   `Sluglines-AI` artefact (a migration ordinal, a test count, a skills file), that description is
+   a **content specification** to be satisfied here, not a file to be reproduced.
+2. **This repo must grow its own migration harness, RLS posture, domain layer and test harness.**
+   None of it arrives for free. Every D-11 deferral that was blocked on "the transplant brings it"
+   is now blocked on nothing and must be built: see D-21 (migration harness), D-23 (RLS test
+   harness), D-26 (`lib/domain`).
+3. **`N` does not get replaced by `Sluglines-AI`'s ~98.** D-4 anticipated that a transplant would
+   replace the baseline. It will not. This repo's `N` grows by the tests each rebuild slice adds
+   (see D-25 for a correction to the recorded baseline itself).
+4. **PR #1 is retargeted, not closed.** D-12's condition resolves in favour of the first branch:
+   `codex/phase-3-4` is the mainline of the canonical repo. PR #1 should be retitled and
+   retargeted rather than closed with a supersession reference. That is a GitHub-side action and
+   was **not** performed by the rebuild slice, which was not authorised to push.
+5. **The legacy schema is quarantined, not deleted.** See D-24.
+
+**The concrete sequence to P1/P2**, in dependency order. Each item names its blocker so the next
+session does not have to re-derive the ordering:
+
+| # | Step | Blocked by | Status |
+|---|---|---|---|
+| 1 | Migration harness + static SQL security analyser | — | **DONE** (D-21) |
+| 2 | Rebuild-foundation migration: `members`, `audit_events`, `presence_checkins`, default-deny RLS, SECURITY DEFINER writers | 1 | **DONE, unapplied** (D-22) |
+| 3 | `lib/domain` boundary + offer state machine as committed data | — | **DONE** (D-26) |
+| 4 | Live-database RLS test harness (positive + negative), against a non-production target | staging choice (D-7) | **OPEN** (D-23) |
+| 5 | Apply migrations `0001+` to a real database | 4, and explicit operator authorisation | **OPEN** |
+| 6 | M2 identity: phone-OTP wiring, `/login` `/verify` `/onboarding`, OTP abuse controls | 5, D-8 | **OPEN** |
+| 7 | M3 offers/reservations tables + the state-machine SQL functions (revision checks, idempotency keys), checked against step 3's committed table | 5, 6 | **OPEN** |
+| 8 | P1 restructure to §8 route groups; ESLint boundary rule completed once `lib/ai` exists | 3, 7 | **OPEN** (D-10) |
+| 9 | `0026` 43-spot directory seed; `/[...legacy]` handler with the 165-route test | 8 | **OPEN** |
+| 10 | Content preservation: the existing `src/lib/*` content libraries and 405 built routes survive the restructure unchanged in behaviour, asserted by the existing suite passing pre- and post-restructure | 8 | **OPEN** |
+| 11 | P2 public aggregates (`0027`), the three anonymous-callable functions, and legacy write-path retirement | 9, 10 | **OPEN** |
+
+**Content preservation is a hard constraint on all of the above.** The rebuild replaces the
+*schema and domain core*; it does not replace the content site. The 405 built routes, the legacy
+redirect inventory, and `src/lib/{spot-directory,legacy-content,site-content,...}.ts` are carried
+forward. rev. 5.3 §11 P1's "behaviour-preserving; suite green before/after at count N" is the
+instrument, and no rebuild slice may reduce the passing test set to satisfy a restructure.
+
+**Status:** DECIDED (human), 2026-08-14. No longer blocks P1.
+
+<details>
+<summary>Original entry, as written when this was open</summary>
 
 **This is the highest-value open question and D-2 does not answer it.**
 
@@ -366,6 +421,8 @@ Almost every deferral in D-11 collapses the moment this is decided: the migratio
 test harness, `lib/domain`, and `lib/ai` all arrive with the transplant.
 
 **Status:** OPEN — human decision required. Blocks P1.
+
+</details>
 
 ---
 
@@ -563,6 +620,189 @@ major, clears the last `glob` waiver.
 
 ---
 
+## D-21 — Migration harness established (file-based; no runner)
+
+**Decision:** `supabase/migrations/` is created as this repo's migration harness, with
+`scripts/sql-lint.mjs` as its static security analyser and `supabase/migrations/README.md` as its
+convention document. This closes the D-11.1 deferral, whose stated reason ("no migrations directory
+and no migration harness") was itself the thing to fix once D-13 chose rebuild.
+
+**Deliberately *not* included: a runner.** Nothing in this repo applies SQL to a database. There is
+no `supabase db push`, no connection string, no live suite. The harness is a *file* convention plus
+a *text* analyser, and both run offline.
+
+**Why that split rather than wiring the Supabase CLI now:** the only database in the authorised
+identity set (D-5) is the **production** project `bwpguotjzczmieeepczf`. A harness whose only
+possible target is production is not a test harness. Wiring one would either sit unused or invite a
+production apply, so the file/static half ships now and the live half waits for a non-production
+target (D-7, D-23).
+
+**Status:** ESTABLISHED.
+
+---
+
+## D-22 — Migration ordinals restart at `0001`; rev. 5.3 filenames are content specs
+
+**Decision:** this repo's migration sequence starts at **`0001`**. rev. 5.3's migration filenames
+are read as *content* specifications, not filenames to reproduce.
+
+**Reason:** rev. 5.3 §11/§12 names `0025_product_events.sql`, `0026_full_spot_directory.sql` and
+`0027_public_aggregates.sql`. Those ordinals index `Sluglines-AI`'s 24-migration history. Under
+D-13 that history is not inherited, so reproducing the ordinals would encode a sequence that does
+not exist here — exactly the objection D-11.1 raised, now resolved by renumbering rather than by
+deferring.
+
+**Mapping** (so no later session re-derives it):
+
+| rev. 5.3 filename | This repo | Phase |
+|---|---|---|
+| — (new; no rev. 5.3 equivalent) | `0001_rebuild_foundation.sql` | rebuild foundation |
+| `0025_product_events.sql` | next free ordinal when M10 is built | P0 content, deferred |
+| `0026_full_spot_directory.sql` | next free ordinal after that | P1 |
+| `0027_public_aggregates.sql` | next free ordinal after that | P2 |
+
+### `0001_rebuild_foundation.sql` — what it contains and its applied state
+
+Three tables, chosen because rev. 5.3 specifies them completely enough to write without inventing
+anything: `members` (§8 M2), `audit_events` (§8 M7), `presence_checkins` (§8 M4). Plus seven
+functions forming the entire write path.
+
+**APPLIED: no.** It has not been run against `bwpguotjzczmieeepczf` or any other database. The file
+carries an `APPLIED:` header line, a test asserts it reads `no`, and that line is only changed by
+the session that actually applies it.
+
+Posture: RLS enabled on every table; **zero** insert/update/delete policies for any role; the three
+SELECT policies are `to authenticated` with real predicates; every write goes through a
+SECURITY DEFINER function that takes the actor from `auth.uid()` rather than from its arguments;
+every function is revoked from `PUBLIC` before anything is granted back.
+
+That last point is the one worth stating explicitly, because it is the easy thing to get wrong:
+**Postgres grants `EXECUTE` on a new function to `PUBLIC` by default.** A migration can satisfy
+every RLS rule and still hand anonymous callers a write path through the very functions that bypass
+RLS. Analyser rule R9 exists for that, and it is the rule most likely to catch a future mistake.
+
+**Status:** WRITTEN, LINTED, **NOT APPLIED**.
+
+---
+
+## D-23 — Static SQL validation now; live RLS tests still owed
+
+**Decision:** SQL security is currently enforced **statically**, by `scripts/sql-lint.mjs` under
+`npm run test` and `npm run sql:check`. Positive/negative live-database RLS tests remain **owed**.
+
+**The distinction matters and is not being blurred.** The analyser proves *"the SQL contains no
+shape that grants an anonymous or authenticated client a direct table write."* It cannot prove
+*"this policy predicate is correct."* A green `sql:check` is **not** an RLS verification, and
+rev. 5.3 §12 constraint 2 ("default-deny RLS + positive and negative RLS tests in the same PR") is
+therefore **partially satisfied only** — the default-deny half is evidenced; the tests half is not.
+
+Eleven rules (R1–R11) are enforced and documented in `supabase/migrations/README.md`, together with
+the analyser's known limits (overload-blind, shape-not-semantics, no catalogue awareness). Each rule
+is exercised by a **negative** fixture in `tests/sql-migration-harness.test.mjs`, so the gate is
+demonstrably able to fail — the D-10 objection to gates that only look green applies to this gate
+too, and is answered rather than repeated.
+
+**To close:** a non-production database target (D-7's staging choice), then a live suite asserting
+anon-denied / member-denied / function-succeeds for each table.
+
+**Status:** PARTIAL — static enforced, live owed. Step 4 of D-13's sequence.
+
+---
+
+## D-24 — Legacy `supabase/schema.sql`: quarantined, pinned, not dropped
+
+**Findings, confirmed by reading the file rather than quoting rev. 5.3.** Eight write policies exist;
+seven are reachable with no authentication whatsoever, because they carry no `TO` clause (Postgres
+defaults that to `PUBLIC`) and an unconditional `using (true)`:
+
+| Table | Command | Policy |
+|---|---|---|
+| `spot_status` | UPDATE | `Anyone can update spot counts` (rev. 5.3 §14 risk 4) |
+| `riders` | INSERT | `Public insert riders` |
+| `riders` | UPDATE | `Public update own rider check-in` |
+| `riders` | DELETE | `Public delete rider check-ins` |
+| `drivers` | INSERT | `Public insert drivers` |
+| `drivers` | UPDATE | `Public update own driver check-in` |
+| `drivers` | DELETE | `Public delete driver check-ins` |
+
+(rev. 5.3 §14 risk 1 for the six `riders`/`drivers` rows.) The eighth, `Users update own profile`, is
+at least scoped to `auth.uid() = id` and is not in the anonymous set. The policy names say "own", but
+nothing in them is scoped to a person: identity in these tables is a **client-supplied `device_id`**,
+so there is no principal to authorise against — any client can overwrite or delete any other
+person's row.
+
+**What this slice did:** added a `LEGACY SCHEMA -- QUARANTINED. DO NOT APPLY.` banner to the top of
+the file (comment only; no SQL changed), and pinned the unsafe set in
+`tests/legacy-schema-risks.test.mjs` so it cannot grow unnoticed and so removing an entry forces a
+recorded decision.
+
+**What this slice deliberately did NOT do:** drop or alter a single table, policy or function, in
+the file or in any database. Two reasons. (1) These policies are the only write path the currently
+deployed UI has; removing them before the replacement read/write path exists breaks a live site to
+fix a schema that is already superseded on paper. (2) rev. 5.3 assigns the retirement to **Phase 2**
+("Retire the legacy Supabase project's write paths", with a test proving the old policies are gone),
+after the P2 public functions exist. Doing it early would be out of sequence, not ahead of schedule.
+
+**The risk therefore remains live in production and is not mitigated by this slice.** It is
+mitigated by P2. Recorded as open, not as handled.
+
+**Status:** QUARANTINED IN REPO; **live risk OPEN**, owned by P2.
+
+---
+
+## D-25 — Correction to the D-4 baseline: `spot-directory.test.mjs` is 16 assertions, not 54
+
+**Finding.** D-4 records `N` as 12 files / 137 assertions with a per-file table. Re-counting the
+committed tree at `aa7b306` with the same instrument (source-level `assert.*` call sites) reproduces
+**eleven of the twelve rows exactly**. The twelfth, `spot-directory.test.mjs`, contains **16**
+assertion calls in 32 lines, not the recorded 54. `git log` shows the file's last change was
+`be6ec65`, well before the P0 slice, and it contains no loops that could make executed assertions
+exceed written ones.
+
+Eleven exact matches and one 38-assertion gap is not a methodology difference; the recorded 54 most
+plausibly counted a working-tree version of that file which D-16.10 lists as uncommitted at the time
+and which never reached a commit.
+
+**Correction.** The committed baseline is **12 files / 99 assertions**, not 12 / 137. Later gates
+that reference `N` must use 99 for the pre-rebuild baseline. D-4's other eleven rows stand.
+
+**After this slice:** **16 files / 178 assertions**, all green — the 12 baseline files unchanged, plus
+four new files (`sql-migration-harness` 33, `offer-state-machine` 27, `legacy-schema-risks` 10,
+`domain-boundaries` 9 = 79 new).
+
+**Status:** CORRECTED. This is a bookkeeping fix, not a test regression: no test was deleted or
+weakened by any slice, and the suite is green.
+
+---
+
+## D-26 — `lib/domain` created; its half of the boundary rule is now enforceable
+
+**Decision:** `src/lib/domain/` is created with the rev. 5.3 §8 M3 offer state machine expressed as
+committed data (`offer-state.ts`) and a barrel documenting the boundary (`index.ts`).
+
+**This closes half of D-10, and only half.** D-10 deferred the boundary rule because its subject did
+not exist — with no `lib/ai`, a `no-restricted-imports` rule against it could not be made to fail.
+That reasoning still holds for the `lib/ai` half. But the rule has two halves, and the other one —
+*`lib/domain/**` may import `lib/supabase` only; never React, never `lib/ai`* — now has a subject,
+so it is enforced today by `tests/domain-boundaries.test.mjs` (allowlist check on every import
+specifier, plus a `.tsx`/`'use client'` ban). That test also asserts `src/lib/ai` still does not
+exist, so the day it appears, the test fails and the ESLint rule becomes due in the same change.
+
+**Why a test rather than the ESLint rule:** the test fails inside `npm run test`, which is the gate
+rev. 5.3 §12 constraint 7 requires output from. The ESLint rule lands with the P1 restructure, when
+route groups and `lib/ai` paths exist for it to reference.
+
+**On the state machine:** it is a transcription of the §8 M3 diagram, asserted edge-for-edge — the
+test declares the spec's edge list independently and requires the module's table to equal it exactly,
+so a stray edge fails as loudly as a missing one. It is a **reference, not an enforcement point**:
+rev. 5.3 §12 constraint 6 makes the SECURITY DEFINER SQL functions authoritative. Those functions do
+not exist yet (`offers` is a P1 table); pinning the machine first means they have something committed
+to be checked against.
+
+**Status:** DONE. D-10's `lib/ai` half remains DEFERRED, unchanged.
+
+---
+
 ## Changes made in this slice
 
 | File | Change |
@@ -608,8 +848,8 @@ themselves run only on GitHub.
    **DONE 2026-08-14** — see the dependency-security slice record below. Superseded by **D-20**
    (Next 15 migration for the eight residual high advisories), which is no longer the *smallest*
    next slice and should be sequenced against the items below rather than ahead of them.
-2. **D-13** — human decision: transplant `Sluglines-AI`'s core into this repo, or rebuild here.
-   This unblocks P1 and collapses most of D-11.
+2. ~~**D-13** — human decision: transplant `Sluglines-AI`'s core into this repo, or rebuild here.~~
+   **DECIDED 2026-08-14 — rebuild.** See D-13 and the rebuild-foundation slice record below.
 3. **D-6** — authorise the two blocked verification reads (U2, U3).
 4. **D-15** — start the `[H]` long-lead items now: `SluglinesAgent` rotation (High severity, and a
    Phase 1 entry criterion), founding-driver recruitment, and the two-week WhatsApp volume baseline.
@@ -666,3 +906,80 @@ expiry 2026-10-15), `glob` (1 high, dev lint toolchain — expiry 2026-11-14).
 
 **GHSA-f82v-jwr5-mffw (critical, Authorization Bypass in Next.js Middleware) no longer appears in
 `npm audit` output.** The repo now has zero critical advisories.
+
+---
+
+## Rebuild-foundation slice — 2026-08-14
+
+The first implementation slice under D-13. Scope held deliberately narrow: establish the harness
+and the security posture, not the product.
+
+### Files changed
+
+| File | Change |
+|---|---|
+| `Docs/DECISIONS.md` | D-13 closed (rebuild, consequences, 11-step sequence to P1/P2); D-21..D-26 added; this record |
+| `supabase/migrations/README.md` | **New** — harness conventions, rules R1–R11 with sources, analyser limits, apply policy |
+| `supabase/migrations/0001_rebuild_foundation.sql` | **New** — `members`, `audit_events`, `presence_checkins`; default-deny RLS; 7 SECURITY DEFINER functions. `APPLIED: no` |
+| `scripts/sql-lint.mjs` | **New** — static SQL security analyser + CLI. Node built-ins only |
+| `src/lib/domain/offer-state.ts` | **New** — rev. 5.3 §8 M3 state machine as committed data |
+| `src/lib/domain/index.ts` | **New** — barrel + boundary documentation |
+| `tests/sql-migration-harness.test.mjs` | **New** — 33 assertions; positive + one negative fixture per rule |
+| `tests/legacy-schema-risks.test.mjs` | **New** — 10 assertions; pins the D-24 unsafe set |
+| `tests/offer-state-machine.test.mjs` | **New** — 27 assertions; edge-for-edge against §8 M3 |
+| `tests/domain-boundaries.test.mjs` | **New** — 9 assertions; §8 dependency rule for `lib/domain` |
+| `supabase/schema.sql` | Quarantine banner only — a leading SQL comment block. **No SQL statement was added, removed or altered** (D-24) |
+| `package.json` | Added the `sql:check` script. No dependency changes |
+
+Two pre-existing tracked files were touched, both minimally and both because the task required it:
+`supabase/schema.sql` (comment-only banner — the slice's whole point is that this file must not be
+applied, and the file itself is where that has to be said) and `package.json` (one script line).
+Nothing else in the working tree was modified; the tree was clean at slice start, the earlier
+in-flight UI work having landed in `698ce45`.
+
+### Not done, deliberately
+
+| Item | Why |
+|---|---|
+| Applying any migration to `bwpguotjzczmieeepczf` | Out of scope and unauthorised. `APPLIED: no` |
+| Dropping the legacy unsafe policies | rev. 5.3 Phase 2 work; would break the live write path (D-24) |
+| Live RLS tests | No non-production target exists (D-7, D-23) |
+| `lib/ai` or any assistant path | Phase 5. D-10's `lib/ai` half stays deferred |
+| Wiring `lib/domain` into the UI | Not needed by any test; would enlarge the review surface |
+| Retargeting PR #1 per D-13 consequence 4 | GitHub-side action; this slice was not authorised to push |
+| `0025_product_events.sql` content | Still deferred; the harness that blocked it now exists (D-22) |
+
+### Verification
+
+| Command | Result |
+|---|---|
+| `npm run test` | **PASS** — exit 0; 16 files / 178 assertions (12 baseline files unchanged + 4 new) |
+| `npm run lint` | **PASS** — exit 0; the same 4 pre-existing warnings, no new ones |
+| `npm run typecheck` | **PASS** — exit 0 |
+| `npm run build` | **PASS** — exit 0; route table unchanged, `/dashboard` and `/spots/[slug]` dynamic, the rest static |
+| `npm run audit:check` | **PASS** — exit 0; 11 advisories >= high, 11 waived, 0 unwaived, 0 expired. No waiver added, removed or extended |
+| `npm run sql:check` | **PASS** — exit 0; 1 migration, 47 statements, 0 violations |
+
+The analyser's ability to fail is evidenced inside `npm run test` rather than by a manual negative
+run: every rule R1–R11 has an unsafe in-memory fixture asserting the exact rule set it triggers.
+
+**Not verified, and not claimed:** no database was contacted; no Supabase, Vercel or GCP state was
+read or changed; the CI workflows were not observed running on GitHub.
+
+### Recommended next slice
+
+**Stand up a non-production database target, then apply `0001` to it and write the live RLS tests**
+(D-13 steps 4–5, closing D-23 and D-7). That is the single highest-value next move, because every
+remaining rebuild step depends on being able to prove a policy *behaves*, and right now nothing in
+this repo can.
+
+It needs two human inputs first, neither of which an implementing session can supply:
+
+1. **D-7** — does the Supabase plan for `bwpguotjzczmieeepczf` include preview branches? Answer
+   picks preview-branch vs. second project.
+2. **Explicit authorisation** to create and write to that target.
+
+If both are blocked, the next-best slice is **D-13 step 7** — the M3 `offers`/`reservations`
+migration with its state-machine SQL functions, checked against the now-committed
+`src/lib/domain/offer-state.ts`. It is fully static work, needs no database, and extends the same
+harness this slice built.

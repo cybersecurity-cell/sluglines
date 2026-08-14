@@ -1,0 +1,209 @@
+// Migration harness tests — Docs/DECISIONS.md D-21..D-23.
+//
+// Two jobs:
+//   1. The committed migrations satisfy the rev. 5.3 default-deny posture.
+//   2. The analyser that proves (1) can actually fail. A gate that cannot fail
+//      is a gate that only looks green (the D-10 lesson), so every rule is
+//      exercised against a deliberately-unsafe in-memory fixture.
+
+import { strict as assert } from 'node:assert'
+import fs from 'node:fs'
+import path from 'node:path'
+import {
+  DEFAULT_MIGRATIONS_DIR,
+  analyzeSql,
+  classifyStatement,
+  lintMigrations,
+  loadMigrations,
+  splitStatements,
+} from '../scripts/sql-lint.mjs'
+
+const root = process.cwd()
+const migrationsDir = path.join(root, DEFAULT_MIGRATIONS_DIR)
+const rulesOf = (violations) => [...new Set(violations.map((v) => v.rule))].sort()
+
+// -----------------------------------------------------------------------------
+// Harness exists and is documented
+// -----------------------------------------------------------------------------
+assert.equal(fs.existsSync(migrationsDir), true, 'supabase/migrations must exist')
+assert.equal(fs.existsSync(path.join(migrationsDir, 'README.md')), true, 'migrations README must exist')
+
+const migrations = loadMigrations(migrationsDir)
+assert.ok(migrations.length >= 1, 'at least one migration must be present')
+
+// The sequence restarts at 0001 in this repo; rev. 5.3's 0025_* ordinal belongs
+// to Sluglines-AI's sequence (Docs/DECISIONS.md D-22).
+assert.equal(migrations[0].file, '0001_rebuild_foundation.sql')
+assert.equal(migrations[0].ordinal, 1)
+
+// -----------------------------------------------------------------------------
+// Nothing here has been applied to a database
+// -----------------------------------------------------------------------------
+for (const m of migrations) {
+  assert.match(m.sql, /^--.*\n(?:--.*\n)*?--\s*APPLIED:\s*(yes|no)\b/m, `${m.file} must carry an APPLIED header line`)
+  assert.equal(/--\s*APPLIED:\s*no\b/.test(m.sql), true, `${m.file} must record APPLIED: no until a session applies it`)
+  assert.equal(
+    /bwpguotjzczmieeepczf/.test(m.sql.replace(/^--.*$/gm, '')),
+    false,
+    `${m.file} must not reference the production project ref outside comments`
+  )
+}
+
+// -----------------------------------------------------------------------------
+// Positive: the committed migrations lint clean
+// -----------------------------------------------------------------------------
+const violations = lintMigrations(migrations)
+assert.deepEqual(
+  violations,
+  [],
+  `committed migrations must pass sql-lint; got:\n${violations.map((v) => `[${v.rule}] ${v.file}: ${v.message}`).join('\n')}`
+)
+
+// -----------------------------------------------------------------------------
+// Positive: no anonymous or authenticated direct table write, stated directly
+// rather than only via the rule engine
+// -----------------------------------------------------------------------------
+const statements = migrations.flatMap((m) => m.statements)
+const tables = statements.filter((s) => s.kind === 'create_table').map((s) => s.table)
+const functions = statements.filter((s) => s.kind === 'create_function').map((s) => s.fn)
+
+assert.deepEqual(
+  [...tables].sort(),
+  ['public.audit_events', 'public.members', 'public.presence_checkins'],
+  'the foundation migration creates exactly the three rev. 5.3 §8 M2/M4/M7 tables'
+)
+assert.ok(functions.length >= 7, 'the write path is a set of SECURITY DEFINER functions')
+
+for (const policy of statements.filter((s) => s.kind === 'create_policy')) {
+  assert.equal(policy.command, 'select', `policy "${policy.policy}" must be read-only`)
+  assert.deepEqual(policy.roles, ['authenticated'], `policy "${policy.policy}" must target authenticated only`)
+  assert.equal(policy.unconditional, false, `policy "${policy.policy}" must not use a true predicate`)
+}
+
+for (const grant of statements.filter((s) => s.kind === 'grant_table')) {
+  assert.equal(grant.privileges.trim(), 'select', `only SELECT may be granted on ${grant.table}`)
+  assert.equal(grant.roles.includes('anon'), false, `nothing may be granted to anon on ${grant.table}`)
+}
+
+for (const grant of statements.filter((s) => s.kind === 'grant_function')) {
+  assert.deepEqual(grant.roles, ['authenticated'], `execute on ${grant.fn} may only be granted to authenticated`)
+}
+
+// Every SECURITY DEFINER function is revoked from PUBLIC. Without this, Postgres'
+// default EXECUTE-to-PUBLIC grant makes the tables' default-deny irrelevant.
+const revokedFromPublic = new Set(
+  statements.filter((s) => s.kind === 'revoke_function' && s.roles.includes('public')).map((s) => s.fn)
+)
+for (const fn of functions) {
+  assert.equal(revokedFromPublic.has(fn), true, `${fn} must be revoked from PUBLIC`)
+}
+
+// rev. 5.3 §12 constraint 3 — no phone or contact columns in application tables.
+const migrationSql = migrations.map((m) => m.sql).join('\n').replace(/^--.*$/gm, '')
+for (const forbidden of ['phone', 'phone_number', 'email', 'contact', 'device_id']) {
+  assert.equal(
+    new RegExp(`\\b${forbidden}\\s+(text|varchar|citext)\\b`, 'i').test(migrationSql),
+    false,
+    `migrations must not declare a ${forbidden} column`
+  )
+}
+
+// -----------------------------------------------------------------------------
+// Negative: each rule fires on an unsafe fixture
+// -----------------------------------------------------------------------------
+
+// R4 / R5 / R6 — the legacy "Public delete rider check-ins" shape.
+const openWrite = rulesOf(
+  lintMigrations([
+    analyzeSql(
+      '0001_open_write.sql',
+      `create table public.riders (id uuid primary key);
+       alter table public.riders enable row level security;
+       revoke all on table public.riders from anon;
+       create policy "Public delete rider check-ins" on public.riders for delete to anon using (true);`
+    ),
+  ])
+)
+assert.deepEqual(openWrite, ['R4', 'R5', 'R6'])
+
+// R5 / R4 — an omitted TO clause defaults to PUBLIC, and an omitted FOR clause
+// defaults to ALL. Both defaults must be read as permissive, not as unspecified.
+const impliedDefaults = rulesOf(
+  lintMigrations([
+    analyzeSql(
+      '0001_implied.sql',
+      `create table public.t (id uuid primary key);
+       alter table public.t enable row level security;
+       revoke all on table public.t from anon;
+       create policy t_all on public.t using (auth.uid() = id);`
+    ),
+  ])
+)
+assert.deepEqual(impliedDefaults, ['R4', 'R5'])
+
+// R3 / R7 / R11 — no RLS, and a write privilege handed to anon.
+const noRls = rulesOf(
+  lintMigrations([
+    analyzeSql(
+      '0001_no_rls.sql',
+      `create table public.spot_status (id uuid primary key);
+       grant insert, update on table public.spot_status to anon;`
+    ),
+  ])
+)
+assert.deepEqual(noRls, ['R11', 'R3', 'R7']) // rulesOf() sorts lexically, so R11 precedes R3
+
+// R8 / R9 — the default-EXECUTE-to-PUBLIC hole plus an unpinned search_path.
+const looseFunction = rulesOf(
+  lintMigrations([
+    analyzeSql(
+      '0001_loose_fn.sql',
+      `create or replace function public.wipe()
+       returns void
+       language plpgsql
+       security definer
+       as $$ begin delete from public.members; end; $$;`
+    ),
+  ])
+)
+assert.deepEqual(looseFunction, ['R8', 'R9'])
+
+// R10 — an anonymous execute grant.
+const anonExecute = lintMigrations([
+  analyzeSql(
+    '0001_anon_exec.sql',
+    `create or replace function public.f() returns void language sql set search_path = public as $$ select 1 $$;
+     revoke all on function public.f() from public;
+     grant execute on function public.f() to anon;`
+  ),
+])
+assert.deepEqual(rulesOf(anonExecute), ['R10'])
+
+// R1 / R2 — filename and ordinal conventions.
+assert.deepEqual(rulesOf(lintMigrations([analyzeSql('setup.sql', '')])), ['R1'])
+assert.deepEqual(rulesOf(lintMigrations([analyzeSql('0025_product_events.sql', '')])), ['R2'])
+assert.deepEqual(
+  rulesOf(lintMigrations([analyzeSql('0001_a.sql', ''), analyzeSql('0003_b.sql', '')])),
+  ['R2'],
+  'a gap in the sequence is a violation'
+)
+
+// -----------------------------------------------------------------------------
+// Scanner correctness — the reason a regex split was not good enough
+// -----------------------------------------------------------------------------
+const bodyWithSemicolons = `create or replace function public.f()
+returns void language plpgsql as $$
+begin
+  perform 1;
+  perform 2;
+end;
+$$;
+select 1`
+assert.equal(splitStatements(bodyWithSemicolons).length, 2, 'semicolons inside a $$ body must not split a statement')
+
+assert.equal(splitStatements(`select 'a;b'; select 2`).length, 2, 'semicolons inside a string must not split a statement')
+assert.equal(splitStatements(`-- create table x (y int);\nselect 1`).length, 1, 'commented-out SQL must be ignored')
+assert.equal(splitStatements(`/* create table x; /* nested */ */ select 1`).length, 1, 'nested block comments must be ignored')
+
+assert.equal(classifyStatement('create table if not exists members (id uuid)').table, 'public.members')
+assert.equal(classifyStatement('CREATE TABLE Public."Members" (id uuid)').table, 'public.members')

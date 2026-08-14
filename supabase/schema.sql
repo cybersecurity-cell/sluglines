@@ -1,4 +1,27 @@
 -- =================================================
+-- LEGACY SCHEMA -- QUARANTINED. DO NOT APPLY.
+--
+-- This file is retained as the record of the schema the content site was built
+-- against. It is UNSAFE and must not be applied to any database, including
+-- Supabase project bwpguotjzczmieeepczf.
+--
+-- rev. 5.3 (Docs/2026-08-14-consolidated-architecture.md) sec.14 risks 1 and 4
+-- flag the policies below: any anonymous client can update spot_status counts,
+-- and can insert, update, or DELETE any other person's row in riders and
+-- drivers. Identity here is a client-supplied device_id, so there is nothing to
+-- authorise against.
+--
+-- Superseded by supabase/migrations/ (Docs/DECISIONS.md D-13, D-24). Nothing in
+-- this file was dropped or altered by the rebuild slice -- retiring the live
+-- policies is rev. 5.3 Phase 2's "legacy write-path retirement", which needs the
+-- replacement read path to exist first.
+--
+-- The unsafe policies are pinned by tests/legacy-schema-risks.test.mjs so the
+-- set cannot grow unnoticed. Deleting one from this file is expected to fail
+-- that test until the same change is recorded in Docs/DECISIONS.md.
+-- =================================================
+
+-- =================================================
 -- Sluglines Database Schema (Supabase / PostgreSQL)
 -- Run this in your Supabase SQL editor
 -- =================================================
