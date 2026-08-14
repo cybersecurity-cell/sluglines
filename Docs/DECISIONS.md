@@ -480,7 +480,13 @@ gate passes — see D-19 for the one that genuinely matters.
 
 ---
 
-## D-19 — ACTION REQUIRED: critical `next@14.2.0` advisory waived, not fixed
+## D-19 — RESOLVED: critical `next@14.2.0` advisory fixed by the 14.2.35 bump
+
+> **Update — 2026-08-14, dependency-security slice.** This is now **CLOSED**. `next` was bumped
+> 14.2.0 → 14.2.35 and the critical advisory **GHSA-f82v-jwr5-mffw is cleared**. npm audit went
+> from 14 vulnerabilities (2 low, 11 high, 1 critical) to **7 (2 low, 5 high, 0 critical)**, and
+> nine waivers were deleted. The original entry is preserved below for the record; see **D-20**
+> for the residual high-severity `next` advisories that a 14.2.x bump could not reach.
 
 **Flagged prominently because it is the single most consequential finding of this slice.**
 
@@ -502,7 +508,58 @@ needs its own reviewable commit with a full `test` / `lint` / `build` pass.
 `npm run test && npm run lint && npm run build`, then delete the `next` and `postcss` entries from
 the exceptions file.
 
-**Status:** OPEN — recommended as the immediate next slice.
+**Status:** ~~OPEN — recommended as the immediate next slice.~~ **CLOSED 2026-08-14** by the
+dependency-security slice. The remediation above was applied in full, with one correction to its
+premise: deleting the `next` and `postcss` entries outright was **not** possible (see D-20).
+
+---
+
+## D-20 — Residual high-severity `next` advisories need a Next 15 migration
+
+**Raised by the dependency-security slice, 2026-08-14, as the successor to D-19.**
+
+D-19 predicted that `next@14.2.35` would clear the whole `next` + `postcss` cluster and let both
+waivers be deleted. **That prediction was half right.** What the audit actually showed after the
+bump:
+
+| | Before | After |
+|---|---|---|
+| npm audit total | 14 (2 low, 11 high, 1 critical) | **7 (2 low, 5 high, 0 critical)** |
+| `next` advisories ≥ high | 12 (1 critical, 11 high) | 8 high |
+| `postcss` advisories ≥ high | 2 high | 2 high (nested copy only) |
+| Waiver entries | 12 | **3** |
+
+**Cleared by 14.2.35:** the critical GHSA-f82v-jwr5-mffw, plus GHSA-gp8f-8m3g-qvj9 (cache
+poisoning), GHSA-7gfc-8cq8-jh5f (authorization bypass), GHSA-mwv6-3258-q52c and GHSA-5j59-xgg2-r9c4
+(RSC DoS).
+
+**Not cleared, and not clearable on the 14.2.x line:** eight high advisories whose fixed-in ranges
+all begin at **15.5.x** — GHSA-h25m-26qc-wcjf, GHSA-q4gf-8mx6-v5v3, GHSA-8h8q-6873-q5fj,
+GHSA-c4j6-fc7j-m34r, GHSA-36qx-fr4f-26g5, GHSA-m99w-x7hq-7vfj, GHSA-89xv-2m56-2m9x,
+GHSA-p9j2-gv94-2wf4. npm reports the only fix as `next@16.3.1` (`isSemVerMajor: true`). A Next
+15/16 jump was explicitly out of scope for this slice.
+
+Likewise the two `postcss` highs: the direct devDependency was raised to `^8.5.26` and that
+top-level copy is clean, but `next@14.2.35` hard-pins `node_modules/next/node_modules/postcss` to
+exactly **8.4.31** in its own `dependencies`, which cannot be overridden while staying on Next 14.
+
+**Reachability was measured, not assumed.** This app has no `middleware.ts`, no i18n config, no
+Server Actions (`'use server'` appears nowhere in `src/`), no rewrites in `next.config.js`, and no
+custom server. That structurally rules out four of the eight — the i18n proxy bypass, both Server
+Actions issues, and the rewrite-destination SSRF. Residual exposure is the RSC / WebSocket-upgrade
+DoS and SSRF cluster, against a build that is 405 static paths plus two dynamic routes.
+
+**Waived with a 2026-10-15 expiry** — shorter than the dev-toolchain waivers because these are
+runtime-reachable in principle. The waiver text names the reachability assumptions explicitly so
+that introducing middleware, i18n, Server Actions, rewrites, or a custom server invalidates it
+early rather than silently.
+
+**Remediation:** plan a Next 15 migration slice — `next >= 15.5.21`, `eslint-config-next` bumped in
+lockstep, App Router codemods, full `test` / `lint` / `typecheck` / `build` / `audit:check` pass.
+That single bump also unpins the bundled `postcss` and, with the matching `eslint-config-next`
+major, clears the last `glob` waiver.
+
+**Status:** OPEN — recommended as a near-term slice, but materially larger than D-19 was.
 
 ---
 
@@ -547,9 +604,65 @@ themselves run only on GitHub.
 
 ## Recommended next slice
 
-1. **D-19** — bump `next` to 14.2.35 (critical advisory), verify all gates, drop the waivers.
+1. ~~**D-19** — bump `next` to 14.2.35 (critical advisory), verify all gates, drop the waivers.~~
+   **DONE 2026-08-14** — see the dependency-security slice record below. Superseded by **D-20**
+   (Next 15 migration for the eight residual high advisories), which is no longer the *smallest*
+   next slice and should be sequenced against the items below rather than ahead of them.
 2. **D-13** — human decision: transplant `Sluglines-AI`'s core into this repo, or rebuild here.
    This unblocks P1 and collapses most of D-11.
 3. **D-6** — authorise the two blocked verification reads (U2, U3).
 4. **D-15** — start the `[H]` long-lead items now: `SluglinesAgent` rotation (High severity, and a
    Phase 1 entry criterion), founding-driver recruitment, and the two-week WhatsApp volume baseline.
+
+---
+
+## Dependency-security slice — 2026-08-14
+
+Follow-on to D-19. Scope deliberately limited to dependency versions; no application code touched.
+
+### Version changes
+
+| Package | Before | After | Kind |
+|---|---|---|---|
+| `next` | `14.2.0` | `14.2.35` | patch, same 14.2.x line |
+| `eslint-config-next` | `14.2.0` | `14.2.35` | patch, kept in lockstep with the Next 14 runtime |
+| `postcss` (direct devDep) | `^8.4.38` (resolved 8.5.8) | `^8.5.26` | minor, within existing range |
+| transitive (`npm audit fix`) | — | — | non-breaking only; cleared `nanoid`, `ws`, `brace-expansion`, `minimatch`, `js-yaml` |
+
+`eslint-config-next` was held on the 14.2 line on purpose: npm's suggested fix is `16.3.1`, which
+would outpace the pinned Next 14 runtime. It moves with the runtime in the D-20 migration.
+
+### Files changed
+
+| File | Change |
+|---|---|
+| `package.json` | `next`, `eslint-config-next`, `postcss` version bumps |
+| `package-lock.json` | regenerated by `npm install` + `npm audit fix` |
+| `.github/audit-exceptions.json` | 12 entries → 3; `next` and `postcss` rewritten and narrowed |
+| `Docs/DECISIONS.md` | D-19 closed; D-20 added; this record |
+
+### Waivers removed (advisories no longer reported)
+
+`@next/eslint-plugin-next`, `eslint-config-next`, `@typescript-eslint/parser`,
+`@typescript-eslint/typescript-estree`, `brace-expansion`, `minimatch`, `js-yaml`, `nanoid`, `ws`.
+
+### Waivers retained (narrowed, with re-checked reasons)
+
+`next` (8 high, need ≥ 15.5.21 — expiry 2026-10-15), `postcss` (2 high, next-bundled 8.4.31 only —
+expiry 2026-10-15), `glob` (1 high, dev lint toolchain — expiry 2026-11-14).
+
+**No new waivers were added, and no waiver expiry was extended.**
+
+### Verification
+
+| Command | Result |
+|---|---|
+| `npm run test` | **PASS** — exit 0 |
+| `npm run lint` | **PASS** — exit 0; same 4 pre-existing warnings, no regression |
+| `npm run typecheck` | **PASS** — exit 0 |
+| `npm run build` | **PASS** — exit 0; 405 static paths, unchanged from the pre-bump baseline |
+| `npm run audit:check` | **PASS** — exit 0; 11 advisories ≥ high, 11 waived, 0 unwaived, 0 expired |
+| `npm audit` | 14 vulns (2 low, 11 high, **1 critical**) → **7 (2 low, 5 high, 0 critical)** |
+
+**GHSA-f82v-jwr5-mffw (critical, Authorization Bypass in Next.js Middleware) no longer appears in
+`npm audit` output.** The repo now has zero critical advisories.
