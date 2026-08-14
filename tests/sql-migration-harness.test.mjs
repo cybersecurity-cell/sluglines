@@ -67,10 +67,28 @@ const statements = migrations.flatMap((m) => m.statements)
 const tables = statements.filter((s) => s.kind === 'create_table').map((s) => s.table)
 const functions = statements.filter((s) => s.kind === 'create_function').map((s) => s.fn)
 
+const tablesIn = (file) =>
+  migrations
+    .find((m) => m.file === file)
+    .statements.filter((s) => s.kind === 'create_table')
+    .map((s) => s.table)
+    .sort()
+
 assert.deepEqual(
-  [...tables].sort(),
+  tablesIn('0001_rebuild_foundation.sql'),
   ['public.audit_events', 'public.members', 'public.presence_checkins'],
   'the foundation migration creates exactly the three rev. 5.3 §8 M2/M4/M7 tables'
+)
+assert.deepEqual(
+  tablesIn('0002_ride_coordinator_state.sql'),
+  [
+    'public.offer_idempotency_keys',
+    'public.offer_pickup_details',
+    'public.offer_transitions',
+    'public.offers',
+    'public.reservations',
+  ],
+  'the M3 migration creates the state machine tables and the two rev. 5.3 §12 constraint 6 machinery tables'
 )
 assert.ok(functions.length >= 7, 'the write path is a set of SECURITY DEFINER functions')
 
@@ -97,6 +115,119 @@ const revokedFromPublic = new Set(
 for (const fn of functions) {
   assert.equal(revokedFromPublic.has(fn), true, `${fn} must be revoked from PUBLIC`)
 }
+
+// -----------------------------------------------------------------------------
+// Positive: zero anonymous — and zero authenticated — direct table writes on the
+// M3 tables, stated table by table rather than left to the aggregate loops above
+//
+// This is the property `sql:check` exists to prove, applied to the two tables
+// rev. 5.3 §12 constraint 6 is about. `offers` and `reservations` are where a
+// direct client write would be worth the most to an attacker: seats, state and
+// participation are all decided by rows in them.
+// -----------------------------------------------------------------------------
+const M3_TABLES = [
+  'public.offers',
+  'public.reservations',
+  'public.offer_pickup_details',
+  'public.offer_transitions',
+  'public.offer_idempotency_keys',
+]
+
+const rlsEnabledTables = statements.filter((s) => s.kind === 'enable_rls').map((s) => s.table)
+
+for (const table of M3_TABLES) {
+  assert.ok(rlsEnabledTables.includes(table), `${table} must enable row level security`)
+
+  for (const role of ['anon', 'authenticated']) {
+    assert.ok(
+      statements.some(
+        (s) => s.kind === 'revoke_table' && s.table === table && s.privileges.includes('all') && s.roles.includes(role)
+      ),
+      `${table} must revoke all from ${role} before granting anything back`
+    )
+  }
+
+  const grants = statements.filter((s) => s.kind === 'grant_table' && s.table === table)
+  assert.ok(grants.length > 0, `${table} must state its grants explicitly`)
+  for (const grant of grants) {
+    assert.equal(grant.privileges.trim(), 'select', `${table}: only SELECT may be granted`)
+    assert.deepEqual(grant.roles, ['authenticated'], `${table}: SELECT may go to authenticated only`)
+  }
+
+  const policies = statements.filter((s) => s.kind === 'create_policy' && s.table === table)
+  assert.equal(policies.length, 1, `${table} must carry exactly one policy`)
+  for (const policy of policies) {
+    assert.equal(policy.command, 'select', `${table}: policy "${policy.policy}" must be read-only`)
+    assert.deepEqual(policy.roles, ['authenticated'], `${table}: policy "${policy.policy}" must name authenticated`)
+    assert.equal(policy.unconditional, false, `${table}: policy "${policy.policy}" must not use a true predicate`)
+  }
+}
+
+// Nothing in the M3 migration is reachable by an anonymous client at all: no
+// grant of any kind, on any object, to anon or public.
+const m3 = migrations.find((m) => m.file === '0002_ride_coordinator_state.sql')
+for (const grant of m3.statements.filter((s) => s.kind === 'grant_table' || s.kind === 'grant_function')) {
+  for (const role of ['anon', 'public']) {
+    assert.equal(grant.roles.includes(role), false, `0002 must grant nothing to ${role}: ${grant.flat}`)
+  }
+}
+
+// The client-callable surface of the M3 migration, enumerated. A new writer
+// granted to authenticated has to be added here deliberately — which is the
+// point, since every name on this list is a place a write decision is made.
+assert.deepEqual(
+  m3.statements
+    .filter((s) => s.kind === 'grant_function')
+    .map((s) => s.fn)
+    .sort(),
+  [
+    'public.caller_has_confirmed_seat',
+    'public.caller_is_moderator',
+    'public.caller_is_offer_participant',
+    'public.caller_owns_offer',
+    'public.offer_advance',
+    'public.offer_cancel',
+    'public.offer_confirm',
+    'public.offer_create',
+    'public.offer_publish',
+    'public.offer_release_seat',
+    'public.offer_reserve_seat',
+    'public.offer_set_pickup_details',
+  ],
+  'exactly these functions are granted to authenticated by 0002'
+)
+
+// The choke point and the sweep are internal: revoked from PUBLIC, granted to
+// nobody. A client-callable apply_offer_transition() would bypass every
+// authorisation check in the entry points that call it.
+for (const internal of ['public.apply_offer_transition', 'public.offer_expire_sweep', 'public.offer_transition_allowed', 'public.claim_offer_operation', 'public.complete_offer_operation']) {
+  assert.ok(functions.includes(internal), `${internal} must exist`)
+  assert.equal(
+    m3.statements.some((s) => s.kind === 'grant_function' && s.fn === internal),
+    false,
+    `${internal} must not be granted to any client role`
+  )
+}
+
+// Negative: the same rules fire on an unsafe `offers` migration. Without this the
+// block above only proves the committed file is clean, not that a dirty one
+// would be caught (the D-10 lesson).
+const unsafeOffers = rulesOf(
+  lintMigrations([
+    analyzeSql(
+      '0001_unsafe_offers.sql',
+      `create table public.offers (id uuid primary key, state text);
+       create table public.reservations (id uuid primary key);
+       alter table public.offers enable row level security;
+       alter table public.reservations enable row level security;
+       revoke all on table public.offers from anon;
+       revoke all on table public.reservations from anon;
+       create policy offers_write on public.offers for update to anon using (true);
+       grant insert, update on table public.reservations to anon;`
+    ),
+  ])
+)
+assert.deepEqual(unsafeOffers, ['R4', 'R5', 'R6', 'R7'], 'an anonymous write path to offers/reservations must be caught')
 
 // rev. 5.3 §12 constraint 3 — no phone or contact columns in application tables.
 const migrationSql = migrations.map((m) => m.sql).join('\n').replace(/^--.*$/gm, '')

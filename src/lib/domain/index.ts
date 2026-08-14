@@ -26,6 +26,35 @@ export {
   nextOfferStates,
   canTransition,
   checkTransition,
+  transitionPath,
+  stateAfterReservation,
+  stateAfterRelease,
 } from './offer-state.ts'
 
 export type { OfferState, TransitionCheck } from './offer-state.ts'
+
+export {
+  REVISION_START,
+  IDEMPOTENCY_KEY_MIN_LENGTH,
+  IDEMPOTENCY_KEY_MAX_LENGTH,
+  TRANSITION_ERRCODES,
+  OFFER_TRANSITION_OPERATIONS,
+  RESERVATION_STATES,
+  LIVE_RESERVATION_STATES,
+  operationForEdge,
+  isIdempotencyKey,
+  nextRevision,
+  checkRevision,
+  checkTransitionRequest,
+  toTransitionCheck,
+  offerEdgeList,
+} from './offer-transitions.ts'
+
+export type {
+  OfferTransitionOperation,
+  ReservationState,
+  TransitionActor,
+  TransitionErrcode,
+  TransitionRequest,
+  TransitionRequestCheck,
+} from './offer-transitions.ts'

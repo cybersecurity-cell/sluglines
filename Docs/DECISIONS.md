@@ -390,7 +390,7 @@ session does not have to re-derive the ordering:
 | 4 | Live-database RLS test harness (positive + negative), against a non-production target | staging choice (D-7) | **OPEN** (D-23) |
 | 5 | Apply migrations `0001+` to a real database | 4, and explicit operator authorisation | **OPEN** |
 | 6 | M2 identity: phone-OTP wiring, `/login` `/verify` `/onboarding`, OTP abuse controls | 5, D-8 | **OPEN** |
-| 7 | M3 offers/reservations tables + the state-machine SQL functions (revision checks, idempotency keys), checked against step 3's committed table | 5, 6 | **OPEN** |
+| 7 | M3 offers/reservations tables + the state-machine SQL functions (revision checks, idempotency keys), checked against step 3's committed table | 5, 6 | **WRITTEN, unapplied and unproven** (D-27) — the SQL exists and is statically verified; 5 and 6 still gate any claim that it *works* |
 | 8 | P1 restructure to §8 route groups; ESLint boundary rule completed once `lib/ai` exists | 3, 7 | **OPEN** (D-10) |
 | 9 | `0026` 43-spot directory seed; `/[...legacy]` handler with the 165-route test | 8 | **OPEN** |
 | 10 | Content preservation: the existing `src/lib/*` content libraries and 405 built routes survive the restructure unchanged in behaviour, asserted by the existing suite passing pre- and post-restructure | 8 | **OPEN** |
@@ -803,6 +803,73 @@ to be checked against.
 
 ---
 
+## D-27 — M3 state machine written in SQL, out of sequence, and verified only statically
+
+**Decision:** `supabase/migrations/0002_ride_coordinator_state.sql` implements the rev. 5.3 §8 M3
+Ride Coordinator state machine — `offers`, `reservations`, `offer_pickup_details`, and the two
+tables rev. 5.3 §12 constraint 6 implies but does not name (`offer_transitions`,
+`offer_idempotency_keys`) — with every transition a SECURITY DEFINER function carrying a revision
+check and an idempotency key.
+
+**It is taken out of the D-13 order deliberately, and the cost is stated first.** D-13 sequences
+step 7 behind step 5 (a real database) and step 6 (M2 identity). Neither exists. This slice was
+directed to proceed on the static harness anyway, which is a legitimate call — the SQL is fully
+writable without a database and the *shape* properties are fully checkable without one — but it
+means the following are **written and unproven**, not done:
+
+| Claim | Status |
+|---|---|
+| The SQL contains no anonymous or authenticated direct write path to `offers`/`reservations` | **Proven statically** — `sql:check` + `tests/sql-migration-harness.test.mjs` |
+| The SQL edge list is the rev. 5.3 §8 M3 graph and matches `lib/domain` | **Proven statically** — the test parses `offer_transition_allowed()` and compares it |
+| Every transition takes a revision and an idempotency key, claims before applying, completes after | **Proven statically** — asserted per function, including ordering within each body |
+| Any policy predicate is *correct* | **Unproven.** Needs a live Postgres (D-23) |
+| The SECURITY DEFINER visibility helpers actually break RLS recursion | **Unproven.** The construction is standard; it has not been executed |
+| The `FOR UPDATE` + revision pairing actually stops a concurrent oversell | **Unproven.** Concurrency is not observable in a text analyser |
+| The file parses as SQL at all | **Unproven.** No Postgres has read it |
+
+That last row is not pedantry. A static analyser proves things about the *text*; it does not
+compile SQL. Nothing in `0002` may be described as working until step 5 exists.
+
+### Design decisions taken while writing it, each with its reason
+
+1. **`RELEASED` is transient, and two outcomes are two hops.** §8 M3 has no `OPEN -> RESERVED`
+   edge, yet a one-seat offer plainly fills in one call; and it draws release as
+   `RESERVED -> RELEASED -> OPEN`. Rather than invent a shortcut edge, both cases apply two hops
+   through the same choke point inside one transaction. Each hop is revision-checked and recorded,
+   and no client ever observes an offer sitting in `RELEASED`. The alternative — adding
+   `OPEN -> RESERVED` to the graph — was rejected because the graph is a transcription, and a
+   transcription that adds convenient edges is not one.
+2. **The partial-unique index covers `ACTIVE` *and* `CONFIRMED`, not `ACTIVE` alone.** rev. 5.3's
+   one-line summary says "partial-unique ACTIVE constraint". Read literally, the index stops
+   holding the moment a reservation is confirmed, and a rider could take a second seat on the same
+   offer. The index covers every state that occupies a seat, which is the constraint the summary
+   describes. This is a strengthening, recorded because it is a deviation from the literal text.
+3. **Idempotency claims are a separate table from the hop ledger.** One operation applies zero, one
+   or two hops; a client retries *operations*. Keying idempotency off the ledger would leave a
+   zero-hop operation (a rider taking one of three seats — seats move, state does not) with nothing
+   to replay against. The claim's primary key is the serialisation point: a concurrent duplicate
+   blocks on it rather than double-applying.
+4. **A seat change with no state change still bumps the revision.** Otherwise two callers holding
+   revision 4 both act on a seat count only one of them can still see.
+5. **Corridor scoping of `offers_visible_for_caller` is NOT implemented.** rev. 5.3 §8 M3 scopes
+   board visibility to "corridor pairs touching their active location set", which is defined
+   against the §11 P1 locations directory — a table that does not exist. The committed policy is
+   the strictly wider read (every `OPEN`/`PARTIALLY_RESERVED` offer) plus the participant clause
+   exactly as specified. During the pilot's single corridor pair these are the same set, and the
+   later change is a *narrowing*, so no member gains visibility by the deferral. Writing a scoping
+   predicate against an absent table would have been a guess.
+6. **`NO_SHOW` is absent from the reservation CHECK list.** rev. 5.3 §11 Phase 4 owns the no-show
+   flow and this slice ships no writer for it. A state with no writer cannot be reached; committing
+   it would make the machine look more complete than it is.
+7. **`apply_offer_transition()` and `offer_expire_sweep()` are granted to nobody.** A
+   client-callable "apply any transition" function would be a hole straight through every
+   authorisation check in the entry points that call it. The test asserts the ungranted set by name.
+
+**Status:** DONE as a static artefact. **Not applied, not executed, not behaviourally verified.**
+D-23 is unchanged and now covers more surface than before.
+
+---
+
 ## Changes made in this slice
 
 | File | Change |
@@ -983,3 +1050,80 @@ If both are blocked, the next-best slice is **D-13 step 7** — the M3 `offers`/
 migration with its state-machine SQL functions, checked against the now-committed
 `src/lib/domain/offer-state.ts`. It is fully static work, needs no database, and extends the same
 harness this slice built.
+
+> **Taken 2026-08-14.** Both human inputs were still blocked, so the fallback was executed. See the
+> M3 ride-coordinator slice record below and **D-27**.
+
+---
+
+## M3 ride-coordinator slice — 2026-08-14
+
+D-13 step 7, executed on the static harness because steps 4–5 remain blocked on the two human
+inputs above. Full rationale and the honest limits of what this proves are in **D-27** — read that
+before treating any of it as working software.
+
+### Files changed
+
+| File | Change |
+|---|---|
+| `supabase/migrations/0002_ride_coordinator_state.sql` | **New** — 5 tables, 5 read-only policies, 18 functions (12 client-callable), the §8 M3 edge list. `APPLIED: no` |
+| `src/lib/domain/offer-transitions.ts` | **New** — the operation catalogue (which function owns which edge), revision and idempotency guards, SQLSTATE map, reservation states |
+| `src/lib/domain/offer-state.ts` | Added `transitionPath()`, `stateAfterReservation()`, `stateAfterRelease()`; header now points at the SQL that enforces the machine |
+| `src/lib/domain/index.ts` | Barrel re-exports for the above |
+| `tests/offer-state-machine.test.mjs` | 27 → 127 assertions; adds the operations invariant, the guards, and the SQL↔TypeScript cross-check |
+| `tests/sql-migration-harness.test.mjs` | 33 → 48 assertions; per-table M3 write-path proof, the granted-function allowlist, and an unsafe-`offers` negative fixture |
+| `Docs/DECISIONS.md` | D-13 step 7 status; **D-27**; this record |
+
+No other file was touched. No dependency changed. `supabase/schema.sql` was not read into anything
+and not modified.
+
+### What is actually enforced, and by which gate
+
+| Property | Gate |
+|---|---|
+| Zero anonymous or authenticated direct write to `offers`, `reservations`, `offer_pickup_details`, `offer_transitions`, `offer_idempotency_keys` | `sql:check` R4/R7/R11 + a per-table block in `sql-migration-harness.test.mjs` naming each table, its RLS, its revokes, its single SELECT-only policy |
+| Nothing in `0002` is granted to `anon` or `public` | harness test, over every `grant` statement in the file |
+| Every SECURITY DEFINER function is revoked from `PUBLIC` | `sql:check` R9 |
+| Only 12 named functions are callable by `authenticated`; the choke point and sweep are callable by nobody | harness test, by exact list |
+| The SQL edge list equals the rev. 5.3 §8 M3 graph and `lib/domain`'s table | `offer-state-machine.test.mjs` parses `offer_transition_allowed()`'s `VALUES` list |
+| `offers.state` CHECK equals the domain state set; `reservations.state` CHECK equals the domain reservation set | same test |
+| Every client transition takes `p_expected_revision` and `p_idempotency_key`, claims the key before applying, completes it after, and returns early on replay | same test, per function, asserting order of operations inside each body |
+| The choke point locks, *then* compares the revision, *then* checks the edge, *then* writes | same test, by index ordering in `apply_offer_transition()`'s body |
+| A revision steps by exactly one | the ledger CHECK constraint, asserted by the test |
+| No client entry point lets a caller name the actor (it is always `auth.uid()`) | same test — this is rev. 5.3 §14 risk 1 in a new shape |
+| Every rule above can fail | negative in-memory fixtures, including an unsafe `offers` migration that must trip R4/R5/R6/R7 |
+
+### Verification
+
+| Command | Result |
+|---|---|
+| `npm run test` | **PASS** — exit 0; 16 files / 293 assertions (was 178) |
+| `npm run lint` | **PASS** — exit 0; 0 errors, 2 warnings, both pre-existing in `.tsx` files this slice does not touch |
+| `npm run typecheck` | **PASS** — exit 0 |
+| `npm run build` | **PASS** — exit 0; 405 static paths, unchanged |
+| `npm run sql:check` | **PASS** — exit 0; 2 migrations, 137 statements, 0 violations |
+| `npm run audit:check` | **PASS** — exit 0; unchanged, no waiver added, removed or extended |
+
+### Not done, deliberately
+
+| Item | Why |
+|---|---|
+| Applying `0002` (or `0001`) to any database | Out of scope and unauthorised. `APPLIED: no` |
+| Live RLS tests, and any claim that `0002` executes | No target exists (D-7, D-23). See D-27's table of unproven claims |
+| Corridor scoping of offer visibility | Needs the §11 P1 `locations` table. D-27 item 5 |
+| Waitlist, ETA/running-late, no-show, recurring templates, `completed_rides`, `app_settings` | rev. 5.3 §11 Phase 4+ |
+| `/api/offers/*` and `/api/reservations/*` routes | Need M2 identity (D-13 step 6) to have a session to act as |
+| Wiring `lib/domain` into any UI | Not needed by any test; would enlarge the review surface |
+
+### Recommended next slice
+
+**Unchanged: stand up a non-production database target and apply `0001`+`0002` to it** (D-13
+steps 4–5). This slice has made that more valuable, not less — there is now a whole state machine
+whose behaviour nothing in this repo can check, and every static gate above stops exactly at the
+line where a live Postgres would begin. The two human inputs it needs are still the two named
+above: the D-7 staging answer, and explicit authorisation to write to the target.
+
+If those remain blocked, the next fully-static slice is **D-13 step 9's `0003` locations
+directory** — the 43-spot seed. It has no database dependency, it is specified completely enough to
+write without inventing anything, and it unblocks the corridor-scoping narrowing this slice had to
+defer (D-27 item 5) as well as the `location_id` foreign keys `0001` and `0002` both left open.
