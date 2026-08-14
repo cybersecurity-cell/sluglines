@@ -1,0 +1,65 @@
+name: static-analysis
+
+# Semantic static analysis, deliberately distinct from ESLint.
+#
+# ESLint (npm run lint) is a style/pattern linter scoped to one file at a time.
+# The jobs here are different instruments:
+#   - CodeQL performs interprocedural dataflow (taint tracking) across the repo,
+#     which is what catches injection/traversal classes ESLint structurally cannot see.
+#   - tsc --noEmit is whole-program type checking; `next build` type-checks too,
+#     but this job isolates the signal so a type regression is not reported as a
+#     build failure.
+
+on:
+  push:
+    branches: [main, 'codex/**']
+  pull_request:
+    branches: [main]
+  schedule:
+    - cron: '0 6 * * 1'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  codeql:
+    name: CodeQL (dataflow)
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      actions: read
+      security-events: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Initialize CodeQL
+        uses: github/codeql-action/init@v3
+        with:
+          languages: javascript-typescript
+          # security-and-quality is a superset of the default security queries.
+          queries: security-and-quality
+
+      # No build step: the javascript-typescript extractor analyses source directly,
+      # so a Next.js build is not required and would only add failure surface.
+      - name: Perform CodeQL analysis
+        uses: github/codeql-action/analyze@v3
+        with:
+          category: '/language:javascript-typescript'
+
+  typecheck:
+    name: TypeScript (whole-program)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci --ignore-scripts
+
+      - name: Type check
+        run: npx tsc --noEmit

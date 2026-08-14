@@ -8,7 +8,9 @@
     "test": "powershell -NoProfile -ExecutionPolicy Bypass -Command \"Get-ChildItem tests -Filter *.test.mjs | ForEach-Object { node --experimental-strip-types $_.FullName; if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE } }\"",
     "build": "next build",
     "start": "next start",
-    "lint": "next lint"
+    "lint": "next lint",
+    "typecheck": "tsc --noEmit",
+    "audit:check": "node scripts/audit-check.mjs --level=high"
   },
   "dependencies": {
     "next": "14.2.0",
