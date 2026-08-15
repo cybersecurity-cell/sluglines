@@ -1,6 +1,15 @@
 # Sluglines — Consolidated Architecture & Product Plan
 
-**Status:** Proposed rev. 5.3 — the §5 stack decision is treated as the working decision and is formally recorded in `docs/DECISIONS.md` at Phase 0; §15 questions remain open human decisions
+- **Status:** IMPLEMENTED (Phase 0/1 complete, 2026-08-14)
+- **Baseline N:** 12 files / 99 assertions (D-25)
+- **Repo State:** Branch `codex/phase-3-4` synchronized with `origin` (Commit `0bf9def`)
+
+- **Phase 0/1 implementation summary:**
+  - Foundations: Security gates, architecture, decision logs, and cost caps (Commit `aa7b306`).
+  - M3 Backend: Ride coordinator state machine with static verification harness (Commit `8d38f2d`).
+  - M1 Directory: 50-spot directory, seed utility, and public aggregate wiring (Commit `417c7ac`).
+  - M3 API Write Path: Full ride-coordinator HTTP write endpoints with hardened error contracts (Commit `165650d`).
+  - Dashboard: Power-user view with realtime aggregates and presence panel (Commit `0bf9def`).
 **Date:** August 14, 2026 (rev. 5.3 — three cold-reader loops complete: 15, 8, then 6 forced assumptions; final 6 fixed unre-certified; rev. 5 applied the six-seat SME panel review, ~180 findings; changelogs in §18)
 **Scope:** All Sluglines engineering and product effort, not one repo
 **Supersedes:** rev. 4. This revision is self-contained: nothing normative lives only in an earlier revision.
