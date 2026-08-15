@@ -385,10 +385,10 @@ session does not have to re-derive the ordering:
 | # | Step | Blocked by | Status |
 |---|---|---|---|
 | 1 | Migration harness + static SQL security analyser | — | **DONE** (D-21) |
-| 2 | Rebuild-foundation migration: `members`, `audit_events`, `presence_checkins`, default-deny RLS, SECURITY DEFINER writers | 1 | **DONE, unapplied** (D-22) |
+| 2 | Rebuild-foundation migration: `members`, `audit_events`, `presence_checkins`, default-deny RLS, SECURITY DEFINER writers | 1 | **DONE**, applied to preview (D-22 **CLOSED**, D-28) |
 | 3 | `lib/domain` boundary + offer state machine as committed data | — | **DONE** (D-26) |
-| 4 | Live-database RLS test harness (positive + negative), against a non-production target | staging choice (D-7) | **OPEN** (D-23) |
-| 5 | Apply migrations `0001+` to a real database | 4, and explicit operator authorisation | **OPEN** |
+| 4 | Live-database RLS test harness (positive + negative), against a non-production target | staging choice (D-7) | **DONE** (D-28) — `tests/live-rls.test.mjs`, 38 assertions against `xqonrogwwytkmqfinszp` |
+| 5 | Apply migrations `0001+` to a real database | 4, and explicit operator authorisation | **DONE for preview** (D-28, D-30) — `0001`–`0003` applied to the branch; production untouched, `0004` unapplied anywhere |
 | 6 | M2 identity: phone-OTP wiring, `/login` `/verify` `/onboarding`, OTP abuse controls | 5, D-8 | **OPEN** |
 | 7 | M3 offers/reservations tables + the state-machine SQL functions (revision checks, idempotency keys), checked against step 3's committed table | 5, 6 | **WRITTEN, unapplied and unproven** (D-27) — the SQL exists and is statically verified; 5 and 6 still gate any claim that it *works* |
 | 8 | P1 restructure to §8 route groups; ESLint boundary rule completed once `lib/ai` exists | 3, 7 | **OPEN** (D-10) |
@@ -652,14 +652,30 @@ D-13 that history is not inherited, so reproducing the ordinals would encode a s
 not exist here — exactly the objection D-11.1 raised, now resolved by renumbering rather than by
 deferring.
 
-**Mapping** (so no later session re-derives it):
+**Mapping** (so no later session re-derives it). The right-hand column was "next free ordinal"
+when this decision was written; every ordinal that has since been allocated is now named, which is
+what closes it:
 
-| rev. 5.3 filename | This repo | Phase |
-|---|---|---|
-| — (new; no rev. 5.3 equivalent) | `0001_rebuild_foundation.sql` | rebuild foundation |
-| `0025_product_events.sql` | next free ordinal when M10 is built | P0 content, deferred |
-| `0026_full_spot_directory.sql` | next free ordinal after that | P1 |
-| `0027_public_aggregates.sql` | next free ordinal after that | P2 |
+| rev. 5.3 filename | This repo | Phase | State |
+|---|---|---|---|
+| — (new; no rev. 5.3 equivalent) | `0001_rebuild_foundation.sql` | rebuild foundation | **APPLIED** to preview (D-28) |
+| — (new; no rev. 5.3 equivalent) | `0002_ride_coordinator_state.sql` | M3 state machine | **APPLIED** to preview (D-28) |
+| — (new; a correction to `0002`) | `0003_resolve_transition_conflicts.sql` | M3 conflict codes | **APPLIED** to preview (D-30) |
+| `0026_full_spot_directory.sql` | **`0004_spot_locations_directory.sql`** | P1 | Written, `APPLIED: no` |
+| `0027_public_aggregates.sql` | **`0005`** — next free ordinal | P2 | Not written. The two function *names* are already pinned by `lib/domain/public-counts.ts`, which is the contract this file must satisfy |
+| `0025_product_events.sql` | next free ordinal when M10 is built | P0 content, deferred | Not written (D-11.1) |
+
+**Why this closes rather than stays open.** The decision itself — renumber, treat rev. 5.3
+filenames as content specs — was never in doubt after it was taken; what kept it open was that its
+mapping pointed at ordinals nobody had allocated yet, so a later session still had to guess where
+`0026`'s content would land. Two of the three unallocated rows are now allocated and one is pinned
+by name from the TypeScript side. There is nothing left in this decision that a future session
+could get wrong by reading it.
+
+The `APPLIED:` state above is recorded here for navigation only. The rule in
+`supabase/migrations/README.md` still stands: **only the session that applies a file changes that
+file's header**, and no committed migration may claim `production` (enforced by
+`tests/sql-migration-harness.test.mjs`).
 
 ### `0001_rebuild_foundation.sql` — what it contains and its applied state
 
@@ -667,9 +683,10 @@ Three tables, chosen because rev. 5.3 specifies them completely enough to write 
 anything: `members` (§8 M2), `audit_events` (§8 M7), `presence_checkins` (§8 M4). Plus seven
 functions forming the entire write path.
 
-**APPLIED: no.** It has not been run against `bwpguotjzczmieeepczf` or any other database. The file
-carries an `APPLIED:` header line, a test asserts it reads `no`, and that line is only changed by
-the session that actually applies it.
+**APPLIED: preview** (was `no` when this was written; D-28 applied it to the `phase-3-4-staging`
+branch and changed the header). It has **not** been run against `bwpguotjzczmieeepczf`. The file
+carries an `APPLIED:` header line, a test asserts no committed migration claims `production`, and
+that line is only changed by the session that actually applies it.
 
 Posture: RLS enabled on every table; **zero** insert/update/delete policies for any role; the three
 SELECT policies are `to authenticated` with real predicates; every write goes through a
@@ -681,7 +698,9 @@ That last point is the one worth stating explicitly, because it is the easy thin
 every RLS rule and still hand anonymous callers a write path through the very functions that bypass
 RLS. Analyser rule R9 exists for that, and it is the rule most likely to catch a future mistake.
 
-**Status:** WRITTEN, LINTED, **NOT APPLIED**.
+**Status:** **CLOSED.** The renumbering is settled and every rev. 5.3 filename now maps to a named
+ordinal in this repo or to a rule that names one. `0001` is applied to preview and proven live
+(D-28); production is untouched.
 
 ---
 
@@ -1337,3 +1356,186 @@ the bug where a real conflict arrived looking like one.
 
 **Status:** CLOSED. `0003` APPLIED to preview and PROVEN live. Production remains untouched: it has
 no migration applied at all, so it has never carried the defect.
+
+---
+
+## D-33 — `/dashboard` rebuilt on the M1 aggregates and the `presence_checkins` writer
+
+> **Numbering note.** This entry is D-33 because **D-31 and D-32 are cited by shipped code and
+> tests but were never written into this log** — `lib/domain/locations.ts`, `SpotDetailLayout.tsx`,
+> `0004_spot_locations_directory.sql` and four test files cite D-31 for the nullable-coordinate
+> rule; `lib/legacy-redirects.ts` and two test files cite D-32 for the `/blog/**` `410` rule.
+> Both numbers are therefore **reserved, not free**, and writing this slice into either one would
+> silently redirect a dozen live citations at the wrong decision. Recording the gap rather than
+> closing it over: the two entries are owed by whoever holds the context that produced them.
+
+**Decision:** `/dashboard` is rebuilt as a **server-rendered** page over the §8 M1 public
+aggregates and the `presence_checkins` row, and the client component that backed it is deleted.
+
+### What was actually wrong with the page it replaces
+
+`DashboardClient.tsx` mounted in the browser and issued `select` against **`riders`** and
+**`drivers`**, matching on a `device_id` column, then rendered `LocationCard`s over a `spot_status`
+table. All three tables were dropped by the rebuild (D-13). The consequences were not cosmetic:
+
+| Symptom | Cause |
+|---|---|
+| Every spot showed 0 riders, 0 drivers | The tables the counts came from do not exist. A zero from a missing table is indistinguishable on screen from a quiet line — the exact confusion `SpotLiveCounts` was written to avoid on the public side |
+| "Check out" appeared to work and cleared nothing | It issued `.delete()` on `riders`/`drivers`. Against the current schema there is nothing to delete; against `presence_checkins` there is **no delete policy for any role**, so a direct delete is refused by design (§6 default-deny) |
+| Nothing rendered until after hydration | The counts, the check-in state and a realtime subscription were all client-side, on the one page whose audience is a commuter looking at a phone for a few seconds |
+
+**This is the same defect class as the one M1 fixed on `/spots/[slug]`**, left behind on the
+member-facing route because M1's scope stopped at the public surface.
+
+### The four decisions inside this one
+
+**1. Counts come from the M1 public functions, not from a second counting path.**
+`get_public_spot_counts()` / `get_public_open_offer_counts()` via `lib/domain/public-counts.ts` —
+the same source as the homepage strip and the spot pages. A signed-in member is deliberately *not*
+shown a richer count than the aggregates support: a second path would be a second thing to keep
+honest, and the §8 note that accepts corridor roll-ups as non-identifying was written about these
+functions. They are §11 Phase 2 objects and are **not deployed**, so the board's live state today
+is `unavailable`, and it says so instead of printing 41 rows of zero. On this page the fabricated
+zero is worse than on the public one: a commuter who reads "0 waiting" and drives past has been
+handed a measurement nobody took.
+
+**2. Presence is read from `presence_checkins`, scoped by `auth.uid()`, and expiry is computed.**
+The table is keyed by `member_id`, so the panel is singular by schema. `expires_at` comes from
+`presence_checkin(..., p_ttl_minutes)`; an expired row stays readable until
+`sweep_expired_presence()` runs, so "am I checked in" is computed against `expires_at` rather than
+inferred from the row existing. The old two-hour client-side staleness window over `device_id` is
+gone with the tables that held it.
+
+`MemberPresence` has **four** states and they are rendered as four:
+
+| State | Means | Rendered as |
+|---|---|---|
+| `checked-in` | A live row | Spot, direction, minutes left, the checkout button |
+| `none` | Signed in, database answered, no live row | "You are not checked in anywhere" |
+| `signed-out` | No session | "Your check-in is not visible here" — **not** "you are not checked in" |
+| `unavailable` | The read or the auth call failed | "This panel is not saying whether you are checked in" |
+
+Collapsing the last two into `none` would tell a member they are clear on the strength of a network
+error, on the screen they check before walking away from a curb. That is the whole reason the
+distinction is in the type rather than in a comment.
+
+**3. Checkout is a Server Action calling `presence_clear()`.** Not a browser Supabase call, and
+never a direct table write. Two independent reasons, and either would have been enough:
+
+- **Correctness.** `presence_clear()` is the 0001 SECURITY DEFINER writer; it takes the actor from
+  `auth.uid()` and deletes only that member's row. It is the only path RLS permits.
+- **Weight.** Importing `@supabase/ssr` into the page cost **62 kB of route JavaScript / 162 kB
+  first load**, measured by `next build`, to parse one button press. Server-side the same build
+  reports **1.11 kB / 97.1 kB** — a 40% cut in first-load bytes on the page whose entire audience
+  is someone on a commuter-lot cell signal. The form also works with JavaScript disabled.
+
+A failed checkout redirects to `?checkout=failed` and is rendered; it is not swallowed. There is no
+confirmation dialog, deliberately — checking out is cheap and reversible, and the failure it
+prevents (a member who has driven off still showing as waiting) costs a driver a detour.
+
+**4. Ordering is a product decision, and it is tested.** The caller's own check-in is pinned first;
+then, when counts are `live`, busiest first with ties broken on riders waiting and then on name, so
+two identical loads do not reshuffle rows a commuter is scanning by position. When counts are
+`unavailable` there is nothing to rank by, so the board falls back to corridor → direction → name —
+the grouping a commuter already knows — rather than an arbitrary order that *looks* like a ranking.
+Alphabetical would put Bob's first every morning regardless of whether anyone is there.
+
+### What this does *not* claim
+
+- **Nothing here is proven against a database.** The domain half runs against fixtures; the wiring
+  half is structural assertions on the route files. `presence_checkins` is applied to preview and
+  its RLS is proven (D-28), but no test in this slice signs a member in and reads the panel.
+- **`locations` (0004) is unapplied everywhere**, so the `presence_checkins.location_id` (uuid) →
+  spot lookup is expected to fail today. An unresolved check-in is a first-class outcome: it is
+  reported, and it is clearable. A member whose row cannot be *labelled* must not thereby lose the
+  button that *deletes* it.
+- **There is no sign-in surface** (§8 M2), so the state a real visitor lands in is `signed-out`.
+  The board below the panel needs no account and renders regardless.
+
+**Status:** DONE. Four gates green; no database was written.
+
+---
+
+## M3 dashboard slice — 2026-08-15
+
+Rationale, and the limits of what it proves, are in **D-33**. D-22 is closed in the same change.
+
+### Files changed
+
+| File | Change |
+|---|---|
+| `src/lib/domain/fast-board.ts` | **New** — presence mapping (`presenceFromRow`, `isPresenceLive`, `minutesRemaining`), the `MemberPresence` four-state type, `buildFastBoard` and its ordering rule. Pure; no IO |
+| `src/lib/dashboard.ts` | **New** — the IO half: `auth.getUser()`, the `presence_checkins` select, the `locations` id→spot lookup. Resolves every failure to a state; never throws. Re-exports `getPublicSpotCounts` |
+| `src/app/dashboard/page.tsx` | **Rewritten** — server component; issues the counts and presence reads together, renders the panel and the board |
+| `src/app/dashboard/actions.ts` | **New** — `clearPresence()` Server Action over `presence_clear()` |
+| `src/components/FastBoard.tsx` | **New** — server-rendered table of every active line, with the `live` / `unavailable` split |
+| `src/components/CheckInStatusPanel.tsx` | **New** — server-rendered status panel; the checkout form |
+| `src/components/CheckOutButton.tsx` | **New** — the only client component on the page; `useFormStatus` pending state |
+| `src/components/DashboardClient.tsx` | **DELETED** — read `riders`, `drivers` and `spot_status`, all dropped by D-13 |
+| `src/lib/domain/index.ts` | Barrel re-exports for `fast-board.ts` |
+| `tests/dashboard-fast-board.test.mjs` | **New** — 78 assertion calls (more at run time; several are inside loops): presence states, board ordering, the wiring, and the accessibility rules |
+| `Docs/DECISIONS.md` | D-22 **CLOSED** (mapping completed, applied state corrected); sequence-table rows 2, 4, 5 brought in line with D-28/D-30; **D-33**; this record |
+
+No dependency changed. No migration was written, edited or applied.
+
+### What is enforced, and by which gate
+
+| Property | Gate |
+|---|---|
+| The dashboard reads the M1 aggregate functions, not a second counting path | `dashboard-fast-board.test.mjs` — `getPublicSpotCounts` / `buildFastBoard` in the route file |
+| It reads none of `spot_status`, `riders`, `drivers`, `alerts` | same test, by exact string, the same list `public-directory-ui.test.mjs` uses for the spot page |
+| `DashboardClient.tsx` is gone, not merely unused | same test, `fs.existsSync` |
+| Presence is scoped by `auth.uid()`, not by a device id | same test, over `src/lib/dashboard.ts` |
+| Checkout goes through `presence_clear()`; no `.delete()` from any client | same test, over the action and the panel, with comments stripped so the prose about the ban does not satisfy it |
+| The Supabase **browser** client is not imported by any dashboard file | same test, over all four page/component files |
+| `unavailable` never renders as measured zero | same test — `activeFastBoardRows` returns `[]`, `spotsWithActivity` is 0, and the component carries both the "Quiet right now" and "not switched on yet" strings |
+| An expired or unparseable `expires_at` is not a check-in | same test |
+| An unresolved spot is still a check-in, and still clearable | same test |
+| Exactly one row can be flagged `isCheckedIn` | same test, both availabilities |
+| Ordering is stable between identical builds | same test, two builds compared |
+| Counts are labelled in text and column-headed (§10, WCAG 1.4.1) | same test |
+| `lib/domain/fast-board.ts` imports no React, no Next, no `lib/ai` | `domain-boundaries.test.mjs`, which walks the whole directory |
+
+### Verification
+
+| Command | Result |
+|---|---|
+| `npm run test` | **PASS** — exit 0; 24 files, `dashboard-fast-board: ok` among them. `live-rls` ran and reported **38 assertions passed against `xqonrogwwytkmqfinszp`** (unchanged by this slice) |
+| `npm run lint` | **PASS** — exit 0; 0 errors, 2 warnings, both pre-existing and in files this slice does not touch (`how-it-works/page.tsx`, `RealTimeBoard.tsx`) |
+| `npm run typecheck` | **PASS** — exit 0 |
+| `npm run build` | **PASS** — exit 0; route table unchanged except `/dashboard`, which goes from **62 kB / 162 kB** to **1.11 kB / 97.1 kB** |
+
+**No production database write.** No migration applied; `supabase db push` was not run. The only
+database contact in the whole run is `tests/live-rls.test.mjs`, which targets the preview branch
+under the existing D-7/D-28 authorisation and is unchanged by this slice.
+
+### Not done, deliberately
+
+| Item | Why |
+|---|---|
+| Check-*in* from the dashboard | `presence_checkin()` needs a `location_id` **uuid**, which only the unapplied `0004` `locations` table can supply. Checking *out* needs no id, which is why it ships and check-in does not |
+| A signed-in end-to-end test of the panel | Needs M2 identity to have a session to be. The states are covered as fixtures |
+| Realtime count updates | The M1 aggregate functions do not exist yet; a subscription to nothing is what the deleted component had |
+| `HomeLocationGrid.tsx`, `LiveBoardPreview.tsx`, `RealTimeBoard.tsx`, `CheckIn.tsx` | **Dead code that still reads the dropped tables.** No route imports any of them (`RealTimeBoard` is the source of the one pre-existing lint warning). They are the same defect class as `DashboardClient`, but they are not this slice's route, and deleting four unrelated components inside a dashboard change would hide it. **Owed, and named here so it is not rediscovered as a surprise** |
+| Writing D-31 and D-32 | See the numbering note in D-33. They are cited by shipped code; reconstructing someone else's reasoning into a decision log is how a log stops being evidence |
+
+### Recommended next slice
+
+**Write `0005_public_aggregates.sql`** — the two functions `lib/domain/public-counts.ts` has been
+holding a typed contract for since M1, and which `tests/public-counts.test.mjs` already exercises
+against a fake client.
+
+It is the highest-value next step because it is the single unblock for **three** finished surfaces
+at once: the homepage corridor strip, `/spots/[slug]`, and now the dashboard board are all written,
+tested and rendering their `unavailable` state for want of the same two functions. Every one of
+them turns from "the directory" into "what is happening right now" the moment it lands — and none
+of them needs a line of UI changed to do it, which the `availability` split was designed for.
+
+It is also fully specified and fully gated before it touches anything: the names, the row shape and
+the string→number coercion are pinned in the domain module; `sql:check` R1–R11 apply; the preview
+branch exists and `0001`–`0003` are proven on it (D-28, D-30). The one thing it must get right is
+the §6 posture the analyser exists to check — SECURITY DEFINER, `revoke ... from public` before any
+grant, and **counts only** in the return type, no member id and no timestamp.
+
+Then, in order: **apply `0004`** to preview (it unblocks the uuid→spot lookup, dashboard check-in,
+and corridor scoping), and **delete the four dead components** listed above.

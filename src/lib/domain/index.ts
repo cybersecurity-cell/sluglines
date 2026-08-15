@@ -124,6 +124,30 @@ export {
 export type { LocationRow, PublicLocation, PublicLocationSource } from './public-location.ts'
 
 export {
+  PRESENCE_CHECKIN_COLUMNS,
+  PRESENCE_CLEAR_FUNCTION,
+  SIGNED_OUT_PRESENCE,
+  NO_PRESENCE,
+  isPresenceLive,
+  minutesRemaining,
+  presenceFromRow,
+  presenceDirectionLabel,
+  buildFastBoard,
+  activeFastBoardRows,
+} from './fast-board.ts'
+
+export type {
+  FastBoard,
+  FastBoardOptions,
+  FastBoardRow,
+  FastBoardTotals,
+  MemberPresence,
+  PresenceCheckinRow,
+  PresenceDirection,
+  PresenceState,
+} from './fast-board.ts'
+
+export {
   EMPTY_SPOT_SEARCH,
   matchesSpotQuery,
   matchesSpotStatus,
