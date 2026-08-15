@@ -10,7 +10,8 @@
     "start": "next start",
     "lint": "next lint",
     "typecheck": "tsc --noEmit",
-    "sql:check": "node scripts/sql-lint.mjs",
+    "sql:check": "node scripts/sql-lint.mjs && node --experimental-strip-types scripts/seed-locations.mjs --check",
+    "seed:locations": "node --experimental-strip-types scripts/seed-locations.mjs --write",
     "audit:check": "node scripts/audit-check.mjs --level=high"
   },
   "dependencies": {

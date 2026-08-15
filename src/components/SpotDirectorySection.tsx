@@ -75,15 +75,20 @@ export default function SpotDirectorySection({
                                       <Users className="h-4 w-4" />
                                     </a>
                                   )}
-                                  <a
-                                    href={`https://google.com/maps/?q=${spot.lat},${spot.lng}`}
-                                    target="_blank"
-                                    rel="noopener noreferrer"
-                                    className="rounded-md p-2 text-slate-400 hover:bg-slate-100 hover:text-sky-700"
-                                    aria-label={`Open ${spot.name} in maps`}
-                                  >
-                                    <Navigation className="h-4 w-4" />
-                                  </a>
+                                  {/* Four legacy-only spots publish no coordinates
+                                      (Docs/DECISIONS.md D-31); a maps link built from
+                                      `null,null` would land in the Gulf of Guinea. */}
+                                  {spot.lat !== null && spot.lng !== null && (
+                                    <a
+                                      href={`https://google.com/maps/?q=${spot.lat},${spot.lng}`}
+                                      target="_blank"
+                                      rel="noopener noreferrer"
+                                      className="rounded-md p-2 text-slate-400 hover:bg-slate-100 hover:text-sky-700"
+                                      aria-label={`Open ${spot.name} in maps`}
+                                    >
+                                      <Navigation className="h-4 w-4" />
+                                    </a>
+                                  )}
                                 </div>
                               </li>
                             )

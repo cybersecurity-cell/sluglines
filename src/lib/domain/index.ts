@@ -62,3 +62,40 @@ export type {
   TransitionRequest,
   TransitionRequestCheck,
 } from './offer-transitions.ts'
+
+export {
+  SPOT_LOCATIONS,
+  SPOT_LOCATION_COUNT,
+  SPOT_CORRIDORS,
+  SPOT_DIRECTIONS,
+  canonicalSlug,
+  findSpotLocation,
+  hasSpotLocation,
+  activeSpotLocations,
+  inactiveSpotLocations,
+  spotLocationsByCorridor,
+  spotLocationsByDirection,
+  spotLocationCounties,
+  groupSpotLocations,
+  distanceInMiles,
+  spotLocationDistance,
+  nearestSpotLocations,
+} from './locations.ts'
+
+export type {
+  SpotCorridor,
+  SpotDirection,
+  SpotLocation,
+  SpotLocationCorridorGroup,
+  SpotCoordinates,
+} from './locations.ts'
+
+export {
+  EMPTY_SPOT_SEARCH,
+  matchesSpotQuery,
+  matchesSpotStatus,
+  searchSpotLocations,
+  resolveSpotQuery,
+} from './spot-search.ts'
+
+export type { SpotSearchFilters, SpotStatusFilter } from './spot-search.ts'
