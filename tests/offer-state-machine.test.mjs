@@ -24,9 +24,12 @@ import {
   checkRevision,
   checkTransition,
   checkTransitionRequest,
+  isConflictError,
   isIdempotencyKey,
   isOfferState,
+  isRetryableError,
   isTerminalOfferState,
+  isTransitionErrcode,
   nextOfferStates,
   nextRevision,
   offerEdgeList,
@@ -34,6 +37,7 @@ import {
   stateAfterRelease,
   stateAfterReservation,
   toTransitionCheck,
+  transitionErrcodeOf,
   transitionPath,
 } from '../src/lib/domain/index.ts'
 
@@ -353,24 +357,48 @@ assert.equal(
 )
 
 // =============================================================================
-// The SQL is the same machine — 0002_ride_coordinator_state.sql
+// The SQL is the same machine — 0002_ride_coordinator_state.sql, as corrected by
+// 0003_resolve_transition_conflicts.sql
 //
 // rev. 5.3 §12 constraint 6 makes the SQL authoritative, so these assertions run
 // in the direction that matters: the committed SQL is read, and required to say
 // what the domain module says. Neither file can move alone.
+//
+// The harness is append-only, so a correction to an applied file arrives as a
+// later `create or replace` rather than as an edit (D-29). What the database
+// ends up running is therefore the *last* definition of each function across the
+// sequence, and that is what these assertions must read — reading 0002 alone
+// would now test a definition no database has.
 // =============================================================================
-const migration = fs.readFileSync(
-  path.join(process.cwd(), 'supabase/migrations/0002_ride_coordinator_state.sql'),
-  'utf8'
-)
+const readMigration = (file) => ({
+  file,
+  sql: fs.readFileSync(path.join(process.cwd(), 'supabase/migrations', file), 'utf8'),
+})
 
-const sqlFunction = (name) => {
-  const found = new RegExp(
+// In apply order. Later entries supersede earlier ones.
+const M3_MIGRATIONS = [
+  readMigration('0002_ride_coordinator_state.sql'),
+  readMigration('0003_resolve_transition_conflicts.sql'),
+]
+
+const migration = M3_MIGRATIONS.map((m) => m.sql).join('\n')
+
+const definitionsOf = (name) => {
+  const pattern = new RegExp(
     `create or replace function public\\.${name}\\s*\\(([\\s\\S]*?)\\$fn\\$([\\s\\S]*?)\\$fn\\$`,
     'i'
-  ).exec(migration)
-  assert.ok(found, `0002 must define public.${name}()`)
-  return { header: found[1], body: found[2] }
+  )
+  return M3_MIGRATIONS.map((m) => {
+    const found = pattern.exec(m.sql)
+    return found && { file: m.file, header: found[1], body: found[2] }
+  }).filter(Boolean)
+}
+
+/** The definition the database actually runs: the last one in the sequence. */
+const sqlFunction = (name) => {
+  const defs = definitionsOf(name)
+  assert.ok(defs.length > 0, `the M3 migrations must define public.${name}()`)
+  return defs[defs.length - 1]
 }
 
 // --- the edge list ------------------------------------------------------------
@@ -448,7 +476,11 @@ assert.ok(lock < compare, 'the row must be locked before its revision is compare
 assert.ok(compare < edgeCheck, 'a stale caller is refused before its transition is judged')
 assert.ok(edgeCheck < write, 'the edge is checked before the row is written')
 
-assert.match(choke.body, /errcode = '40001'/, 'a revision conflict must raise SQLSTATE 40001')
+assert.match(
+  choke.body,
+  new RegExp(`errcode = '${TRANSITION_ERRCODES.CONFLICT}'`),
+  `a revision conflict must raise SQLSTATE ${TRANSITION_ERRCODES.CONFLICT}`
+)
 assert.match(choke.body, /errcode = '55000'/, 'an illegal transition must raise SQLSTATE 55000')
 assert.match(choke.body, /insert into public\.offer_transitions/, 'every applied hop must be recorded')
 assert.match(choke.body, /revision\s+=\s+v_next/, 'the revision must move with the state')
@@ -456,11 +488,16 @@ assert.match(choke.body, /revision\s+=\s+v_next/, 'the revision must move with t
 // The SQLSTATEs the domain module tells callers to branch on are the ones the
 // SQL actually raises.
 for (const code of Object.values(TRANSITION_ERRCODES)) {
-  assert.ok(migration.includes(`errcode = '${code}'`), `0002 must raise SQLSTATE ${code}`)
+  assert.ok(migration.includes(`errcode = '${code}'`), `the M3 migrations must raise SQLSTATE ${code}`)
 }
 
 // --- idempotency machinery ----------------------------------------------------
 const claimFn = sqlFunction('claim_offer_operation')
+assert.match(
+  claimFn.body,
+  new RegExp(`errcode = '${TRANSITION_ERRCODES.IN_FLIGHT}'`),
+  `an in-flight idempotency claim must raise SQLSTATE ${TRANSITION_ERRCODES.IN_FLIGHT}`
+)
 assert.match(
   claimFn.body,
   new RegExp(`char_length\\(v_key\\) < ${IDEMPOTENCY_KEY_MIN_LENGTH}`),
@@ -497,3 +534,112 @@ assert.equal(
   false,
   'a released seat must not block the rider from reserving again'
 )
+
+// =============================================================================
+// D-29 — the conflict paths fail fast and are named
+//
+// 0002 raised both conflict paths as SQLSTATE 40001 (serialization_failure).
+// 40001 is the class the stack treats as transient and retries; a revision
+// conflict is permanent, so through PostgREST the most ordinary contention
+// outcome in the whole design became a 125-second gateway timeout carrying no
+// SQLSTATE at all — i.e. it was delivered as exactly the transport error that
+// TRANSITION_ERRCODES exists to be distinguishable from.
+//
+// 0003 re-raises them as PostgREST's PTnnn form, which also sets the HTTP status
+// (409 Conflict, 425 Too Early). These assertions are what stops 40001 coming
+// back.
+// =============================================================================
+for (const name of ['apply_offer_transition', 'claim_offer_operation']) {
+  assert.equal(
+    /errcode = '40001'/.test(sqlFunction(name).body),
+    false,
+    `${name} must not raise 40001: it is retried as transient, and neither conflict path is (D-29)`
+  )
+}
+
+assert.equal(
+  Object.values(TRANSITION_ERRCODES).includes('40001'),
+  false,
+  'no published transition errcode may be 40001'
+)
+
+// A conflict must be catchable by the UI on the first response, so the two codes
+// callers branch on are required to be distinct and non-retryable-by-the-stack.
+assert.notEqual(TRANSITION_ERRCODES.CONFLICT, TRANSITION_ERRCODES.IN_FLIGHT)
+assert.equal(new Set(Object.values(TRANSITION_ERRCODES)).size, Object.values(TRANSITION_ERRCODES).length)
+for (const code of [TRANSITION_ERRCODES.CONFLICT, TRANSITION_ERRCODES.IN_FLIGHT]) {
+  assert.match(code, /^PT[1-5]\d{2}$/, `${code} must be PostgREST's PTnnn form so it sets an HTTP status`)
+}
+assert.equal(TRANSITION_ERRCODES.CONFLICT, 'PT409', 'a revision conflict is 409 Conflict')
+assert.equal(TRANSITION_ERRCODES.IN_FLIGHT, 'PT425', 'an in-flight duplicate key is 425 Too Early')
+
+// 0003 must REPLACE the two functions, not overload them. `create or replace`
+// keys on the argument type list, so a single changed parameter would leave
+// 0002's definition live alongside a second one and the fix would silently not
+// apply.
+for (const name of ['apply_offer_transition', 'claim_offer_operation']) {
+  const defs = definitionsOf(name)
+  assert.equal(defs.length, 2, `${name} must be defined by 0002 and re-created by 0003`)
+  assert.equal(defs[1].file, '0003_resolve_transition_conflicts.sql')
+  assert.equal(
+    defs[0].header.replace(/\s+/g, ' ').trim(),
+    defs[1].header.replace(/\s+/g, ' ').trim(),
+    `0003 must re-create ${name} with 0002's exact signature, or it creates an overload instead of replacing`
+  )
+  assert.match(defs[1].header, /security definer/i, `${name} must remain SECURITY DEFINER`)
+  assert.match(defs[1].header, /set search_path = public, pg_temp/i, `${name} must keep search_path pinned`)
+}
+
+// ...and must change nothing else. Normalising the two conflict codes back to
+// 40001 has to make 0003's bodies identical to 0002's: that is the whole claim
+// of the migration, stated as a test rather than as a comment.
+const normalise = (body) =>
+  body
+    .replace(/^\s*--.*$/gm, '')
+    .replace(/'PT409'|'PT425'/g, "'40001'")
+    .replace(/\s+/g, ' ')
+    .trim()
+
+for (const name of ['apply_offer_transition', 'claim_offer_operation']) {
+  const [before, after] = definitionsOf(name)
+  assert.equal(
+    normalise(after.body),
+    normalise(before.body),
+    `0003 must change nothing in ${name} but the raised SQLSTATE`
+  )
+}
+
+// The revision check still comes before the edge check in the re-created choke
+// point — the errcode moved, the order that makes it correct did not.
+const fixedLock = choke.body.indexOf('for update')
+const fixedCompare = choke.body.indexOf('p_expected_revision <> v_revision')
+const fixedEdge = choke.body.indexOf('offer_transition_allowed(')
+assert.ok(fixedLock > -1 && fixedLock < fixedCompare, 'the re-created choke point must still lock before comparing')
+assert.ok(fixedCompare < fixedEdge, 'the re-created choke point must still refuse a stale caller before judging the edge')
+
+// --- the caller-side half of the contract -------------------------------------
+// A UI that cannot tell a conflict from a transport failure cannot show the §10
+// "seat just taken" message, which is the entire point of the code.
+assert.equal(isConflictError({ code: TRANSITION_ERRCODES.CONFLICT }), true)
+assert.equal(isConflictError({ code: TRANSITION_ERRCODES.IN_FLIGHT }), false)
+assert.equal(isConflictError({ message: 'upstream request timeout' }), false, 'a codeless failure is not a conflict')
+assert.equal(isConflictError(null), false)
+assert.equal(isConflictError(undefined), false)
+assert.equal(isConflictError('PT409'), false, 'the code must be carried by an error object, not be one')
+
+assert.equal(isRetryableError({ code: TRANSITION_ERRCODES.IN_FLIGHT }), true)
+assert.equal(isRetryableError({ code: TRANSITION_ERRCODES.CONFLICT }), false, 'a revision conflict must never be retried')
+assert.equal(isRetryableError({ code: '40001' }), false, 'the retryable-looking code is no longer raised')
+
+assert.equal(transitionErrcodeOf({ code: TRANSITION_ERRCODES.ILLEGAL_STATE }), '55000')
+assert.equal(transitionErrcodeOf({ code: '42P01' }), undefined, 'an unpublished SQLSTATE is not a transition errcode')
+assert.equal(transitionErrcodeOf({}), undefined)
+assert.equal(isTransitionErrcode('PT409'), true)
+assert.equal(isTransitionErrcode('40001'), false)
+
+// checkRevision, the domain-side prediction of the same refusal, reports the
+// same code the SQL now raises.
+const stale = checkRevision(2, 1)
+assert.equal(stale.ok, false)
+assert.equal(stale.errcode, TRANSITION_ERRCODES.CONFLICT)
+assert.equal(isConflictError({ code: stale.errcode }), true, 'the predicted code must be the one callers catch')

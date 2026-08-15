@@ -104,6 +104,17 @@ Stated so a later session does not over-trust it:
 5. Run `npm run sql:check` (or `npm run test`).
 6. Record the migration and its rationale in `Docs/DECISIONS.md`.
 
+### Correcting a migration that has already been applied
+
+Never edit it. The sequence is append-only, and a file whose `APPLIED:` header names a database is a
+record of what that database ran — editing it makes the record false without changing the database.
+A correction is a **new ordinal** that re-creates the affected objects, and `create or replace` keys
+on the argument type list, so the new definition must carry the old signature **exactly**: change one
+parameter name or type and Postgres adds an overload while the defect stays live. `0003` corrects
+`0002` this way (D-30), and `tests/offer-state-machine.test.mjs` asserts both halves — that the
+signatures match, and that the effective definition read by the tests is the *last* one in the
+sequence rather than the first.
+
 ## Applying a migration
 
 **Not in scope for any session that has not been explicitly authorised for it.**
@@ -118,7 +129,7 @@ Current state:
 
 | Target | Status |
 |---|---|
-| Preview branch `phase-3-4-staging` (`xqonrogwwytkmqfinszp`) | `0001` and `0002` applied 2026-08-14, live RLS suite green — D-28 |
+| Preview branch `phase-3-4-staging` (`xqonrogwwytkmqfinszp`) | `0001`–`0003` applied 2026-08-14, live RLS suite green — D-28, D-30 |
 | **Production `bwpguotjzczmieeepczf`** | **Nothing applied.** Requires its own authorised session |
 
 Applying to a preview branch, for reference — note the explicit `--db-url`, which is what keeps an

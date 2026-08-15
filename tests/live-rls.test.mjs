@@ -29,6 +29,7 @@ import { strict as assert } from 'node:assert'
 import fs from 'node:fs'
 import path from 'node:path'
 import { createClient } from '@supabase/supabase-js'
+import { TRANSITION_ERRCODES } from '../src/lib/domain/index.ts'
 
 const PRODUCTION_REF = 'bwpguotjzczmieeepczf'
 const ENV_FILE = '.env.preview.local'
@@ -324,42 +325,55 @@ try {
   assert.equal(outsiderOpen.length, 1, 'an OPEN offer is visible to any authenticated member')
 
   // ---------------------------------------------------------------------------
-  // Revision check — OFF BY DEFAULT. This is the D-29 defect.
+  // Revision check — the D-29 regression test, and no longer gated.
   //
-  // apply_offer_transition raises a revision conflict as SQLSTATE 40001
-  // (serialization_failure). PostgREST treats that class as transient and retries
-  // it. A revision conflict is permanent, so every retry fails identically and the
-  // request spins until the gateway gives up: measured at 125,058 ms, returning
-  // `upstream request timeout` with no SQLSTATE. The same call issued straight at
-  // the database returns the correct 40001 in 382 ms, so the SQL is right and the
-  // errcode choice is wrong.
+  // 0002 raised a revision conflict as SQLSTATE 40001 (serialization_failure).
+  // The stack treats that class as transient and retries it; a revision conflict
+  // is permanent, so every retry re-read the same revision and failed
+  // identically until the gateway gave up — measured at 125,058 ms, returning
+  // `upstream request timeout` with no SQLSTATE. The same call straight at the
+  // database returned 40001 in 382 ms, so the SQL was right and the errcode was
+  // wrong.
   //
-  // The check is gated because it costs over two minutes per run. When the errcode
-  // is fixed this block passes and stops being gated; it asserts the property that
-  // matters -- a fast, structured refusal -- not any particular replacement code.
+  // 0003 raises TRANSITION_ERRCODES.CONFLICT (PT409) instead, so the block below
+  // runs on every live run. It asserts the two properties that were broken: the
+  // refusal is PROMPT, and it is NAMED. A timeout satisfies neither.
   // ---------------------------------------------------------------------------
-  if (process.env.LIVE_RLS_CONFLICT_PATH === '1') {
-    const started = Date.now()
-    const conflict = await expectRefused(
-      'stale revision is refused promptly (optimistic concurrency)',
-      poster.rpc('offer_publish', {
-        p_offer_id: offerId,
-        p_expected_revision: 1,
-        p_idempotency_key: key('publish-stale'),
-      })
-    )
-    const elapsed = Date.now() - started
-    assert.ok(
-      elapsed < 15000,
-      `a revision conflict must fail fast, took ${elapsed}ms (D-29: 40001 is retried by PostgREST)`
-    )
-    record('the conflict refusal is prompt', `${elapsed}ms, ${conflict.code}`)
-  } else {
-    console.log(
-      '  NOTE  revision-conflict check SKIPPED (D-29: 40001 is retried to a 125s gateway timeout).\n' +
-        '        Set LIVE_RLS_CONFLICT_PATH=1 to run it; it is expected to FAIL until the errcode is changed.'
-    )
-  }
+  const conflictStarted = Date.now()
+  const conflictResponse = await poster.rpc('offer_publish', {
+    p_offer_id: offerId,
+    p_expected_revision: 1,
+    p_idempotency_key: key('publish-stale'),
+  })
+  const conflictElapsed = Date.now() - conflictStarted
+  const conflict = await expectRefused(
+    'stale revision is refused promptly (optimistic concurrency)',
+    conflictResponse
+  )
+  assert.ok(
+    conflictElapsed < 15000,
+    `a revision conflict must fail fast, took ${conflictElapsed}ms (D-29: 40001 was retried by PostgREST)`
+  )
+  assert.equal(
+    conflict.code,
+    TRANSITION_ERRCODES.CONFLICT,
+    `a revision conflict must arrive as ${TRANSITION_ERRCODES.CONFLICT}, got ${describeError(conflict)}`
+  )
+  assert.notEqual(conflict.code, '40001', 'D-29: 40001 is retried as transient and must not be raised')
+  assert.match(conflict.message, /revision conflict/i, 'the refusal must say what it refused')
+  // The PTnnn form's other half: PostgREST reads the code as an HTTP status, so
+  // a caller that never inspects the body still sees a conflict rather than a
+  // 500 or a 504.
+  assert.equal(conflictResponse.status, 409, `a revision conflict must arrive as HTTP 409, got ${conflictResponse.status}`)
+  record(
+    'the conflict refusal is prompt, named and a 409',
+    `${conflictElapsed}ms, HTTP ${conflictResponse.status}, ${conflict.code}`
+  )
+
+  // ...and it did not apply anything on its way to being refused.
+  rows = await readOffer(poster, 'poster reads after the refused conflict')
+  assert.equal(rows[0].revision, 2, 'a refused conflict must not bump the revision')
+  assert.equal(rows[0].state, 'OPEN', 'a refused conflict must not move the state')
 
   // Idempotency: the same key replays the first call's result and applies nothing.
   const replay = await expectOk(

@@ -35,10 +35,27 @@ export const IDEMPOTENCY_KEY_MAX_LENGTH = 200
  * rather than on message text. The UI distinction rev. 5.3 §10 requires — "seat
  * just taken" vs. a network failure — is exactly `CONFLICT` vs. a transport
  * error.
+ *
+ * `CONFLICT` and `IN_FLIGHT` use PostgREST's `PTnnn` form, which sets the HTTP
+ * status of the response (409 and 425). Both were `40001` until
+ * `0003_resolve_transition_conflicts.sql`; `40001` is `serialization_failure`,
+ * the class the stack retries as transient, and a revision conflict is
+ * permanent — so it was retried into a 125-second gateway timeout that reached
+ * the client with no SQLSTATE at all, i.e. as the transport error this constant
+ * exists to be distinguishable from. Docs/DECISIONS.md D-29.
  */
 export const TRANSITION_ERRCODES = {
-  /** Optimistic-concurrency failure: the offer moved under the caller. */
-  CONFLICT: '40001',
+  /**
+   * Optimistic-concurrency failure: the offer moved under the caller. Permanent
+   * for the revision held — re-read the offer and decide again; never retry.
+   */
+  CONFLICT: 'PT409',
+  /**
+   * A call with the same idempotency key is still in flight. The one genuinely
+   * transient outcome here: the first call is mid-transaction, so a later retry
+   * of the *same* key can succeed and will return that call's result.
+   */
+  IN_FLIGHT: 'PT425',
   /** The edge does not exist, or the offer is not in a state the operation accepts. */
   ILLEGAL_STATE: '55000',
   /** A malformed argument, including a malformed or re-used idempotency key. */
@@ -50,6 +67,45 @@ export const TRANSITION_ERRCODES = {
 } as const
 
 export type TransitionErrcode = (typeof TRANSITION_ERRCODES)[keyof typeof TRANSITION_ERRCODES]
+
+const TRANSITION_ERRCODE_VALUES: readonly string[] = Object.values(TRANSITION_ERRCODES)
+
+export function isTransitionErrcode(value: unknown): value is TransitionErrcode {
+  return typeof value === 'string' && TRANSITION_ERRCODE_VALUES.includes(value)
+}
+
+/**
+ * The SQLSTATE a PostgREST/`supabase-js` failure carries, or `undefined` when it
+ * carries none.
+ *
+ * `undefined` is the load-bearing return, not a fallback: a refusal with no
+ * SQLSTATE is a transport failure, and D-29 is precisely the bug where a real
+ * conflict arrived looking like one. A caller that treats "no code" as "unknown
+ * error" and a code as a decision is reading the §10 distinction correctly.
+ */
+export function transitionErrcodeOf(error: unknown): TransitionErrcode | undefined {
+  if (typeof error !== 'object' || error === null) return undefined
+  const code = (error as { code?: unknown }).code
+  return isTransitionErrcode(code) ? code : undefined
+}
+
+/**
+ * "Seat just taken" — the one refusal rev. 5.3 §10 asks the UI to explain rather
+ * than report as a generic failure. The caller must re-read the offer; retrying
+ * the same revision fails identically, for ever.
+ */
+export function isConflictError(error: unknown): boolean {
+  return transitionErrcodeOf(error) === TRANSITION_ERRCODES.CONFLICT
+}
+
+/**
+ * The only transition failure worth retrying: a call with this idempotency key
+ * is still committing. Retrying the *same key* returns the first call's result,
+ * so a retry is safe and applies nothing twice.
+ */
+export function isRetryableError(error: unknown): boolean {
+  return transitionErrcodeOf(error) === TRANSITION_ERRCODES.IN_FLIGHT
+}
 
 /** Who the SQL requires `auth.uid()` to be for the call to be accepted. */
 export type TransitionActor =

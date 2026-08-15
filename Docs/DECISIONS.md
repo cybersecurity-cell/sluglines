@@ -1275,5 +1275,65 @@ costs over two minutes per run. It asserts the property that matters — that a 
 the fix and needs no rewrite. Both `0002`'s header and this entry record the defect so it cannot be
 rediscovered as a surprise in production.
 
-**Status:** OPEN. Present in `0002` as applied to preview; **not** in production, which has no
-migration applied. Owned by the next slice.
+**Status:** ~~OPEN. Present in `0002` as applied to preview; **not** in production, which has no
+migration applied. Owned by the next slice.~~ **CLOSED 2026-08-14** by
+`0003_resolve_transition_conflicts.sql`, applied to preview and proven live. The replacement codes,
+the reasoning behind them and the measurements are in **D-30**.
+
+---
+
+## D-30 — D-29 closed: conflicts raise `PT409` / `PT425` and are refused in 80 ms
+
+**Decision:** the two conflict paths in the M3 write path stop raising SQLSTATE `40001` and raise
+PostgREST's `PTnnn` form instead. `0003_resolve_transition_conflicts.sql` re-creates the two
+functions that raised it:
+
+| Path | Was | Now | Meaning to a caller |
+|---|---|---|---|
+| `apply_offer_transition` — revision conflict | `40001` | **`PT409`** → HTTP 409 | Permanent for the revision held. Re-read the offer and decide again. **Never retry.** |
+| `claim_offer_operation` — key still in flight | `40001` | **`PT425`** → HTTP 425 | Genuinely transient: the first call is mid-transaction. Retrying the *same key* is safe and returns that call's result. |
+
+**Why not `40001`.** It is `serialization_failure`, the class the stack treats as transient and
+retries automatically. A revision conflict is permanent — every retry re-reads the same revision and
+fails identically — so the retry loop ran until the gateway gave up. D-29 measured it: **125,058 ms,
+`upstream request timeout`, no SQLSTATE at all.** The conflict was therefore delivered to the client
+as precisely the transport error that `TRANSITION_ERRCODES` exists to be distinguishable from, which
+is the rev. 5.3 §10 requirement ("seat just taken" vs. "something went wrong") failing in the one
+case it was written for.
+
+**Why `PTnnn` and not `P0001`.** Both fail fast, which is the property that matters. `PTnnn` is
+PostgREST's documented escape hatch: the code sets the HTTP status of the response, so the refusal is
+a `409` to a caller that only reads the status line *and* carries its SQLSTATE to one that reads the
+body. `P0001` was rejected because it is what every un-coded `RAISE` in Postgres produces, so it
+cannot serve as the stable published contract `src/lib/domain/offer-transitions.ts` needs — a UI
+branching on `P0001` would be branching on "some function raised something".
+
+**Why a new file rather than an edit.** `0002` is applied to preview and this harness is append-only
+(D-21), so the correction is a later `create or replace` on an unchanged signature. `0002` keeps its
+`KNOWN DEFECT` header, which is now the historical record of a closed defect rather than a live
+warning; `tests/offer-state-machine.test.mjs` was changed to read the **last** definition of each
+function across the sequence, because reading `0002` alone would now assert a definition no database
+runs. That test also asserts `0003` re-creates `0002`'s exact signature — a changed parameter would
+create an overload and leave the defect live — and that normalising the codes back makes the two
+bodies identical, i.e. that nothing else moved.
+
+**Measurement, same call, same offer, on the preview branch:**
+
+| Path | Before (D-29) | After (`0003`) |
+|---|---|---|
+| PostgREST `rpc offer_publish`, stale revision | 125,058 ms, `upstream request timeout`, no SQLSTATE | **80 ms, HTTP 409, `PT409: revision conflict: offer … is at revision 2, caller expected 1`** |
+
+**Evidence.** `tests/live-rls.test.mjs` — the D-29 block is **no longer gated**. `LIVE_RLS_CONFLICT_PATH`
+is gone; the check runs on every live run and asserts all three properties that were broken: the
+refusal is prompt (< 15 s), it carries `TRANSITION_ERRCODES.CONFLICT`, and it arrives as HTTP 409. It
+also asserts the refused call applied nothing — revision and state unmoved. **38 assertions passed
+against `xqonrogwwytkmqfinszp`.**
+
+**Caller-side half.** `lib/domain` now publishes `isConflictError()`, `isRetryableError()`,
+`transitionErrcodeOf()` and `isTransitionErrcode()`, so the §10 distinction is a function call rather
+than a string comparison each call site reinvents. `transitionErrcodeOf()` returning `undefined` is
+load-bearing, not a fallback: a refusal with no SQLSTATE is a transport failure, and D-29 was exactly
+the bug where a real conflict arrived looking like one.
+
+**Status:** CLOSED. `0003` APPLIED to preview and PROVEN live. Production remains untouched: it has
+no migration applied at all, so it has never carried the defect.
