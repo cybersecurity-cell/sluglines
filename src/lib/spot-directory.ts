@@ -94,12 +94,21 @@ export function findSpotBySlug(slug: string) {
   return location ? toDirectorySpot(location) : undefined
 }
 
+/**
+ * Every spot links to `/spots/<routeSlug>`, active or not.
+ *
+ * Inactive spots used to link to `/slug_pickup/<slug>/`, the legacy page. That
+ * path now 301s here (`lib/legacy-redirects.ts`), so keeping the old href would
+ * mean the directory linking into its own redirect — and rev. 5.3 §9 is
+ * explicit that all 43 legacy spot URLs become live landing pages, not just the
+ * running ones. `/spots/[slug]` renders an inactive spot as inactive.
+ */
 export function getSpotDetailHref(spot?: DirectorySpot | null) {
   if (!spot) {
     return '/spots'
   }
 
-  return spot.active ? `/spots/${spot.slug}` : `/slug_pickup/${spot.slug}/`
+  return `/spots/${spot.slug}`
 }
 
 export function getActiveSpotLocations() {

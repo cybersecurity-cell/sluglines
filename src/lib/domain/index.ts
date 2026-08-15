@@ -91,6 +91,39 @@ export type {
 } from './locations.ts'
 
 export {
+  PUBLIC_SPOT_COUNTS_FUNCTION,
+  PUBLIC_OPEN_OFFER_COUNTS_FUNCTION,
+  PUBLIC_COUNT_FUNCTIONS,
+  ZERO_SPOT_COUNTS,
+  UNAVAILABLE_SNAPSHOT,
+  isExpectedAbsence,
+  errorCodeOf,
+  normalizeCountRows,
+  indexCountRows,
+  fetchPublicSpotCounts,
+  countsForSlug,
+  totalCounts,
+  corridorStatus,
+} from './public-counts.ts'
+
+export type {
+  CorridorStatus,
+  PublicCountsAvailability,
+  PublicCountsClient,
+  PublicCountsSnapshot,
+  PublicSpotCountRow,
+  PublicSpotCounts,
+} from './public-counts.ts'
+
+export {
+  LOCATION_COLUMNS,
+  publicLocationFromRow,
+  publicLocationFromDirectory,
+} from './public-location.ts'
+
+export type { LocationRow, PublicLocation, PublicLocationSource } from './public-location.ts'
+
+export {
   EMPTY_SPOT_SEARCH,
   matchesSpotQuery,
   matchesSpotStatus,

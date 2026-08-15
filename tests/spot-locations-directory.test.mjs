@@ -199,7 +199,10 @@ assert.equal(SPOT_DIRECTORY.length, SPOT_LOCATION_COUNT)
 assert.equal(findSpotBySlug('Horner-Rd')?.slug, 'Horner-Rd', 'route casing is preserved')
 assert.equal(findSpotBySlug('horner-rd')?.slug, 'Horner-Rd')
 assert.equal(getSpotDetailHref(findSpotBySlug('Horner-Rd')), '/spots/Horner-Rd')
-assert.equal(getSpotDetailHref(findSpotBySlug('landmark-mall')), '/slug_pickup/landmark-mall/')
+// Inactive spots link to /spots as well: the legacy path is now a 301 into it
+// (Docs/DECISIONS.md D-32), and rev. 5.3 §9 makes all 43 legacy spot URLs live
+// landing pages rather than only the running ones.
+assert.equal(getSpotDetailHref(findSpotBySlug('landmark-mall')), '/spots/landmark-mall')
 assert.equal(
   SPOT_DIRECTORY.every((spot) => canonicalSlug(spot.slug) === findSpotLocation(spot.slug)?.slug),
   true,
