@@ -37,11 +37,42 @@ assert.equal(migrations[0].file, '0001_rebuild_foundation.sql')
 assert.equal(migrations[0].ordinal, 1)
 
 // -----------------------------------------------------------------------------
-// Nothing here has been applied to a database
+// Where each migration has been applied
+//
+// This block used to require `APPLIED: no` on every file, because nothing had a
+// database to be applied to. D-28 gave the repo one -- a preview branch -- so the
+// header now carries which *kind* of target a file has reached, and the invariant
+// worth guarding moved with it: no committed migration may claim production.
+// Production is applied by its own authorised session, which is the session that
+// gets to change this test.
 // -----------------------------------------------------------------------------
+const PRODUCTION_REF = 'bwpguotjzczmieeepczf'
+const PREVIEW_REF = 'xqonrogwwytkmqfinszp'
+
 for (const m of migrations) {
-  assert.match(m.sql, /^--.*\n(?:--.*\n)*?--\s*APPLIED:\s*(yes|no)\b/m, `${m.file} must carry an APPLIED header line`)
-  assert.equal(/--\s*APPLIED:\s*no\b/.test(m.sql), true, `${m.file} must record APPLIED: no until a session applies it`)
+  const applied = /--\s*APPLIED:\s*(no|preview|production)\b/.exec(m.sql)
+  assert.ok(applied, `${m.file} must carry an APPLIED header line of no | preview | production`)
+
+  assert.notEqual(
+    applied[1],
+    'production',
+    `${m.file} claims APPLIED: production; applying to ${PRODUCTION_REF} needs its own authorised session`
+  )
+
+  // A file that claims a target must name it, or the header records nothing.
+  if (applied[1] !== 'no') {
+    assert.match(
+      m.sql,
+      /--\s*TARGET:\s*\S/,
+      `${m.file} is APPLIED: ${applied[1]} and must carry a TARGET line naming the database`
+    )
+    assert.equal(
+      m.sql.includes(PREVIEW_REF),
+      true,
+      `${m.file} is APPLIED: preview and must name the preview project ref ${PREVIEW_REF}`
+    )
+  }
+
   assert.equal(
     /bwpguotjzczmieeepczf/.test(m.sql.replace(/^--.*$/gm, '')),
     false,

@@ -1,9 +1,11 @@
 -- =============================================================================
 -- 0001_rebuild_foundation.sql
 --
--- APPLIED: no
--- TARGET:  none. This file has NOT been applied to any database, including
---          Supabase project bwpguotjzczmieeepczf. See supabase/migrations/README.md.
+-- APPLIED: preview
+-- TARGET:  Supabase preview branch phase-3-4-staging (project ref xqonrogwwytkmqfinszp),
+--          applied 2026-08-14 by `supabase db push`. NOT applied to production
+--          (parent project bwpguotjzczmieeepczf). See Docs/DECISIONS.md D-28 and
+--          supabase/migrations/README.md.
 --
 -- First migration of the rebuild decided in Docs/DECISIONS.md D-13: the core is
 -- built here from Docs/2026-08-14-consolidated-architecture.md (rev. 5.3) rather

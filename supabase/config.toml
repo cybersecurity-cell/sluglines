@@ -1,0 +1,34 @@
+# =============================================================================
+# Sluglines Supabase CLI configuration.
+#
+# project_id is the PRODUCTION project ref. It is what `supabase link` writes
+# and what unqualified CLI commands resolve to, which is exactly why no command
+# in this repo's workflow is left unqualified: migrations are pushed with an
+# explicit --db-url naming a preview branch. See supabase/migrations/README.md.
+#
+# PREVIEW / STAGING TARGET
+# -----------------------------------------------------------------------------
+#   preview branch name   phase-3-4-staging
+#   branch project ref    xqonrogwwytkmqfinszp
+#   parent project ref    bwpguotjzczmieeepczf  (production -- do not push here)
+#   region                us-east-2
+#   persistent            no (ephemeral; torn down with the git branch)
+#
+# The branch is declared below as a named remote so `--remote staging` resolves
+# to the preview ref and never to production. Credentials for it are NOT in this
+# file: they are fetched from `supabase branches get phase-3-4-staging` into
+# .env.preview.local, which .gitignore excludes.
+# =============================================================================
+
+project_id = "bwpguotjzczmieeepczf"
+
+[db]
+major_version = 17
+
+# Preview branch for the M3 ride-coordinator slice. Migrations 0001 and 0002 are
+# applied here and nowhere else.
+[remotes.staging]
+project_id = "xqonrogwwytkmqfinszp"
+
+[remotes.staging.db]
+major_version = 17

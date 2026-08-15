@@ -1127,3 +1127,153 @@ If those remain blocked, the next fully-static slice is **D-13 step 9's `0003` l
 directory** — the 43-spot seed. It has no database dependency, it is specified completely enough to
 write without inventing anything, and it unblocks the corridor-scoping narrowing this slice had to
 defer (D-27 item 5) as well as the `location_id` foreign keys `0001` and `0002` both left open.
+
+---
+
+## D-28 — A database exists: preview branch `phase-3-4-staging`, `0001`+`0002` applied, live RLS proven
+
+D-23 recorded the harness's central limitation: *"a static analyser cannot prove a policy behaves
+correctly"*, and D-27 closed on the same blocker — no target. Both are now discharged.
+
+### The target
+
+| | |
+|---|---|
+| Preview branch name | `phase-3-4-staging` |
+| Branch project ref | `xqonrogwwytkmqfinszp` |
+| Branch id | `0a891990-d161-4ee2-8b9c-37b92232455f` |
+| Parent (production) | `bwpguotjzczmieeepczf` — **not written to** |
+| Region / size | `us-east-2`, `micro` |
+| Persistent | No. Ephemeral, billed while it exists |
+| Created | 2026-08-14, `supabase branches create`, under the D-7 authorisation |
+
+Recorded in `supabase/config.toml` as a named remote (`[remotes.staging]`) so `--remote staging`
+resolves to the branch and never to the parent. Credentials are **not** in the repo: they are
+fetched into `.env.preview.local`, which `.gitignore` already excluded via `.env.*`.
+
+**The branch was a clean slate, which was checked rather than assumed.** It inherited two migration
+history rows from the parent (`20260719025630 create_sluglines_ai_schema`,
+`20260719031015 drop_stray_sluglines_ai_schema`) whose net effect is nothing — the branch's `public`
+schema contained 0 tables, 0 functions and 0 policies. Because those two versions sort *after* the
+local `0001`/`0002`, `db push` refused to run out of order. They were marked `reverted` with
+`supabase migration repair` **on the branch only**; no SQL in this repo was skipped, altered or
+forced, and the parent's history was not touched. This is the reconciliation the CLI itself
+prescribes, and it is recorded because it is the only command in this slice that changed state
+without applying a repo file.
+
+### Migration result
+
+`supabase db push` applied both files, in order, without error. The only output was three
+`does not exist, skipping` NOTICEs from the files' own `drop trigger if exists` guards.
+
+Post-condition, read back from the branch catalogue rather than inferred from the exit code:
+**8 tables, all with `relrowsecurity = true`; 8 policies, every one `SELECT`-only and every one
+`{authenticated}`; zero INSERT/UPDATE/DELETE/ALL policies; zero grants to `anon`.** The rev. 5.3 §12
+constraint 2 and §6 posture holds in a real catalogue, not only in the file text.
+
+Both files' `APPLIED:` headers now read `preview` and name the branch, per the rule in
+`supabase/migrations/README.md` that only the applying session changes that line. The header
+vocabulary is now `no | preview | production`, and `tests/sql-migration-harness.test.mjs` enforces
+that **no committed migration may claim `production`** — that remains a separately authorised act.
+
+### Live RLS evidence
+
+`tests/live-rls.test.mjs` — **36 assertions, green, 4.2 s**, run as part of `npm run test`. It uses
+real JWTs over PostgREST rather than `set role`, so it exercises the path the app will use. It skips
+silently without credentials (so CI stays green) and **refuses to run against the production ref** —
+both behaviours verified, the guard by pointing it at the parent and watching it abort before any
+network call.
+
+Negative — anonymous. Every one a database refusal (`42501`), not an empty result:
+
+| Attempt | Result |
+|---|---|
+| `INSERT offers` / `INSERT reservations` | `42501 permission denied for table …` |
+| `UPDATE offers` / `DELETE reservations` | `42501 permission denied for table …` |
+| `SELECT offers` / `SELECT members` | `42501 permission denied for table …` |
+| `RPC offer_create` | `42501 authentication required` — R10, no execute grant to `anon` |
+
+Negative — **authenticated**, which is the case that matters, because a logged-in member is the
+realistic attacker and holds a valid JWT:
+
+| Attempt | Result |
+|---|---|
+| `INSERT offers`, `INSERT reservations` | `42501 permission denied for table …` |
+| `INSERT offer_transitions` (ledger forgery) | `42501 permission denied for table …` |
+| `UPDATE offer_transitions` (rewriting history) | `42501 permission denied for table …` |
+| `UPDATE members SET role='moderator'` (self-promotion) | `42501 permission denied for table members` |
+
+Positive — the same clients, the same JWTs, writing through the SECURITY DEFINER entry points. The
+full rev. 5.3 §8 M3 happy path executed end to end, and the ledger recorded exactly seven hops, in
+order, each bumping `revision` by exactly one:
+
+`DRAFT→OPEN → OPEN→PARTIALLY_RESERVED → PARTIALLY_RESERVED→RESERVED → RESERVED→CONFIRMED →
+CONFIRMED→ARRIVING → ARRIVING→PICKED_UP → PICKED_UP→COMPLETED` (revision 1 → 8).
+
+Behaviours proven live that the static gate could not reach:
+
+- the one-seat fill really is **two hops inside one transaction** (revision 2 → 4);
+- a **replayed idempotency key** returns the first call's revision and moves nothing;
+- `offer_confirm` also confirms the live reservation;
+- **authorisation inside the functions**: a poster cannot reserve a seat on their own offer; a rider
+  cannot confirm (`42501 only the poster may confirm this offer`);
+- the **visibility predicate behaves as a predicate**, not as a blanket: a non-participant cannot see
+  a `DRAFT`, *can* see the offer while `OPEN` (the board-read half), and cannot see it again once
+  `RESERVED`, nor its reservations, nor its ledger;
+- **pickup details are confirmed-participants-only** — the confirmed rider reads them, the outsider
+  gets zero rows.
+
+**Status:** APPLIED to preview and PROVEN live. D-23's owed live suite is delivered. Production
+remains untouched and unproven.
+
+---
+
+## D-29 — Revision conflicts raise SQLSTATE `40001`, which PostgREST retries into a 125-second timeout
+
+**Found by the D-28 suite on its first run, and it is the reason that slice was worth doing.**
+
+`apply_offer_transition` raises a revision conflict with `errcode = '40001'`
+(`serialization_failure`), and `claim_offer_operation` uses the same code for an in-flight key.
+`src/lib/domain/offer-transitions.ts` publishes it as `TRANSITION_ERRCODES.CONFLICT`. The name reads
+correctly — this *is* an optimistic-concurrency failure — but `40001` is the class the stack treats
+as **transient and automatically retryable**, and a revision conflict is permanent: every retry
+re-reads the same revision and fails identically.
+
+Measured on the branch — same offer, same call:
+
+| Path | Elapsed | Result |
+|---|---|---|
+| PostgREST `rpc offer_publish`, stale revision | **125,058 ms** | `upstream request timeout`, **no SQLSTATE** |
+| The same call, direct SQL | 382 ms | `40001: revision conflict: offer … is at revision 2, caller expected 1` |
+| PostgREST, illegal transition (`55000`) | 209 ms | clean structured error |
+
+So the SQL is correct and the SQLSTATE *choice* is wrong. The impact is not cosmetic:
+
+1. The most ordinary contention outcome in the whole design — two members acting on one offer, one
+   holding a stale revision — becomes a two-minute hang ending in a 504.
+2. It defeats the stated purpose of `TRANSITION_ERRCODES`. That constant's own doc-comment says the
+   §10 UI distinction *"seat just taken vs. a network failure"* is `CONFLICT` versus a transport
+   error. Through the data API the conflict **is delivered as** a transport error, so the UI cannot
+   tell them apart and will show "something went wrong" for the one case rev. 5.3 asks it to explain.
+3. Each occurrence holds a connection for ~125 s, so modest contention is a pool-exhaustion risk.
+
+**A second finding, about the test rather than the code.** The assertion covering this path *passed*
+on the first run — it asked only "was there an error?", and a gateway timeout is an error. A codeless
+transport failure is not evidence that a policy or a revision check did anything. `expectRefused` now
+requires the error to carry a SQLSTATE, so this class of false green cannot recur; that change is why
+the run reports 36 assertions rather than 37.
+
+**Not fixed in this slice, deliberately.** The fix is a one-token change to the raised code, but that
+code is a published cross-file contract (SQL × `lib/domain` × `offer-state-machine.test.mjs`), and
+choosing its replacement — and the HTTP status it should map to — is a design decision belonging to
+the M3 author, not to the session that happened to stand up a database. `0002` is applied, so the
+harness's append-only rule makes the vehicle a new `0003`, not an edit.
+
+The live check is therefore committed but **gated off** (`LIVE_RLS_CONFLICT_PATH=1`), because it
+costs over two minutes per run. It asserts the property that matters — that a conflict is refused
+*promptly* and *with a SQLSTATE* — rather than any particular replacement code, so it will pass on
+the fix and needs no rewrite. Both `0002`'s header and this entry record the defect so it cannot be
+rediscovered as a surprise in production.
+
+**Status:** OPEN. Present in `0002` as applied to preview; **not** in production, which has no
+migration applied. Owned by the next slice.
