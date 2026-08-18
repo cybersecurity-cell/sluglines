@@ -32,6 +32,17 @@ const WRITE_PRIVILEGES = ['insert', 'update', 'delete', 'truncate']
 const WRITE_COMMANDS = ['insert', 'update', 'delete', 'all']
 const FORBIDDEN_GRANTEES = ['anon', 'public']
 
+// R10's named exception -- rev. 5.3 sec.8 M1's two public aggregate functions,
+// and nothing else. `public` (the pseudo-role meaning "everyone, including
+// anon, unconditionally") is never exempted here: only `anon` may be granted,
+// and only to a function on this list. Widening this list is a security
+// decision and belongs in a reviewed migration, not a name that grew by habit,
+// so it is a literal, qualified-name allowlist rather than a pattern.
+export const ANON_CALLABLE_FUNCTIONS = new Set([
+  'public.get_public_spot_counts',
+  'public.get_public_open_offer_counts',
+])
+
 // -----------------------------------------------------------------------------
 // Statement scanner.
 //
@@ -330,10 +341,16 @@ export function lintMigrations(migrations) {
         add('R8', m.file, `SECURITY DEFINER function ${s.fn} does not pin search_path`)
       }
 
-      // R10 -- no anonymous/public execute grants.
+      // R10 -- no anonymous/public execute grants, except the named M1
+      // aggregate functions in ANON_CALLABLE_FUNCTIONS (rev. 5.3 sec.8 M1).
+      // `public` is never exempt, on any function: it is the pseudo-role
+      // Postgres treats as "everyone, unconditionally," which is broader than
+      // the specific `anon` role the exception is scoped to.
       if (s.kind === 'grant_function') {
         for (const role of s.roles) {
-          if (FORBIDDEN_GRANTEES.includes(role)) {
+          if (role === 'public' && FORBIDDEN_GRANTEES.includes(role)) {
+            add('R10', m.file, `grant execute on ${s.fn} to "${role}"`)
+          } else if (role === 'anon' && !ANON_CALLABLE_FUNCTIONS.has(s.fn)) {
             add('R10', m.file, `grant execute on ${s.fn} to "${role}"`)
           }
         }
