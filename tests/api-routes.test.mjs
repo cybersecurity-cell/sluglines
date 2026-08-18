@@ -84,9 +84,12 @@ function routeSource(route) {
 }
 
 // Every route file on disk must be one of the eleven — a stray route handler
-// under src/app/api is an unreviewed write path.
+// under src/app/api is an unreviewed write path. `auth/` is excluded: it is
+// the rev. 5.3 §8 M2 identity surface, a sibling scope with its own exact
+// inventory check in `auth-otp-routes.test.mjs`.
 function collectRoutes(dir, prefix = '') {
   return fs.readdirSync(dir, { withFileTypes: true }).flatMap((entry) => {
+    if (entry.isDirectory() && prefix === '' && entry.name === 'auth') return []
     const full = path.join(dir, entry.name)
     if (entry.isDirectory()) return collectRoutes(full, prefix ? `${prefix}/${entry.name}` : entry.name)
     return entry.name === 'route.ts' ? [prefix] : []
@@ -94,7 +97,7 @@ function collectRoutes(dir, prefix = '') {
 }
 
 const onDisk = collectRoutes(apiDir).sort()
-assert.deepEqual(onDisk, [...ALL_ROUTES].sort(), 'src/app/api holds exactly the eleven §8 M3 routes')
+assert.deepEqual(onDisk, [...ALL_ROUTES].sort(), 'src/app/api holds exactly the eleven §8 M3 routes, plus auth/**')
 
 for (const route of ALL_ROUTES) {
   const source = routeSource(route)

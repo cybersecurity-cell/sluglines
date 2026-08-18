@@ -10,6 +10,7 @@ import { strict as assert } from 'node:assert'
 import fs from 'node:fs'
 import path from 'node:path'
 import {
+  ANON_CALLABLE_FUNCTIONS,
   DEFAULT_MIGRATIONS_DIR,
   analyzeSql,
   classifyStatement,
@@ -134,8 +135,12 @@ for (const grant of statements.filter((s) => s.kind === 'grant_table')) {
   assert.equal(grant.roles.includes('anon'), false, `nothing may be granted to anon on ${grant.table}`)
 }
 
+// R10's own exception, restated here rather than reused as a blanket pass: the
+// two rev. 5.3 §8 M1 aggregate functions are anon-callable by explicit review
+// (0005's own header); every other function is authenticated-only.
 for (const grant of statements.filter((s) => s.kind === 'grant_function')) {
-  assert.deepEqual(grant.roles, ['authenticated'], `execute on ${grant.fn} may only be granted to authenticated`)
+  const expectedRoles = ANON_CALLABLE_FUNCTIONS.has(grant.fn) ? ['anon', 'authenticated'] : ['authenticated']
+  assert.deepEqual(grant.roles, expectedRoles, `execute on ${grant.fn} may only be granted to ${expectedRoles.join(', ')}`)
 }
 
 // Every SECURITY DEFINER function is revoked from PUBLIC. Without this, Postgres'

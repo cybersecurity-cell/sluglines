@@ -156,3 +156,5 @@ export {
 } from './spot-search.ts'
 
 export type { SpotSearchFilters, SpotStatusFilter } from './spot-search.ts'
+
+export { isE164Phone, isOtpCode, normalizePhone } from './phone.ts'
