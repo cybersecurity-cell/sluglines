@@ -1,77 +1,34 @@
 import type { Metadata } from 'next'
-import './globals.css'
+import type { ReactNode } from 'react'
+
 import Navbar from '@/components/Navbar'
-import Link from 'next/link'
+import { SiteFooter } from '@/components/SiteFooter'
+
+import './globals.css'
 
 export const metadata: Metadata = {
-  title: 'Sluglines — HOV-3 Carpool for Northern Virginia',
-  description: 'Real-time driver and rider matching for Northern Virginia HOV-3 commuters on I-95, I-395, and I-66.',
-  keywords: 'slug lines, slugging, HOV-3, carpool, Northern Virginia, commute, I-95, I-395, I-66, Pentagon',
+  metadataBase: new URL('https://sluglines.com'),
+  title: 'Sluglines | Northern Virginia carpool information',
+  description: 'Find sourced pickup-location, destination, advisory, safety, and etiquette information for Northern Virginia slugging commuters.',
+  applicationName: 'Sluglines',
   openGraph: {
-    title: 'Sluglines — HOV-3 Carpool for Northern Virginia',
-    description: 'Real-time driver and rider matching for Northern Virginia HOV-3 commuters.',
-    url: 'https://sluglines.com',
+    title: 'Sluglines | Northern Virginia carpool information',
+    description: 'A practical, source-labelled guide to Northern Virginia slugging locations and community resources.',
+    url: '/',
     siteName: 'Sluglines',
+    locale: 'en_US',
     type: 'website',
   },
 }
 
-export default function RootLayout({
-  children,
-}: {
-  children: React.ReactNode
-}) {
+export default function RootLayout({ children }: { children: ReactNode }) {
   return (
     <html lang="en">
-      <body>
+      <body className="bg-white text-slate-950 antialiased">
+        <a className="skip-link" href="#main-content">Skip to main content</a>
         <Navbar />
-        <main className="min-h-screen relative z-10">
-          {children}
-        </main>
-        <footer className="relative z-10 border-t" style={{ borderColor: 'var(--border)', background: 'var(--surface)' }}>
-          <div className="max-w-6xl mx-auto px-4 py-14">
-            <div className="grid grid-cols-1 md:grid-cols-4 gap-10">
-              <div className="md:col-span-1">
-                <div className="flex items-center gap-2 mb-4">
-                  <div className="w-8 h-8 rounded-lg bg-sky-500 flex items-center justify-center text-white font-bold text-sm" style={{ fontFamily: 'Syne, sans-serif' }}>S</div>
-                  <span className="font-bold text-lg text-white" style={{ fontFamily: 'Syne, sans-serif' }}>Sluglines</span>
-                </div>
-                <p className="text-sm leading-relaxed mb-4" style={{ color: 'var(--muted)' }}>Connecting Northern Virginia commuters for HOV-3 carpools since 2015.</p>
-                <p className="text-xs" style={{ color: 'var(--muted)' }}>admin@sluglines.com</p>
-              </div>
-              <div>
-                <h4 className="text-white font-semibold text-sm mb-4" style={{ fontFamily: 'Syne, sans-serif' }}>Navigate</h4>
-                <ul className="space-y-2.5 text-sm" style={{ color: 'var(--muted)' }}>
-                  <li><Link href="/spots" className="hover:text-white transition-colors">Pickup Locations</Link></li>
-                  <li><Link href="/dashboard" className="hover:text-white transition-colors">Live Board</Link></li>
-                  <li><Link href="/app" className="hover:text-white transition-colors">Mobile App</Link></li>
-                  <li><Link href="/how-it-works" className="hover:text-white transition-colors">How It Works</Link></li>
-                  <li><Link href="/slugging-rules" className="hover:text-white transition-colors">Rules &amp; Etiquette</Link></li>
-                </ul>
-              </div>
-              <div>
-                <h4 className="text-white font-semibold text-sm mb-4" style={{ fontFamily: 'Syne, sans-serif' }}>About</h4>
-                <ul className="space-y-2.5 text-sm" style={{ color: 'var(--muted)' }}>
-                  <li><Link href="/about-slugging" className="hover:text-white transition-colors">About Slugging</Link></li>
-                  <li><Link href="/about-us" className="hover:text-white transition-colors">About Us</Link></li>
-                  <li><Link href="/slugging-rules" className="hover:text-white transition-colors">Slugging Etiquette</Link></li>
-                </ul>
-              </div>
-              <div>
-                <h4 className="text-white font-semibold text-sm mb-4" style={{ fontFamily: 'Syne, sans-serif' }}>Community</h4>
-                <ul className="space-y-2.5 text-sm" style={{ color: 'var(--muted)' }}>
-                  <li><a href="http://facebook.com/sluglines" target="_blank" rel="noopener noreferrer" className="hover:text-white transition-colors">Facebook</a></li>
-                  <li><a href="https://twitter.com/sluglines" target="_blank" rel="noopener noreferrer" className="hover:text-white transition-colors">Twitter / X</a></li>
-                  <li><a href="https://www.youtube.com/sluglines" target="_blank" rel="noopener noreferrer" className="hover:text-white transition-colors">YouTube</a></li>
-                </ul>
-              </div>
-            </div>
-            <div className="mt-12 pt-6 flex flex-col md:flex-row items-center justify-between gap-3 border-t" style={{ borderColor: 'var(--border)' }}>
-              <p className="text-xs" style={{ color: 'var(--muted)' }}>© {new Date().getFullYear()} Sluglines. All rights reserved.</p>
-              <p className="text-xs" style={{ color: 'var(--muted)' }}>Serving Northern Virginia commuters on I-95 · I-395 · I-66</p>
-            </div>
-          </div>
-        </footer>
+        <main id="main-content">{children}</main>
+        <SiteFooter />
       </body>
     </html>
   )

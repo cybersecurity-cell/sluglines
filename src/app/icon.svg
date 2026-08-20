@@ -1,0 +1,6 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" role="img" aria-label="Sluglines route mark">
+  <rect width="64" height="64" rx="16" fill="#0f172a"/>
+  <path d="M18 45c0-9 7-10 14-13s14-4 14-13" fill="none" stroke="#22d3ee" stroke-width="6" stroke-linecap="round"/>
+  <circle cx="18" cy="45" r="6" fill="#34d399" stroke="#0f172a" stroke-width="3"/>
+  <circle cx="46" cy="19" r="6" fill="#a78bfa" stroke="#0f172a" stroke-width="3"/>
+</svg>

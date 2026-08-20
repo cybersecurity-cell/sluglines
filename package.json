@@ -1,33 +1,53 @@
 {
   "name": "sluglines",
   "version": "1.0.0",
-  "description": "HOV-3 carpool coordination app for Northern Virginia",
+  "description": "Source-labelled Northern Virginia slugging location and commuter information.",
   "private": true,
   "scripts": {
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "lint": "next lint"
+    "typecheck": "tsc --noEmit",
+    "lint": "eslint . --max-warnings=0",
+    "test": "vitest",
+    "test:run": "vitest run",
+    "test:node": "node --no-warnings --experimental-loader ./scripts/typescript-loader.mjs --test scripts/account-components.test.tsx scripts/account-domain.test.mjs scripts/advisory-domain.test.mjs scripts/advisory-repository.test.mjs scripts/auth-components.test.tsx scripts/auth-domain.test.mjs scripts/auth-service.test.mjs scripts/content-pages.test.tsx scripts/correction-component.test.tsx scripts/correction-domain.test.mjs scripts/location-domain.test.mjs scripts/location-repository.test.mjs scripts/public-components.test.tsx",
+    "test:a11y": "vitest run src/test/accessibility.test.tsx",
+    "test:e2e": "playwright test",
+    "test:secrets": "node scripts/verify-no-secrets.mjs",
+    "test:sql": "node scripts/verify-sql-policies.mjs",
+    "test:ci-tooling": "node scripts/verify-ci-tooling.mjs",
+    "audit:dependencies": "npm audit --omit=dev --audit-level=high",
+    "check": "npm run typecheck && npm run lint && npm run test:run && npm run test:node && npm run test:sql && npm run test:secrets && npm run test:ci-tooling"
   },
   "dependencies": {
-    "next": "14.2.0",
-    "react": "^18.3.0",
-    "react-dom": "^18.3.0",
-    "@supabase/supabase-js": "^2.43.0",
-    "@supabase/ssr": "^0.3.0",
-    "lucide-react": "^0.379.0",
-    "clsx": "^2.1.1",
-    "date-fns": "^3.6.0"
+    "@supabase/ssr": "^0.7.0",
+    "@supabase/supabase-js": "^2.57.4",
+    "next": "16.2.9",
+    "react": "19.2.7",
+    "react-dom": "19.2.7"
   },
   "devDependencies": {
-    "typescript": "^5.4.5",
-    "@types/node": "^20.12.12",
-    "@types/react": "^18.3.2",
-    "@types/react-dom": "^18.3.0",
-    "autoprefixer": "^10.4.19",
-    "postcss": "^8.4.38",
-    "tailwindcss": "^3.4.3",
-    "eslint": "^8.57.0",
-    "eslint-config-next": "14.2.0"
+    "@playwright/test": "1.61.0",
+    "@testing-library/jest-dom": "6.9.1",
+    "@testing-library/react": "16.3.2",
+    "@testing-library/user-event": "14.6.1",
+    "@types/node": "^22.18.6",
+    "@types/react": "^19.1.16",
+    "@types/react-dom": "^19.1.9",
+    "autoprefixer": "^10.4.21",
+    "axe-core": "^4.10.3",
+    "eslint": "9.39.4",
+    "eslint-config-next": "16.2.9",
+    "jsdom": "29.1.1",
+    "postcss": "8.5.15",
+    "tailwindcss": "^3.4.17",
+    "typescript": "5.9.3",
+    "vercel": "50.41.0",
+    "vitest": "4.1.9"
+  },
+  "overrides": {
+    "postcss": "8.5.15",
+    "ws": "8.21.0"
   }
 }

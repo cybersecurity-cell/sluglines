@@ -49,6 +49,7 @@ web_modules/
 
 # Optional npm cache directory
 .npm
+.npm-cache/
 
 # Optional eslint cache
 .eslintcache
@@ -140,3 +141,10 @@ dist
 # Vite logs files
 vite.config.js.timestamp-*
 vite.config.ts.timestamp-*
+.vercel
+.env*.local
+playwright-report/
+test-results/
+
+# Read-only research documents are local inputs, not publishable source files.
+Docs/*.docx

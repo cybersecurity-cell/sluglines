@@ -1,124 +1,74 @@
 import Link from 'next/link'
-import { Car, Users, MapPin, Clock, Shield, Smartphone, ArrowRight, Zap } from 'lucide-react'
+
+import { LocationSearch } from '@/components/LocationSearch'
+import { RouteHero } from '@/components/RouteHero'
+
+const steps = [
+  {
+    number: '01',
+    title: 'Choose a destination',
+    detail: 'Use the location directory to find a pickup area that lists your intended destination.',
+  },
+  {
+    number: '02',
+    title: 'Confirm the line',
+    detail: 'At the location, follow posted signs and confirm the destination with the driver before boarding.',
+  },
+  {
+    number: '03',
+    title: 'Travel thoughtfully',
+    detail: 'Use established etiquette, trust your judgment, and choose another trip whenever something feels wrong.',
+  },
+]
 
 export default function HomePage() {
   return (
-    <div>
-      {/* Hero */}
-      <section className="relative overflow-hidden min-h-[92vh] flex items-center">
-        <div className="orb w-[600px] h-[600px] -top-40 -right-32 opacity-20" style={{ background: 'radial-gradient(circle, #0ea5e9 0%, transparent 70%)' }}></div>
-        <div className="orb w-[400px] h-[400px] bottom-0 left-0 opacity-10" style={{ background: 'radial-gradient(circle, #f6ad55 0%, transparent 70%)' }}></div>
-        <div className="relative z-10 max-w-6xl mx-auto px-4 pt-20 pb-24 w-full">
-          <div className="max-w-3xl">
-            <div className="inline-flex items-center gap-2.5 mb-8 px-4 py-2 rounded-full text-sm font-medium border" style={{ background: 'rgba(16,185,129,0.08)', borderColor: 'rgba(16,185,129,0.2)', color: '#4ade80' }}>
-              <span className="live-dot"></span>
-              Riders &amp; drivers updating live right now
-            </div>
-            <h1 className="text-6xl md:text-7xl lg:text-8xl text-white mb-7 leading-none" style={{ fontFamily: 'Syne, sans-serif', fontWeight: 800, letterSpacing: '-0.03em' }}>
-              Skip the<br />
-              <span style={{ color: 'var(--accent)' }}>Traffic.</span>
-            </h1>
-            <p className="text-xl md:text-2xl mb-10 max-w-xl leading-relaxed" style={{ color: 'var(--muted)' }}>
-              Northern Virginia&apos;s HOV-3 carpool network. Find a driver or rider at your nearest slug line spot in seconds.
-            </p>
-            <div className="flex flex-col sm:flex-row gap-4">
-              <Link href="/dashboard" className="btn-primary text-base shadow-lg shadow-sky-500/25">
-                <Zap className="w-4 h-4" />
-                View Live Board
-                <ArrowRight className="w-4 h-4" />
-              </Link>
-              <Link href="/how-it-works" className="btn-secondary text-base">How It Works</Link>
-            </div>
-            <div className="flex flex-wrap gap-10 mt-16 pt-10 border-t" style={{ borderColor: 'var(--border)' }}>
-              {[
-                { value: '40+', label: 'Active spots' },
-                { value: '2,000+', label: 'Daily commuters' },
-                { value: '< 5 min', label: 'Average wait' },
-                { value: 'Free', label: 'Always' },
-              ].map((s) => (
-                <div key={s.label}>
-                  <div className="text-3xl font-bold text-white" style={{ fontFamily: 'Syne, sans-serif' }}>{s.value}</div>
-                  <div className="text-sm mt-0.5" style={{ color: 'var(--muted)' }}>{s.label}</div>
-                </div>
-              ))}
-            </div>
+    <>
+      <RouteHero />
+
+      <section aria-labelledby="find-heading" className="bg-slate-100">
+        <div className="mx-auto max-w-7xl px-5 py-14 sm:px-8">
+          <div className="max-w-2xl">
+            <p className="text-sm font-bold uppercase tracking-[0.16em] text-blue-700">Start with a route</p>
+            <h2 className="mt-2 text-3xl font-black tracking-tight text-slate-950" id="find-heading">Browse locations</h2>
+            <p className="mt-3 leading-7 text-slate-600">Search by pickup area, corridor, or common destination. Review the source and freshness label before relying on a listing.</p>
           </div>
+          <div className="mt-7"><LocationSearch /></div>
         </div>
       </section>
 
-      {/* Corridors */}
-      <div className="border-y py-4 overflow-hidden" style={{ borderColor: 'var(--border)', background: 'var(--surface)' }}>
-        <div className="flex items-center gap-12 px-4 max-w-6xl mx-auto text-sm" style={{ color: 'var(--muted)' }}>
-          {['I-95 Corridor', 'I-395 Corridor', 'I-66 Corridor', 'Pentagon', 'Crystal City', 'Rosslyn', 'Woodbridge', 'Dale City', 'Stafford', 'Herndon'].map((s) => (
-            <span key={s} className="shrink-0">{s}</span>
+      <section aria-labelledby="steps-heading" className="mx-auto max-w-7xl px-5 py-16 sm:px-8 md:py-24">
+        <div className="max-w-2xl">
+          <p className="text-sm font-bold uppercase tracking-[0.16em] text-blue-700">A quick orientation</p>
+          <h2 className="mt-2 text-3xl font-black tracking-tight text-slate-950 sm:text-4xl" id="steps-heading">How an informal carpool trip comes together</h2>
+          <p className="mt-4 leading-7 text-slate-600">Slugging is community-organized transportation, not a dispatched ride service. Conditions and line practices can change.</p>
+        </div>
+        <ol className="mt-10 grid gap-5 md:grid-cols-3">
+          {steps.map((step) => (
+            <li className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm" key={step.number}>
+              <span className="text-sm font-black tracking-widest text-blue-700">{step.number}</span>
+              <h3 className="mt-3 text-xl font-bold text-slate-950">{step.title}</h3>
+              <p className="mt-2 text-sm leading-6 text-slate-600">{step.detail}</p>
+            </li>
           ))}
-        </div>
-      </div>
-
-      {/* How It Works */}
-      <section className="py-28 max-w-6xl mx-auto px-4">
-        <div className="text-center mb-16">
-          <p className="section-label mb-3">The system</p>
-          <h2 className="text-4xl md:text-5xl text-white" style={{ fontFamily: 'Syne, sans-serif', fontWeight: 800, letterSpacing: '-0.02em' }}>What is Slugging?</h2>
-          <p className="mt-5 max-w-xl mx-auto text-lg" style={{ color: 'var(--muted)' }}>A time-honored commuter tradition where strangers share rides to use HOV-3 lanes.</p>
-        </div>
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-          {[
-            { step: '01', icon: <MapPin className="w-6 h-6" style={{ color: 'var(--accent)' }} />, title: 'Go to a Spot', desc: 'Head to any of the established slug line pickup locations across Northern Virginia.' },
-            { step: '02', icon: <Users className="w-6 h-6" style={{ color: 'var(--accent)' }} />, title: 'Match Up', desc: 'Drivers pick up 2 riders going to the same destination to qualify for HOV-3.' },
-            { step: '03', icon: <Car className="w-6 h-6" style={{ color: 'var(--accent)' }} />, title: 'Save Time', desc: 'Glide past gridlock in the express HOV-3 lane. No money exchanged. Ever.' },
-          ].map((s) => (
-            <div key={s.step} className="card card-hover relative overflow-hidden group">
-              <div className="absolute top-4 right-4 text-5xl font-bold opacity-5 group-hover:opacity-10 transition-opacity" style={{ fontFamily: 'Syne, sans-serif', color: 'var(--accent)' }}>{s.step}</div>
-              <div className="w-11 h-11 rounded-xl flex items-center justify-center mb-5" style={{ background: 'rgba(99,179,237,0.1)', border: '1px solid rgba(99,179,237,0.2)' }}>{s.icon}</div>
-              <h3 className="font-bold text-lg text-white mb-2" style={{ fontFamily: 'Syne, sans-serif' }}>{s.title}</h3>
-              <p className="text-sm leading-relaxed" style={{ color: 'var(--muted)' }}>{s.desc}</p>
-            </div>
-          ))}
-        </div>
+        </ol>
+        <Link className="mt-8 inline-flex font-bold text-blue-700 underline-offset-4 hover:underline" href="/how-it-works">Read the complete beginner&apos;s guide</Link>
       </section>
 
-      {/* Features */}
-      <section className="py-24 border-t" style={{ borderColor: 'var(--border)', background: 'var(--surface)' }}>
-        <div className="max-w-6xl mx-auto px-4">
-          <div className="text-center mb-16">
-            <p className="section-label mb-3">Why Sluglines</p>
-            <h2 className="text-4xl md:text-5xl text-white" style={{ fontFamily: 'Syne, sans-serif', fontWeight: 800, letterSpacing: '-0.02em' }}>Everything you need</h2>
+      <section className="bg-cyan-50">
+        <div className="mx-auto grid max-w-7xl gap-8 px-5 py-16 sm:px-8 md:grid-cols-2 md:items-center">
+          <div>
+            <p className="text-sm font-bold uppercase tracking-[0.16em] text-cyan-800">Useful, honest information</p>
+            <h2 className="mt-2 text-3xl font-black tracking-tight text-slate-950">See what is known—and what still needs review.</h2>
+            <p className="mt-4 leading-7 text-slate-700">Location details include provenance and review status. A “needs review” label is an invitation to confirm locally, not a promise that the line is operating.</p>
           </div>
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
-            {[
-              { icon: <Clock className="w-5 h-5" />, title: 'Real-Time Updates', desc: 'Live driver and rider counts at every spot, updated by real commuters in the field.' },
-              { icon: <MapPin className="w-5 h-5" />, title: 'All Major Spots', desc: 'Pentagon, Crystal City, Rosslyn, Woodbridge, Horner Rd, and 35+ more locations.' },
-              { icon: <Smartphone className="w-5 h-5" />, title: 'Mobile App', desc: 'iOS & Android. Check wait times from home before you head out.' },
-              { icon: <Shield className="w-5 h-5" />, title: 'Safe & Trusted', desc: 'Decades-long safety record. A time-honored Northern Virginia tradition.' },
-              { icon: <Users className="w-5 h-5" />, title: 'Community Driven', desc: 'Updates come from real commuters keeping each other informed.' },
-              { icon: <Car className="w-5 h-5" />, title: 'Always Free', desc: 'No fares exchanged. Drivers and riders both win with HOV-3 time savings.' },
-            ].map((f) => (
-              <div key={f.title} className="card card-hover">
-                <div className="w-9 h-9 rounded-lg flex items-center justify-center mb-4" style={{ background: 'rgba(99,179,237,0.08)', color: 'var(--accent)' }}>{f.icon}</div>
-                <h3 className="font-semibold text-white mb-2" style={{ fontFamily: 'Syne, sans-serif' }}>{f.title}</h3>
-                <p className="text-sm leading-relaxed" style={{ color: 'var(--muted)' }}>{f.desc}</p>
-              </div>
-            ))}
+          <div className="rounded-2xl border border-cyan-200 bg-white p-6">
+            <h3 className="font-bold text-slate-950">Help improve the directory</h3>
+            <p className="mt-2 text-sm leading-6 text-slate-600">If a pickup point, destination, or operating note has changed, send a correction for review.</p>
+            <Link className="mt-5 inline-flex min-h-11 items-center rounded-xl bg-slate-950 px-5 font-bold text-white hover:bg-slate-800" href="/report">Report a correction</Link>
           </div>
         </div>
       </section>
-
-      {/* CTA */}
-      <section className="py-28 max-w-6xl mx-auto px-4 text-center">
-        <p className="section-label mb-5">Ready?</p>
-        <h2 className="text-4xl md:text-5xl text-white mb-6" style={{ fontFamily: 'Syne, sans-serif', fontWeight: 800, letterSpacing: '-0.02em' }}>
-          Beat the Beltway<br />every single day.
-        </h2>
-        <p className="text-lg mb-10" style={{ color: 'var(--muted)' }}>Join thousands of Northern Virginia commuters who save time using HOV-3 slug lines.</p>
-        <div className="flex flex-col sm:flex-row gap-4 justify-center">
-          <Link href="/dashboard" className="btn-primary text-base shadow-xl shadow-sky-500/20">
-            <Zap className="w-4 h-4" />
-            View Live Board
-          </Link>
-          <Link href="/spots" className="btn-secondary text-base">Find Spots Near Me</Link>
-        </div>
-      </section>
-    </div>
+    </>
   )
 }
