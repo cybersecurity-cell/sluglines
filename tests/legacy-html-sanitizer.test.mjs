@@ -78,7 +78,6 @@ test('allows ordinary URL shapes', () => {
 test('drops iframes and form controls', () => {
   const out = normalizeContentHtml(
     '<iframe src="https://evil.test"></iframe><form action="/x"><input name="a"><button>go</button></form>',
-    '/x/',
   )
   for (const tag of ['<iframe', '<input', '<button', '<form']) {
     assert.equal(out.includes(tag), false, `leaked ${tag}`)
