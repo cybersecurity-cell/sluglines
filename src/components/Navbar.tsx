@@ -1,51 +1,117 @@
 'use client'
+
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
-import { Menu, X, ChevronDown } from 'lucide-react'
+import { ChevronDown, Menu, X } from 'lucide-react'
 import { useState } from 'react'
 import clsx from 'clsx'
-
-const navLinks = [
-  { href: '/', label: 'Home' },
-  { href: '/spots', label: 'Slug Pickup' },
-  { href: '/dashboard', label: 'Live Board' },
-  { href: '/app', label: 'App' },
-  { href: '/how-it-works', label: 'How It Works' },
-]
-
-const aboutLinks = [
-  { href: '/about-slugging', label: 'About Slugging' },
-  { href: '/about-us', label: 'About Us' },
-  { href: '/slugging-rules', label: 'Rules & Etiquette' },
-]
+import { ABOUT_NAV, PRIMARY_NAV } from '@/lib/site-content'
 
 export default function Navbar() {
   const pathname = usePathname()
   const [menuOpen, setMenuOpen] = useState(false)
   const [aboutOpen, setAboutOpen] = useState(false)
 
+  const isActive = (href: string) => pathname === href || (href !== '/' && pathname.startsWith(`${href}/`))
+
   return (
-    <nav
-      className="sticky top-0 z-50 border-b backdrop-blur-md"
-      style={{ background: 'rgba(8,13,23,0.85)', borderColor: 'var(--border)' }}
-    >
-      <div className="max-w-6xl mx-auto px-4 h-16 flex items-center justify-between">
-        <Link href="/" className="flex items-center">
-          <span className="font-bold text-2xl" style={{ fontFamily: 'Syne, sans-serif', letterSpacing: '-0.02em', color: '#7C5CBF' }}>Sluglines</span>
+    <nav className="sticky top-0 z-50 border-b border-slate-200 bg-white/95 backdrop-blur">
+      <div className="mx-auto flex h-16 max-w-6xl items-center justify-between px-4">
+        <Link href="/" className="flex items-center gap-2" onClick={() => setMenuOpen(false)}>
+          <span className="rounded-md bg-sky-700 px-2 py-1 text-sm font-extrabold text-white">SL</span>
+          <span className="text-xl font-extrabold tracking-tight text-slate-950">Sluglines</span>
         </Link>
-        <div className="hidden md:flex items-center gap-1">
-          {navLinks.map((link) => (
-            <Link key={link.href} href={link.href} className={clsx('px-3.5 py-2 rounded-lg text-sm font-medium transition-all duration-150', pathname===link.href?'text-white bg-white/10':'text-slate-400 hover:text-white hover:bg-white/6')}>{link.label}</Link>
+
+        <div className="hidden items-center gap-1 md:flex">
+          {PRIMARY_NAV.map((link) => (
+            <Link
+              key={link.href}
+              href={link.href}
+              className={clsx(
+                'rounded-md px-3 py-2 text-sm font-semibold transition-colors',
+                isActive(link.href)
+                  ? 'bg-sky-50 text-sky-800'
+                  : 'text-slate-600 hover:bg-slate-100 hover:text-slate-950'
+              )}
+            >
+              {link.label}
+            </Link>
           ))}
-          <div className="relative" onMouseEnter={()=>setAboutOpen(true)} onMouseLeave={()=>setAboutOpen(false)}>
-            <button className={clsx('flex items-center gap-1 px-3.5 py-2 rounded-lg text-sm font-medium transition-all', aboutLinks.some(l => l.href===pathname)?'text-white bg-white/10':'text-slate-400 hover:text-white hover:bg-white/6')}>About<ChevronDown className="w-3.5 h-3.5 opacity-60" /></button>
-            {aboutOpen && (<div className="absolute top-full left-0 mt-1 rounded-xl shadow-xl py-1 min-w-44 border z-50" style={{ background: 'var(--surface-2)', borderColor: 'var(--border)' }}>{aboutLinks.map(link => (<Link key={link.href} href={link.href} className="block px-4 py-2.5 text-sm text-slate-300 hover:text-white hover:bg-white/5 transition-colors">{link.label}</Link>))}</div>)}
+
+          <div className="relative" onMouseEnter={() => setAboutOpen(true)} onMouseLeave={() => setAboutOpen(false)}>
+            <button
+              className={clsx(
+                'flex items-center gap-1 rounded-md px-3 py-2 text-sm font-semibold transition-colors',
+                ABOUT_NAV.some((link) => isActive(link.href))
+                  ? 'bg-sky-50 text-sky-800'
+                  : 'text-slate-600 hover:bg-slate-100 hover:text-slate-950'
+              )}
+              type="button"
+            >
+              About
+              <ChevronDown className="h-3.5 w-3.5" />
+            </button>
+            {aboutOpen && (
+              <div className="absolute left-0 top-full z-50 mt-1 min-w-44 rounded-lg border border-slate-200 bg-white py-1 shadow-xl">
+                {ABOUT_NAV.map((link) => (
+                  <Link
+                    key={link.href}
+                    href={link.href}
+                    className="block px-4 py-2.5 text-sm font-medium text-slate-600 transition-colors hover:bg-slate-50 hover:text-slate-950"
+                  >
+                    {link.label}
+                  </Link>
+                ))}
+              </div>
+            )}
           </div>
-          <Link href="/dashboard" className="ml-2 flex items-center gap-1.5 bg-sky-500 hover:bg-sky-400 text-white text-sm font-semibold px-4 py-2 rounded-lg transition-all shadow-lg shadow-sky-500/20"><span className="live-dot"></span>Live Board</Link>
         </div>
-        <button className="md:hidden p-2 rounded-lg text-slate-400 hover:text-white hover:bg-white/6 transition-colors" onClick={()=>setMenuOpen(!menuOpen)}>{menuOpen?<X className="w-5 h-5" />:<Menu className="w-5 h-5" />}</button>
+
+        <button
+          className="rounded-md p-2 text-slate-600 transition-colors hover:bg-slate-100 hover:text-slate-950 md:hidden"
+          type="button"
+          aria-label="Toggle navigation"
+          onClick={() => setMenuOpen((open) => !open)}
+        >
+          {menuOpen ? <X className="h-5 w-5" /> : <Menu className="h-5 w-5" />}
+        </button>
       </div>
-      {menuOpen && (<div className="md:hidden border-t px-4 py-3 space-y-1" style={{ borderColor: 'var(--border)' }}>{navLinks.map(link => (<Link href={link.href} key={link.href} onClick={()=>setMenuOpen(false)} className={clsx('block px-4 py-2.5 rounded-lg text-sm font-medium transition-colors', pathname===link.href?'text-white bg-white/10':'text-slate-400 hover:text-white hover:bg-white/6')}>{link.label}</Link>))}<div className="pt-2 border-t" style={{ borderColor: 'var(--border)' }}><div className="px-4 py-2 text-xs font-semibold text-slate-500 uppercase tracking-wider">About</div>{aboutLinks.map(link => (<Link key={link.href} href={link.href} onClick={()=>setMenuOpen(false)} className="block px-4 py-2.5 rounded-lg text-sm font-medium text-slate-400 hover:text-white hover:bg-white/6 transition-colors">{link.label}</Link>))}</div></div>)}
+
+      {menuOpen && (
+        <div className="border-t border-slate-200 bg-white px-4 py-3 md:hidden">
+          <div className="space-y-1">
+            {PRIMARY_NAV.map((link) => (
+              <Link
+                key={link.href}
+                href={link.href}
+                onClick={() => setMenuOpen(false)}
+                className={clsx(
+                  'block rounded-md px-4 py-2.5 text-sm font-semibold transition-colors',
+                  isActive(link.href)
+                    ? 'bg-sky-50 text-sky-800'
+                    : 'text-slate-600 hover:bg-slate-100 hover:text-slate-950'
+                )}
+              >
+                {link.label}
+              </Link>
+            ))}
+          </div>
+
+          <div className="mt-3 border-t border-slate-200 pt-3">
+            <div className="px-4 py-2 text-xs font-bold uppercase tracking-wide text-slate-400">About</div>
+            {ABOUT_NAV.map((link) => (
+              <Link
+                key={link.href}
+                href={link.href}
+                onClick={() => setMenuOpen(false)}
+                className="block rounded-md px-4 py-2.5 text-sm font-semibold text-slate-600 transition-colors hover:bg-slate-100 hover:text-slate-950"
+              >
+                {link.label}
+              </Link>
+            ))}
+          </div>
+        </div>
+      )}
     </nav>
   )
 }
