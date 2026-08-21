@@ -15,7 +15,7 @@ import {
 // in LegacyContentPage.tsx, so every case below is a real sink, not a style test.
 
 test('drops script elements and their contents', () => {
-  const out = normalizeContentHtml('<p>ok</p><script>alert(1)</script>', '/x/')
+  const out = normalizeContentHtml('<p>ok</p><script>alert(1)</script>')
   assert.equal(out.includes('alert(1)'), false)
   assert.equal(out.includes('<script'), false)
   assert.equal(out.includes('ok'), true)
@@ -24,7 +24,7 @@ test('drops script elements and their contents', () => {
 test('survives the nested-tag bypass that defeats a single-pass stripper', () => {
   // A regex doing .replace(/<script.*?<\/script>/gi,'') removes the inner pair
   // and rejoins the outer halves into a working <script> tag.
-  const out = normalizeContentHtml('<scr<script>ipt>alert(1)</scr</script>ipt>', '/x/')
+  const out = normalizeContentHtml('<scr<script>ipt>alert(1)</scr</script>ipt>')
   // What matters is that no element survives, not that the characters are gone:
   // leftover payload text renders as visible prose and cannot execute. Here the
   // result is "ipt&gt;alert(1)ipt&gt;" — every '<' is destroyed or escaped.
@@ -33,14 +33,14 @@ test('survives the nested-tag bypass that defeats a single-pass stripper', () =>
 })
 
 test('drops event handler attributes without enumerating their names', () => {
-  const out = normalizeContentHtml('<p onclick="alert(1)" ONMOUSEOVER=x onfocusin="y">hi</p>', '/x/')
+  const out = normalizeContentHtml('<p onclick="alert(1)" ONMOUSEOVER=x onfocusin="y">hi</p>')
   assert.equal(/on[a-z]+=/i.test(out), false)
   assert.equal(out.includes('hi'), true)
 })
 
 test('drops an unquoted event handler', () => {
   // The old rule required quotes: /\s(on\w+)=["'][^"']*["']/
-  const out = normalizeContentHtml('<img src="/a.png" onerror=alert(1)>', '/x/')
+  const out = normalizeContentHtml('<img src="/a.png" onerror=alert(1)>')
   assert.equal(/onerror/i.test(out), false)
 })
 
@@ -51,7 +51,7 @@ test('rejects javascript: hrefs, including entity-encoded ones', () => {
     '&#106;avascript:alert(1)',
     '&#x6a;avascript:alert(1)',
   ]) {
-    const out = normalizeContentHtml(`<a href="${href}">x</a>`, '/x/')
+    const out = normalizeContentHtml(`<a href="${href}">x</a>`)
     assert.equal(/javascript:/i.test(out), false, `leaked: ${href}`)
   }
 })
@@ -86,24 +86,24 @@ test('drops iframes and form controls', () => {
 })
 
 test('unwraps an unknown element but keeps its text', () => {
-  const out = normalizeContentHtml('<form><p>keep this sentence</p></form>', '/x/')
+  const out = normalizeContentHtml('<form><p>keep this sentence</p></form>')
   assert.equal(out.includes('keep this sentence'), true)
   assert.equal(out.includes('<form'), false)
 })
 
 test('strips style attributes and non-allowed classes', () => {
-  const out = normalizeContentHtml('<p style="x:y" class="alignleft evil-class">t</p>', '/x/')
+  const out = normalizeContentHtml('<p style="x:y" class="alignleft evil-class">t</p>')
   assert.equal(out.includes('style='), false)
   assert.equal(out.includes('alignleft'), true)
   assert.equal(out.includes('evil-class'), false)
 })
 
 test('rewrites legacy absolute URLs to relative, but only for the real host', () => {
-  const internal = normalizeContentHtml('<a href="https://sluglines.com/spots/">a</a>', '/x/')
+  const internal = normalizeContentHtml('<a href="https://sluglines.com/spots/">a</a>')
   assert.equal(internal.includes('href="/spots/"'), true)
 
   // The prefix-match bug: this is a different site.
-  const lookalike = normalizeContentHtml('<a href="https://sluglines.com.example.net/p/">a</a>', '/x/')
+  const lookalike = normalizeContentHtml('<a href="https://sluglines.com.example.net/p/">a</a>')
   assert.equal(lookalike.includes('href="https://sluglines.com.example.net/p/"'), true)
 })
 
@@ -114,12 +114,12 @@ test('normalizeHref does not treat a lookalike host as internal', () => {
 })
 
 test('adds rel=noopener when a link targets a new window', () => {
-  const out = normalizeContentHtml('<a href="https://example.com" target="_blank">x</a>', '/x/')
+  const out = normalizeContentHtml('<a href="https://example.com" target="_blank">x</a>')
   assert.equal(out.includes('noopener'), true)
 })
 
 test('escapes text so it cannot re-enter as markup', () => {
-  const out = normalizeContentHtml('<p>5 &lt; 6 &amp; 7 &gt; 2</p>', '/x/')
+  const out = normalizeContentHtml('<p>5 &lt; 6 &amp; 7 &gt; 2</p>')
   assert.equal(out.includes('&lt;'), true)
   assert.equal(/<(?!\/?p\b)/.test(out), false)
 })
@@ -134,8 +134,8 @@ test('stripHtml ignores script and style text', () => {
 })
 
 test('img without a usable src is dropped, and lazy loading is added', () => {
-  assert.equal(normalizeContentHtml('<img src="javascript:alert(1)">', '/x/').includes('<img'), false)
-  assert.equal(normalizeContentHtml('<img src="/a.png">', '/x/').includes('loading="lazy"'), true)
+  assert.equal(normalizeContentHtml('<img src="javascript:alert(1)">').includes('<img'), false)
+  assert.equal(normalizeContentHtml('<img src="/a.png">').includes('loading="lazy"'), true)
 })
 
 test('sanitizing away every element yields empty output, not a placeholder', () => {
