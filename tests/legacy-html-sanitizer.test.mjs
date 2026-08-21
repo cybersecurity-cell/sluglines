@@ -1,11 +1,14 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
 import {
-  normalizeContentHtml,
-  stripHtml,
-  normalizeHref,
+  sanitizeLegacyHtml as normalizeContentHtml,
+  legacyHtmlToText as stripHtml,
   safeUrl,
+} from '../src/lib/legacy-html.ts'
+import {
+  normalizeHref,
   escapePipe,
+  normalizeContentHtml as migrateContentHtml,
 } from '../scripts/migrate-sluglines-content.mjs'
 
 // The output of normalizeContentHtml is rendered through dangerouslySetInnerHTML
@@ -135,8 +138,13 @@ test('img without a usable src is dropped, and lazy loading is added', () => {
   assert.equal(normalizeContentHtml('<img src="/a.png">', '/x/').includes('loading="lazy"'), true)
 })
 
-test('empty content falls back to a placeholder with the path escaped', () => {
-  const out = normalizeContentHtml('<script>x</script>', '/a"b/')
+test('sanitizing away every element yields empty output, not a placeholder', () => {
+  // The library sanitizes; choosing a fallback is the caller's decision.
+  assert.equal(normalizeContentHtml('<script>x</script>'), '')
+})
+
+test('the migration script supplies a placeholder, with the path escaped', () => {
+  const out = migrateContentHtml('<script>x</script>', '/a"b/')
   assert.equal(out.includes('&quot;'), true)
   assert.equal(out.includes('<script'), false)
 })

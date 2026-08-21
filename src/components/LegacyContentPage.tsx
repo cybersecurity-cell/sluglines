@@ -2,6 +2,7 @@ import Link from 'next/link'
 import CommunityLinksCard from '@/components/CommunityLinksCard'
 import type { LegacyRoute } from '@/lib/legacy-content'
 import { findSpotBySlug } from '@/lib/spot-directory'
+import { sanitizeLegacyHtml } from '@/lib/legacy-html'
 
 interface LegacyContentPageProps {
   page: LegacyRoute
@@ -12,6 +13,10 @@ export default function LegacyContentPage({ page }: LegacyContentPageProps) {
     .filter((cta) => cta.href.startsWith('/') && cta.href !== page.path && !cta.href.startsWith('/forum'))
     .slice(0, 4)
   const legacySpot = findLegacySpot(page.path)
+  // Sanitized at the sink, not trusted from the data file: legacy-site-content.json
+  // is a committed artifact generated before the sanitizer existed, and
+  // legacy-content.ts synthesizes contentHtml for index pages at runtime.
+  const safeContentHtml = sanitizeLegacyHtml(page.contentHtml)
 
   return (
     <div className="bg-white text-slate-950">
@@ -47,7 +52,7 @@ export default function LegacyContentPage({ page }: LegacyContentPageProps) {
       <section className="mx-auto grid max-w-6xl grid-cols-1 gap-8 px-4 py-10 lg:grid-cols-[minmax(0,1fr)_18rem]">
         <article
           className="legacy-content min-w-0 rounded-lg border border-slate-200 bg-white p-5 shadow-sm md:p-8"
-          dangerouslySetInnerHTML={{ __html: page.contentHtml }}
+          dangerouslySetInnerHTML={{ __html: safeContentHtml }}
         />
 
         <aside className="space-y-4">

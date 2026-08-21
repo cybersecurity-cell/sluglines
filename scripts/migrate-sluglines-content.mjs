@@ -1,7 +1,7 @@
 import { mkdir, writeFile } from 'node:fs/promises'
 import { dirname, join } from 'node:path'
 import { fileURLToPath, pathToFileURL } from 'node:url'
-import { parseFragment, serialize } from 'parse5'
+import { sanitizeLegacyHtml, legacyHtmlToText, safeUrl } from '../src/lib/legacy-html.ts'
 
 const SITE_ORIGIN = 'https://sluglines.com'
 const REPO_ROOT = dirname(dirname(fileURLToPath(import.meta.url)))
@@ -250,175 +250,14 @@ function extractRenderedContent(html, path) {
   return `${pageTitle}${main}` || html
 }
 
-// Elements whose *contents* are not markup and must never survive. Unwrapping
-// these would paste raw JS or CSS into the document as text.
-const DROP_SUBTREE = new Set([
-  'script', 'style', 'svg', 'math', 'noscript', 'template', 'iframe', 'object',
-  'embed', 'applet', 'frame', 'frameset', 'canvas', 'audio', 'video', 'source',
-  'track', 'map', 'area', 'link', 'meta', 'base', 'title', 'input', 'textarea',
-  'select', 'option', 'optgroup', 'button', 'output', 'progress', 'meter', 'dialog',
-])
-
-// Everything renderable in an archived content page. Anything absent is unwrapped
-// (children kept, element discarded) rather than dropped, so prose inside an
-// unrecognised wrapper — a <form>, a web-component — is never silently lost.
-const ALLOWED_TAGS = new Set([
-  'p', 'div', 'span', 'section', 'article', 'header', 'footer', 'main', 'aside',
-  'br', 'hr', 'h1', 'h2', 'h3', 'h4', 'h5', 'h6',
-  'strong', 'b', 'em', 'i', 'u', 's', 'strike', 'small', 'sub', 'sup', 'code',
-  'pre', 'blockquote', 'q', 'cite', 'abbr', 'mark', 'time', 'address',
-  'ul', 'ol', 'li', 'dl', 'dt', 'dd',
-  'table', 'thead', 'tbody', 'tfoot', 'tr', 'th', 'td', 'caption', 'colgroup', 'col',
-  'a', 'img', 'figure', 'figcaption',
-])
-
-// Per-tag attribute allow-list. Anything not named here is dropped, which is how
-// every on* handler dies without a regex having to anticipate its name.
-const ALLOWED_ATTRS = {
-  a: new Set(['href', 'title', 'name', 'rel', 'target']),
-  img: new Set(['src', 'alt', 'title', 'width', 'height', 'loading']),
-  td: new Set(['colspan', 'rowspan', 'headers', 'scope']),
-  th: new Set(['colspan', 'rowspan', 'headers', 'scope']),
-  col: new Set(['span']),
-  colgroup: new Set(['span']),
-  time: new Set(['datetime']),
-}
-const GLOBAL_ATTRS = new Set(['class', 'id', 'lang', 'dir'])
-const KEEP_CLASSES = ['alignright', 'alignleft', 'aligncenter', 'wp-caption', 'section-heading']
-const SAFE_SCHEMES = new Set(['http', 'https', 'mailto', 'tel'])
-
-// Browsers ignore C0 controls, space and DEL inside a URL, so a tab or newline
-// spliced into a scheme name still navigates. The scheme has to be read from a
-// string with those removed, not from the raw attribute value.
-function stripControlChars(value) {
-  return String(value)
-    .split('')
-    .filter((char) => {
-      const code = char.charCodeAt(0)
-      return code > 32 && code !== 127
-    })
-    .join('')
-}
-
-// Scheme allow-list, not a "javascript:" denylist: an allow-list does not have to
-// enumerate the encodings of the thing it is refusing.
-function safeUrl(raw) {
-  const value = String(raw ?? '').trim()
-  if (!value) return null
-  const probe = stripControlChars(value).toLowerCase()
-  const scheme = /^([a-z][a-z0-9+.-]*):/.exec(probe)
-  if (scheme) return SAFE_SCHEMES.has(scheme[1]) ? value : null
-  if (probe.startsWith('//')) return null // protocol-relative: an off-site host
-  return value // in-page anchor or site-relative path
-}
-
-// Absolute links back to the legacy origin become relative. Compares the parsed
-// hostname exactly — a `startsWith('https://sluglines.com')` test also accepts
-// `https://sluglines.com.example.net/`, which is a different site.
-function internalizeUrl(value) {
-  let url
-  try {
-    url = new URL(value, SITE_ORIGIN)
-  } catch {
-    return value
-  }
-  if (url.hostname !== 'sluglines.com' && url.hostname !== 'www.sluglines.com') return value
-  if (url.pathname.startsWith('/wp-content') || url.pathname.startsWith('/images')) return value
-  return `${url.pathname}${url.search}${url.hash}` || '/'
-}
-
-function filterAttrs(tagName, attrs) {
-  const permitted = ALLOWED_ATTRS[tagName]
-  const out = []
-  for (const attr of attrs) {
-    const name = attr.name.toLowerCase()
-    if (!GLOBAL_ATTRS.has(name) && !permitted?.has(name)) continue
-
-    if (name === 'class') {
-      const kept = KEEP_CLASSES.filter((className) => attr.value.split(/\s+/).includes(className))
-      if (kept.length) out.push({ name: 'class', value: kept.join(' ') })
-      continue
-    }
-    if (name === 'id') {
-      // Kept for in-page anchors, but constrained: an arbitrary id in a
-      // dangerouslySetInnerHTML subtree is a DOM-clobbering primitive.
-      if (/^[A-Za-z][\w-]*$/.test(attr.value)) out.push({ name: 'id', value: attr.value })
-      continue
-    }
-    if (name === 'href' || name === 'src') {
-      const safe = safeUrl(attr.value)
-      if (safe === null) continue
-      out.push({ name, value: internalizeUrl(safe) })
-      continue
-    }
-    if (name === 'target') {
-      out.push({ name: 'target', value: attr.value })
-      continue
-    }
-    out.push({ name, value: attr.value })
-  }
-  return out
-}
-
-function isViewCounterNoise(tagName, attrs) {
-  const id = attrs.find((a) => a.name.toLowerCase() === 'id')?.value ?? ''
-  const cls = attrs.find((a) => a.name.toLowerCase() === 'class')?.value ?? ''
-  if (tagName === 'p' && id.startsWith('pvc_stats_')) return true
-  if (tagName === 'div' && cls.split(/\s+/).includes('pvc_clear')) return true
-  return false
-}
-
-function sanitizeNodes(nodes) {
-  const out = []
-  for (const node of nodes) {
-    if (node.nodeName === '#text') {
-      out.push({ nodeName: '#text', value: node.value })
-      continue
-    }
-    if (node.nodeName === '#comment' || node.nodeName === '#documentType') continue
-
-    const tagName = node.tagName?.toLowerCase()
-    if (!tagName) continue
-    if (DROP_SUBTREE.has(tagName)) continue
-
-    const attrs = node.attrs ?? []
-    if (isViewCounterNoise(tagName, attrs)) continue
-
-    const children = sanitizeNodes(node.childNodes ?? [])
-    if (!ALLOWED_TAGS.has(tagName)) {
-      out.push(...children) // unwrap: keep the prose, discard the element
-      continue
-    }
-
-    const kept = filterAttrs(tagName, attrs)
-    if (tagName === 'img') {
-      if (!kept.some((a) => a.name === 'src')) continue // an img with no safe src is nothing
-      if (!kept.some((a) => a.name === 'loading')) kept.push({ name: 'loading', value: 'lazy' })
-    }
-    if (tagName === 'a' && kept.some((a) => a.name === 'target' && a.value === '_blank')) {
-      const rel = kept.find((a) => a.name === 'rel')
-      if (rel) rel.value = 'noopener noreferrer'
-      else kept.push({ name: 'rel', value: 'noopener noreferrer' })
-    }
-
-    out.push({ nodeName: tagName, tagName, attrs: kept, childNodes: children })
-  }
-  return out
-}
-
+// Sanitization policy lives in src/lib/legacy-html.ts and is imported rather than
+// duplicated here. The same allow-list has to run at migration time and at render
+// time (LegacyContentPage), and two copies of a security policy drift.
 function normalizeContentHtml(html, path) {
-  // Parsed with a spec-compliant parser and rebuilt from an allow-list, rather
-  // than pattern-matching unwanted tags out of a string. A regex stripper has to
-  // anticipate every encoding of every construct it means to remove; this only
-  // has to recognise what it means to keep. parse5 also decodes entities, so
-  // `&#106;avascript:` reaches safeUrl() already decoded.
-  const sanitized = serialize({ childNodes: sanitizeNodes(parseFragment(String(html ?? '')).childNodes) })
-  const content = sanitized.replace(/\n{3,}/g, '\n\n').trim()
-
+  const content = sanitizeLegacyHtml(html)
   if (!content) {
     return `<p>Content migrated from ${escapeHtml(path)}.</p>`
   }
-
   return content
 }
 
@@ -512,28 +351,8 @@ function ensureTrailingSlash(path) {
   return path.endsWith('/') ? path : `${path}/`
 }
 
-// Text extraction via the parser rather than /<[^>]+>/g, which ends a tag at the
-// first '>' and so leaks attribute contents into the output: `<a title="a>b">`
-// left a stray `b">` in what was supposed to be plain text.
 function stripHtml(html = '') {
-  if (!html) return ''
-  const parts = []
-  const walk = (nodes) => {
-    for (const node of nodes) {
-      if (node.nodeName === '#text') {
-        parts.push(node.value)
-      } else if (node.nodeName === '#comment') {
-        continue
-      } else if (DROP_SUBTREE.has(node.tagName?.toLowerCase())) {
-        continue
-      } else if (node.childNodes) {
-        walk(node.childNodes)
-      }
-    }
-  }
-  walk(parseFragment(String(html)).childNodes)
-  // parse5 has already resolved entities, so no decodeHtml pass is needed here.
-  return parts.join(' ').replace(/\s+/g, ' ').trim()
+  return legacyHtmlToText(html)
 }
 
 function decodeHtml(value = '') {
