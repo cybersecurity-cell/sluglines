@@ -37,6 +37,11 @@ const SPECIFIER = /(?:\bfrom\s*|\bimport\s*\(\s*)['"]([^'"]+)['"]/g
 
 const ALLOWED_ABSOLUTE = ['@/lib/supabase', 'node:']
 
+// Escapes every regex metacharacter, backslash included. The previous inline
+// .replace(/[/@]/g, ...) covered two characters that are not metacharacters and
+// missed the ones that are.
+const escapeRegExp = (value) => value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+
 for (const file of files) {
   const rel = path.relative(root, file).replace(/\\/g, '/')
   const source = fs.readFileSync(file, 'utf8')
@@ -71,7 +76,7 @@ for (const file of files) {
   // only "not on the allowlist".
   for (const forbidden of ['react', 'react-dom', 'next', 'lib/ai', '@/lib/ai', 'lucide-react']) {
     assert.equal(
-      new RegExp(`(?:from|import\\()\\s*['"]${forbidden.replace(/[/@]/g, '\\$&')}(?:/[^'"]*)?['"]`).test(source),
+      new RegExp(`(?:from|import\\()\\s*['"]${escapeRegExp(forbidden)}(?:/[^'"]*)?['"]`).test(source),
       false,
       `${rel}: lib/domain must never import "${forbidden}" (rev. 5.3 §8 dependency rule)`
     )

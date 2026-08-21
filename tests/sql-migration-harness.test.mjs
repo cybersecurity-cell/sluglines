@@ -96,7 +96,6 @@ assert.deepEqual(
 // rather than only via the rule engine
 // -----------------------------------------------------------------------------
 const statements = migrations.flatMap((m) => m.statements)
-const tables = statements.filter((s) => s.kind === 'create_table').map((s) => s.table)
 const functions = statements.filter((s) => s.kind === 'create_function').map((s) => s.fn)
 
 const tablesIn = (file) =>

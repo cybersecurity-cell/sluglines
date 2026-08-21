@@ -28,6 +28,7 @@
 import { strict as assert } from 'node:assert'
 import fs from 'node:fs'
 import path from 'node:path'
+import { randomUUID } from 'node:crypto'
 import { createClient } from '@supabase/supabase-js'
 import { TRANSITION_ERRCODES } from '../src/lib/domain/index.ts'
 
@@ -66,7 +67,20 @@ if (!SUPABASE_URL || !ANON_KEY || !SERVICE_KEY) {
 
 // The guard. A preview branch has its own project ref; the parent ref is
 // production and is never a legal target for this file.
-const targetRef = new URL(SUPABASE_URL).hostname.split('.')[0]
+// The URL and keys come from a gitignored local file. Pin the shape of the URL
+// before the service-role key is ever sent to it: without this, editing
+// .env.preview.local is enough to point an admin-privileged request — carrying
+// that key — at an arbitrary host. The production-ref check below stops the
+// right-host/wrong-project mistake; this stops the wrong-host one.
+const supabaseUrl = new URL(SUPABASE_URL)
+assert.equal(supabaseUrl.protocol, 'https:', `SUPABASE_URL must be https, got ${supabaseUrl.protocol}`)
+assert.match(
+  supabaseUrl.hostname,
+  /^[a-z0-9]{20}\.supabase\.co$/,
+  `SUPABASE_URL must be a supabase.co project host, got ${supabaseUrl.hostname}`
+)
+
+const targetRef = supabaseUrl.hostname.split('.')[0]
 assert.notEqual(
   targetRef,
   PRODUCTION_REF,
@@ -124,7 +138,9 @@ const adminHeaders = {
   'Content-Type': 'application/json',
 }
 
-const stamp = `${Date.now().toString(36)}${Math.floor(Math.random() * 1e6).toString(36)}`
+// randomUUID rather than Math.random: this seeds the password of a real (if
+// short-lived) Supabase account, and Math.random is predictable from prior outputs.
+const stamp = `${Date.now().toString(36)}${randomUUID().replace(/-/g, '').slice(0, 12)}`
 const createdUserIds = []
 
 async function createUser(tag) {

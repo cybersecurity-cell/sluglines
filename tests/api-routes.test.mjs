@@ -289,10 +289,13 @@ for (const route of DEFERRED_ROUTES) {
   const source = routeSource(route)
   const requestPath = `/api/${route}`
 
-  assert.match(
-    source,
-    new RegExp(`export const POST = deferredRoute\\('${requestPath.replace(/\//g, '\\/')}'\\)`),
-    `${route}: must be wired to the deferred-route factory`
+  // Exact substring rather than a constructed RegExp. The escaping here was
+  // partial — it escaped "/" but not "\\" — and an exact match is what this
+  // assertion actually means.
+  const expectedWiring = `export const POST = deferredRoute('${requestPath}')`
+  assert.ok(
+    source.includes(expectedWiring),
+    `${route}: must be wired to the deferred-route factory — expected ${expectedWiring}`
   )
 
   const endpoint = deferredEndpoint(requestPath)
