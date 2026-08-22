@@ -2779,3 +2779,83 @@ repository's own code and already in the diff.
 one pin to `actions/checkout@v4` failed the suite with the expected message, and restoring it passed.
 
 **Status:** DONE. All three bullets closed.
+
+---
+
+## D-50 — Two Supabase projects, not one. Docs corrected; retirement stays the owner's. **#43**
+
+**Date:** 2026-08-22
+
+### The correction
+
+`Docs/consolidated-architecture.md` §3.4 and `Docs/2026-08-20-adr-sluglines-is-the-host-repo.md`
+both asserted *"there is exactly one Sluglines Supabase project"*. That is false and both are now
+corrected in place, with the original claim struck rather than deleted so the record shows what was
+believed and when.
+
+| | `sluglines` | `sluglines-AI` |
+|---|---|---|
+| ref | `bwpguotjzczmieeepczf` | `kejglwcmzudpehddqkhh` |
+| organization | `ydegktkqxhabaprtofie` | **`xcpawiqzzjvuzhmzuooo`** |
+| status | ACTIVE_HEALTHY | ACTIVE_HEALTHY |
+| public tables | 3 legacy, 0 rows → now `0001`–`0008` | 26, several with data |
+
+**The ADR's conclusion is unaffected.** D-34 stands: the lineage decision rests on which schema this
+repository builds on, not on how many databases happen to exist, and `kejglwcmzudpehddqkhh` was never
+a candidate host.
+
+### Two things established on 2026-08-22, both read-only
+
+**1. The second project is not reachable from this session, and that is the same reason it was missed
+before.** `list_organizations` returns exactly one organization — `ydegktkqxhabaprtofie` — and
+`list_projects` returns its six projects. `kejglwcmzudpehddqkhh` is in `xcpawiqzzjvuzhmzuooo` and does
+not appear.
+
+This is worth recording as more than an inconvenience: #43 hypothesised that "a project list scoped to
+one org would not show it", and that is now confirmed to be **still true of the credentials in use
+today**. Any future audit run with this scope will miss it again. Finding it required credentials
+this session does not have.
+
+### 2. Something does still point at it — #43's third bullet, answered
+
+A **live Vercel project `sluglines-ai`** (`prj_cFMKLGo3cVNzolzyjH0oYv6eFFYy`) exists on the same team,
+linked to GitHub `cybersecurity-cell/Sluglines-AI`. D-2's U1 check had already found
+`https://sluglines-ai.vercel.app/` answering HTTP 307.
+
+So the answer to "check whether anything still points at it before pausing or deleting" is **yes,
+probably**: there is a deployed application whose repository is the one whose schema that database
+carries. Pausing or deleting `kejglwcmzudpehddqkhh` without first dealing with that deployment would
+break a live thing, and the breakage would surface as a 500 on a hostname nobody is watching.
+
+Its environment variables were **not** read: D-5 authorises only the `sluglines` Vercel project, and
+that is unchanged.
+
+### What is deliberately NOT done
+
+**No pause, no delete, no write.** #43 says so itself — "outside the authorisation for this milestone
+and needs its own decision" — and nothing since has changed that. Beyond authorisation, it is not
+possible from here: the organization holding the project is not in these credentials.
+
+That leaves bullets 2 and 4 open by design, and they are genuinely decisions rather than tasks:
+
+- **Retire or keep.** It is the "second project" half of the question D-7 closed by choosing preview
+  branches, so on the current architecture it is surplus. It is also ACTIVE_HEALTHY and therefore
+  probably billable, unwatched since 2026-07-29.
+- **The data first.** 69 locations, 3 members, 5 audit events, and single rows across moderation,
+  lost-and-found, incidents and recurring templates. Small, but real, and `members` means it is not
+  merely test fixtures. Whether any of it is worth extracting is a judgement about that content, not
+  something to infer from row counts.
+
+**To act on it**, someone needs: credentials for organization `xcpawiqzzjvuzhmzuooo`, a decision on
+the `sluglines-ai` Vercel deployment, and an explicit authorisation of the destructive step — in that
+order.
+
+### One thing it unblocks
+
+`ai_kill_switches` has 7 rows there. #3 — the kill switches failing open — is a defect that can be
+checked against *real* rows on that project rather than reasoned about from the seed script. That
+does not require write access, only read, and it is the cheapest available confirmation of #3's
+premise. Noted for whoever gets those credentials; #3 is fixed in code regardless.
+
+**Status:** Bullet 1 DONE (both documents corrected). Bullet 3 ANSWERED (a live Vercel project points
+at it). Bullets 2 and 4 OPEN and owner-gated, with the prerequisites named.

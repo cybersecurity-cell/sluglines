@@ -28,7 +28,7 @@ Rev. 5.3 §5 resolved this by adopting `Sluglines-AI` as the canonical applicati
 
 Two facts discovered during the 2026-08-20 review make the reversal cheap, and both contradict rev. 5.3:
 
-1. **There is exactly one Sluglines Supabase project** (`bwpguotjzczmieeepczf`). No separate `Sluglines-AI` project exists.
+1. ~~**There is exactly one Sluglines Supabase project** (`bwpguotjzczmieeepczf`). No separate `Sluglines-AI` project exists.~~ **FALSE — corrected 2026-08-22 (D-50, issue #43).** There are two. `sluglines-AI` (`kejglwcmzudpehddqkhh`) is live, ACTIVE_HEALTHY, and holds the full 26-table `Sluglines-AI` schema with data. It sits in a **different organization** (`xcpawiqzzjvuzhmzuooo`, not `ydegktkqxhabaprtofie`), which is why a project list scoped to one organization — as this review's was — did not show it. **The ADR's conclusion is unaffected:** the lineage decision rests on which schema this repository builds on, not on how many databases exist, and `kejglwcmzudpehddqkhh` was never a candidate host. See D-50.
 2. **It holds no data.** Three tables (`spot_status`, `profiles`, `commute_log`), all zero rows. Its migration history has two entries, both from July: `create_sluglines_ai_schema` and `drop_stray_sluglines_ai_schema`. Neither `Sluglines-AI`'s 24 migrations nor `codex/phase-3-4`'s six were ever applied.
 
 Consequently §3.4's description of `Sluglines-AI` as carrying a live-database RLS suite cannot refer to this project. §2 listed that claim as UNVERIFIED pending Phase 0; it is now verified and false as written.
