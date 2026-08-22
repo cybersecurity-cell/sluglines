@@ -5,7 +5,7 @@
   "private": true,
   "scripts": {
     "dev": "next dev",
-    "test": "powershell -NoProfile -ExecutionPolicy Bypass -Command \"Get-ChildItem tests -Filter *.test.mjs | ForEach-Object { node --experimental-strip-types $_.FullName; if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE } }\"",
+    "test": "node scripts/run-tests.mjs",
     "build": "next build",
     "start": "next start",
     "lint": "next lint",

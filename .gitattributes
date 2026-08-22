@@ -1,0 +1,17 @@
+# Normalise to LF in the index and in every working tree.
+#
+# tests/spot-locations-directory.test.mjs compares supabase/migrations/0004 to the
+# output of scripts/seed-locations.mjs byte-for-byte. Without this file, a checkout
+# under core.autocrlf=true rewrites the .sql to CRLF while the generator emits LF,
+# so that gate fails on Windows for a reason that has nothing to do with the SQL.
+* text=auto eol=lf
+
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.gif binary
+*.webp binary
+*.avif binary
+*.ico binary
+*.woff binary
+*.woff2 binary
