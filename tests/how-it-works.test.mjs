@@ -29,8 +29,12 @@ assert.equal(pageSource.includes('Â'), false)
 // Found by tests/e2e/console.spec.ts on its first run (#35) — three
 // ERR_TUNNEL_CONNECTION_FAILED entries. The assertion is now the other way
 // round, and covers the whole host rather than three known paths.
+// A plain substring, not a regex. An unanchored host pattern is a real smell when
+// it validates a URL — CodeQL flags exactly that — and here a regex bought
+// nothing over `includes` anyway. This is a "must not appear anywhere in the
+// source" check, so scanning for the literal is both clearer and correct.
 assert.equal(
-  /sluglines\.com\/wp-content/.test(pageCode),
+  pageCode.includes('sluglines.com/wp-content'),
   false,
   'how-it-works must not hotlink the legacy WordPress host: those URLs die at the #25 cutover'
 )

@@ -14,7 +14,6 @@ import { strict as assert } from 'node:assert'
 import fs from 'node:fs'
 import path from 'node:path'
 import {
-  CSP_REPORT_ONLY,
   CSP_REPORT_PATH,
   contentSecurityPolicy,
   securityHeaders,
@@ -48,15 +47,22 @@ for (const denied of ['camera', 'microphone', 'geolocation']) {
 
 // --- the CSP ships report-only, and says so in the header name ---------------
 // #33 sequences it this way on purpose: an enforced policy that is wrong breaks
-// the page it protects. The name is derived from the flag, so flipping the flag
-// is the whole of the enforcement change.
-const cspKey = CSP_REPORT_ONLY ? 'Content-Security-Policy-Report-Only' : 'Content-Security-Policy'
+// the page it protects.
+//
+// Read from the EMITTED headers, not from the `CSP_REPORT_ONLY` constant. The
+// first version branched on that constant, which made these assertions
+// statically dead — CodeQL flagged all three, correctly — and, more to the
+// point, tested the flag rather than the header a browser actually receives.
+// Everything below asserts the observable thing, so it stays meaningful whichever
+// way the flag is set.
+const ENFORCED = 'Content-Security-Policy'
+const REPORT_ONLY = 'Content-Security-Policy-Report-Only'
+
+const cspKeys = [ENFORCED, REPORT_ONLY].filter((key) => Object.hasOwn(byKey, key))
+assert.equal(cspKeys.length, 1, 'exactly one of the two CSP header names is sent, never both')
+
+const cspKey = cspKeys[0]
 assert.ok(byKey[cspKey], `the CSP is sent as ${cspKey}`)
-assert.equal(
-  Object.hasOwn(byKey, CSP_REPORT_ONLY ? 'Content-Security-Policy' : 'Content-Security-Policy-Report-Only'),
-  false,
-  'exactly one of the two CSP header names is sent, never both'
-)
 
 // A report-only policy with nowhere to report is decorative — the violations
 // land in visitors' consoles where nobody doing the inventory will see them.
@@ -101,8 +107,8 @@ for (const wildcard of ['https:', 'http:', '*']) {
 const scriptSrc = /script-src ([^;]+)/.exec(csp)[1]
 if (scriptSrc.includes("'unsafe-inline'")) {
   assert.equal(
-    CSP_REPORT_ONLY,
-    true,
+    cspKey,
+    REPORT_ONLY,
     "script-src still allows 'unsafe-inline', so the CSP must not be enforced yet (#33 bullet 3)"
   )
 }
@@ -110,6 +116,6 @@ if (scriptSrc.includes("'unsafe-inline'")) {
 assert.equal(csp.includes("object-src 'none'"), true)
 
 console.log(
-  `security headers: ${headers.length} sent, CSP ${CSP_REPORT_ONLY ? 'report-only' : 'ENFORCED'}, ` +
-    `connect-src pinned to named origins`
+  `security headers: ${headers.length} sent, sent as ${cspKey}, ` +
+    'connect-src pinned to named origins'
 )
