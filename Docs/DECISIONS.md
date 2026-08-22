@@ -1620,3 +1620,50 @@ unsafe set.
 authorised six without the seventh would arm the email-copying trigger described above.
 
 **Status:** DECIDED. `0007` written, `APPLIED: no`. Nothing applied to any database by this entry.
+
+---
+
+## D-35 — Baseline `N` recounted to 28 files / 872 assertion call sites, and made machine-checked
+
+**Supersedes D-25** (12 files / 99 assertions), which in turn corrected D-4 (12 / 137). This entry
+is written rather than editing either, per the append-only rule D-25 itself followed.
+
+**The recount, taken 2026-08-22 with D-25's instrument** — source-level `assert(` / `assert.method(`
+call sites, counting what is *written* rather than what executes, which is the distinction that made
+D-4's 137 unreproducible:
+
+| | Files | Assertion call sites |
+|---|---|---|
+| D-4 (2026-08-14) | 12 | 137 — included a working-tree file that never landed |
+| D-25 (2026-08-14) | 12 | 99 |
+| Architecture header (2026-08-20) | 26 | not recomputed |
+| **This entry (2026-08-22)** | **28** | **872** |
+
+The 28th file is `tests/baseline-n.test.mjs`, added by this change; the 27th is the count the repo
+already carried when issue #7 measured 26 — one further test file landed between that review and
+this recount.
+
+**Why the number keeps drifting, and what actually stops it.** Three sessions have now recorded a
+different `N`, and each correction was itself prose in a document nothing checks. §11's gates are
+written as *"no gate may reduce `N`"*, so a stale baseline is not a bookkeeping annoyance: it means
+every gate compares against the wrong number **in the permissive direction**. At `N = 12`, a change
+could have deleted sixteen test files and still cleared the gate.
+
+So the number stops living only in prose. The architecture document's header is the single source of
+truth, and `tests/baseline-n.test.mjs` re-measures the repo and fails when the two disagree. Adding
+or removing a test file, or adding assertions, now fails the suite until the header is updated in
+the same change. That is the third work item of issue #7, and it is the only one of the three that
+prevents a fourth recount.
+
+The same file carries a floor (`>= 28` files, `>= 872` sites) so that lowering the repo and the
+header together in one edit is still a deliberate act rather than a silent one, and two structural
+assertions that were previously nobody's job: every test file matches `^[a-z0-9-]+\.test\.mjs$`, and
+`tests/` is flat. `scripts/run-tests.mjs` globs exactly that pattern and does not recurse, so a file
+named `.test.js` or placed in a subdirectory would count nowhere and run nowhere — which is a way to
+lose coverage that no count would catch.
+
+**Not claimed:** that 872 is a measure of coverage. It counts call sites in source. Two files with
+identical assertions over the same code path count twice, and a loop asserting fifty times counts
+once. It is a drift detector, which is what `N` is used for.
+
+**Status:** RECORDED and ENFORCED.

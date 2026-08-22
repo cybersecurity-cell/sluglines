@@ -1,7 +1,7 @@
 # Sluglines — Consolidated Architecture & Product Plan
 
 - **Status:** IMPLEMENTED (Phase 0/1 complete, 2026-08-14); §5 SUPERSEDED and §3.4 CORRECTED 2026-08-20 — see the rev. 6 banner below
-- **Baseline N:** 26 test files, all passing (verified 2026-08-20). The former record of "12 files / 99 assertions (D-25)" was stale by more than 2×; the assertion count has not yet been recomputed. See issue #7.
+- **Baseline N:** 28 test files / 872 assertion call sites, all passing (recounted 2026-08-22, D-35). This line is machine-checked — `tests/baseline-n.test.mjs` re-measures the repo and fails if it and this header disagree, so `N` cannot drift again without the change that moved it saying so. Supersedes D-25's "12 files / 99 assertions", which was stale by more than 2×.
 - **Repo State:** Branch `codex/phase-3-4` at commit `8e1ed0d`, pushed to `origin`. `main` = `origin/main` = `97ca88f`.
 
 - **Phase 0/1 implementation summary:**
