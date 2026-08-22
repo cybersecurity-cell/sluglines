@@ -49,8 +49,25 @@ body::after {
 }
 
 @layer components {
+  /*
+   * sky-700, not sky-500.
+   *
+   * White on sky-500 (#0ea5e9) is about 2.9:1 and white on the sky-400 hover is
+   * lower still — both well under WCAG AA's 4.5:1 for body-size text, on the
+   * primary call to action of the whole site. axe reported it as a `serious`
+   * color-contrast violation the first time tests/e2e/accessibility.spec.ts ran
+   * (#35).
+   *
+   * tests/theme-contrast.test.mjs did not catch it, and could not: it checks 22
+   * pairs from the CSS token sets, and this pair is a Tailwind utility written
+   * directly here, so it was never in the set it walks. That is the gap a
+   * rendered-tree a11y check closes.
+   *
+   * sky-700 (#0369a1) is ~5.9:1 against white. The hover goes DARKER rather than
+   * lighter so the hovered state cannot be the one that fails.
+   */
   .btn-primary {
-    @apply inline-flex items-center gap-2 bg-sky-500 hover:bg-sky-400 text-white font-semibold py-3 px-7 rounded-xl transition-all duration-200 shadow-lg;
+    @apply inline-flex items-center gap-2 bg-sky-700 hover:bg-sky-800 text-white font-semibold py-3 px-7 rounded-xl transition-all duration-200 shadow-lg;
     shadow: 0 0 24px rgba(99,179,237,0.35);
   }
   .btn-secondary {

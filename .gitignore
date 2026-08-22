@@ -148,3 +148,9 @@ dist
 vite.config.js.timestamp-*
 vite.config.ts.timestamp-*
 .vercel
+
+# Playwright (issue #35)
+/test-results/
+/playwright-report/
+/blob-report/
+/playwright/.cache/

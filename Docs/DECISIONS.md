@@ -3085,3 +3085,91 @@ how to verify a spot, in `Docs/content-sources.md`.
 
 **Status:** DONE. All three bullets closed. The directory is now honest about being unverified, which
 is a worse-looking and more accurate page than the one it replaces.
+
+---
+
+## D-55 — Browser tests for the public surface, and the four defects they found. **Closes #35**
+
+**Date:** 2026-08-22
+
+### What was ported, and what was refused
+
+`codex/phase-1` carried five spec files. Two drive an email/password auth journey this application
+does not have and will not have — identity is phone OTP (D-36) — and #24 disabled the test-number
+ranges that would have been the only way to drive OTP in CI. Copying those would have been porting a
+harness for a different application. #11 decided **port the idea, not the files**, and that holds:
+what landed is the half that needs no session.
+
+`playwright.config.ts` (desktop + mobile Chromium against `next start` on a built app),
+`tests/e2e/console.spec.ts`, `tests/e2e/accessibility.spec.ts`, `tests/e2e/public-surface.spec.ts`,
+and `.github/workflows/e2e.yml`. **34 tests, all passing.**
+
+`next start`, not `next dev`: hydration, the route-level `dynamic`/`revalidate` settings and the
+middleware matcher all behave differently in dev, and the point is to see what a commuter sees. The
+mobile project is not a second opinion — §10's budget is a phone on throttled 4G in a parking lot.
+
+Its own workflow rather than a job in `ci.yml`, per #35's last bullet: a browser suite has a
+different failure profile, and folding it in would make a migration-only PR wait on Chromium. Two
+workflows also let the required-checks list include one and not the other, which is what makes the
+split real rather than cosmetic.
+
+The redirect overlap with #23 is resolved rather than duplicated. `verify-legacy-routes.mjs` asks
+"does the edge return 301 to the right place" for all 165 routes; the browser spec asks "does someone
+following an old bookmark land on a page that renders" for two representative paths, and it resolves
+those paths **from `classifyLegacyPath()`** rather than restating them — the same discipline that
+keeps the script from drifting.
+
+### It found four real defects on its first run
+
+This is the argument for the harness, so it is recorded rather than folded quietly into the diff.
+
+1. **`upgrade-insecure-requests` in a report-only CSP** — a defect in D-48, one day old. The
+   directive is *ignored* in report-only mode and Chrome logs a console error saying so, on every
+   page load. It is now emitted only when the policy is enforced.
+
+2. **`/how-it-works` hotlinked three photographs from `sluglines.com/wp-content/uploads/`** — a live
+   production dependency on the host being decommissioned. At the #25 cutover those URLs stop
+   resolving and the page silently loses its images. They also violated this app's own
+   `img-src 'self' data: blob:`, so enforcing the CSP would have broken them regardless, and
+   re-hosting them is blocked on the third-party rights review in #39. They were decorative
+   (`alt=""`), so they were removed; the circular frame and its icon carry the design.
+
+   **`tests/how-it-works.test.mjs` had been asserting those three URLs were PRESENT** — a test
+   pinning the defect in place. The assertion is now inverted and covers the whole host rather than
+   three known paths.
+
+3. **`.btn-primary` failed WCAG AA contrast** — `serious`, on the primary call to action of the whole
+   site. White on `sky-500` is ~2.9:1 against a 4.5:1 requirement, and the `sky-400` hover was worse.
+   Now `sky-700` (~5.9:1) with the hover going *darker*, so the hovered state cannot be the failing
+   one.
+
+   `tests/theme-contrast.test.mjs` did not catch this and could not: it walks 22 pairs from the CSS
+   token sets, and this pair is a Tailwind utility written directly in `globals.css`. The Lighthouse
+   job (a11y ≥95) runs `/` and one spot page, not `/how-it-works`. **That gap — token contrast passing
+   while rendered contrast fails — is precisely what a rendered-tree check closes**, and it is the
+   clearest answer to "why add a third a11y gate".
+
+4. **No favicon at all** — there is no `public/` directory and no icon in the root layout, so every
+   page load 404s on `/favicon.ico`. Recorded rather than papered over. It is filtered from the
+   console gate **by path, not by status code**: a bare "ignore 404s" would swallow a genuinely
+   missing script, which is what that gate exists to catch. Choosing an icon is a design decision and
+   is left open.
+
+### Two gates were reading their own comments as code
+
+Fixed in passing, because both would have bitten the next person. `tests/domain-boundaries.test.mjs`
+matches `from` followed by a quoted string, and read a doc comment ending *"…where this came from"*
+before a quoted phrase as an import of that phrase — the failure named a paragraph of English as a
+forbidden module. `tests/how-it-works.test.mjs` had the same shape once its assertion was inverted:
+the comment explaining why the legacy host was removed necessarily names that host. Both strip
+comments before scanning now, and the boundary rule was re-verified to still fail on a real bad
+import.
+
+### Environment note
+
+The suite resolves `executablePath` from `PLAYWRIGHT_BROWSERS_PATH` when a preinstalled Chromium is
+there, by globbing for `chromium-*` rather than hard-coding a build number, and leaves it unset
+otherwise so CI uses its own `playwright install`. Sandboxes that pin a browser build which does not
+match the installed `@playwright/test` are common, and `playwright install` is not always available.
+
+**Status:** DONE. All five bullets closed; 34 browser tests green in both viewports.

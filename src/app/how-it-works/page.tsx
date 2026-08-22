@@ -14,23 +14,37 @@ export const metadata = {
   description: 'Learn how slugging works for Northern Virginia HOV-3 carpooling.',
 }
 
+/**
+ * These three cards used to hotlink decorative photographs from
+ * `sluglines.com/wp-content/uploads/` — the legacy WordPress host.
+ *
+ * That was a live production dependency on the site being decommissioned. At the
+ * #25 DNS cutover `sluglines.com` points here, those URLs stop resolving, and the
+ * page silently loses its images. It also violated this app's own CSP
+ * (`img-src 'self' data: blob:`, D-48), so enforcing that policy would have
+ * broken them anyway — and re-hosting them instead is blocked on the third-party
+ * rights review in #39, which covers exactly these `wp-content` assets.
+ *
+ * Found by `tests/e2e/console.spec.ts` on its first run (#35): three
+ * `ERR_TUNNEL_CONNECTION_FAILED` entries, one per image.
+ *
+ * The images were decorative — `alt=""` — so removing them loses no information.
+ * The circular frame and the icon it contains carry the design on their own.
+ */
 const visualSteps = [
   {
     title: 'Line up',
     caption: 'Riders line up at known pickup spots.',
-    image: 'https://sluglines.com/wp-content/uploads/2014/03/img1-600x400-600x400.jpg',
     icon: SlidersHorizontal,
   },
   {
     title: 'Match destination',
     caption: 'Drivers call out or display their destination.',
-    image: 'https://sluglines.com/wp-content/uploads/2013/10/img2-433x400-433x400.jpg',
     icon: Route,
   },
   {
     title: 'Ride together',
     caption: 'Riders heading that way get in and everyone saves time.',
-    image: 'https://sluglines.com/wp-content/uploads/2013/10/img3-600x400-600x400.jpg',
     icon: BadgeCheck,
   },
 ]
@@ -109,14 +123,7 @@ export default function HowItWorksPage() {
 
             return (
               <article key={item.title} className="text-center">
-                <div className="relative mx-auto aspect-square max-w-[18rem] overflow-hidden rounded-full border border-sky-300/20 bg-slate-950 shadow-xl shadow-slate-950/30">
-                  <img
-                    src={item.image}
-                    alt=""
-                    className="h-full w-full object-cover"
-                    loading="lazy"
-                  />
-                  <div className="absolute inset-0 bg-slate-950/10" />
+                <div className="relative mx-auto aspect-square max-w-[18rem] overflow-hidden rounded-full border border-sky-300/20 bg-slate-900 shadow-xl shadow-slate-950/30">
                   <div className="absolute left-1/2 top-1/2 flex h-16 w-16 -translate-x-1/2 -translate-y-1/2 items-center justify-center rounded-full border border-white/70 bg-white text-sky-700 shadow-lg">
                     <Icon className="h-7 w-7" aria-hidden="true" />
                   </div>

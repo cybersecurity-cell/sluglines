@@ -98,7 +98,16 @@ export function contentSecurityPolicy() {
     'connect-src': ["'self'", ...supabaseOrigins()],
     'manifest-src': ["'self'"],
     'worker-src': ["'self'", 'blob:'],
-    'upgrade-insecure-requests': [],
+  }
+
+  // `upgrade-insecure-requests` is IGNORED in a report-only policy, and Chrome
+  // logs a console error saying so on every page load. Emitting it while
+  // report-only therefore buys nothing and costs a permanent browser error —
+  // which `tests/e2e/console.spec.ts` caught the moment that gate existed.
+  //
+  // It is added only when the policy is enforced, where it does something.
+  if (!CSP_REPORT_ONLY) {
+    directives['upgrade-insecure-requests'] = []
   }
 
   return Object.entries(directives)
