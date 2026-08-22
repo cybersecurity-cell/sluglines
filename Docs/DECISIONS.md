@@ -2545,3 +2545,71 @@ database through the anon key like any visitor.
 
 **Status:** DONE. All four checklist items in #46 are closed; the retention bound is stated above
 rather than left implicit.
+
+---
+
+## D-47 — Vercel Authentication stays on until DNS cutover; CI gets a bypass instead. **Closes #47**
+
+**Date:** 2026-08-22
+**Observed state** (`prj_Uvmtv5fVBVg9tw5CJUyMSD4UHmGS`, team `kalaikandasamy-4291s-projects`, plan Pro):
+
+```
+ssoProtection:      { enabled: true, deploymentType: "all_except_custom_domains" }
+passwordProtection: { enabled: false }
+trustedIps:         { enabled: false }
+```
+
+The project has no custom domain, so `all_except_custom_domains` currently exempts nothing: all three
+aliases are `.vercel.app` and **every URL the site has requires a Vercel login**.
+
+### The decision
+
+**Vercel Authentication stays on.** This is the status quo and, per #47's own reading, the probable
+intended end state: the moment `sluglines.com` points here (#25), `all_except_custom_domains` makes
+the custom domain public while the `.vercel.app` URLs stay private — which is the posture you want,
+and it arrives without any further change.
+
+Relaxing it now to `preview`-only would make production deployment URLs publicly reachable. That is
+publishing an unreleased site, and it is a call for the project owner rather than a side effect of
+closing a tracking issue. **It is deliberately not made here.** Nothing in this repository is blocked
+on it — see the bypass below — so the safe direction was taken and the option left open.
+
+### What that costs, recorded so it does not read as an oversight
+
+| Item | State |
+|---|---|
+| #21 external uptime monitor | **Gated on #25.** A monitor pointed at `/api/health` today alerts on a 401 forever. There is no public URL to watch, so the external half cannot be stood up before the cutover. Not incomplete work — blocked work, with a named blocker. |
+| #23 route verification at the edge | **No longer gated** — see below. |
+| #20 Lighthouse | Already worked around: the job builds and serves the app locally rather than measuring the deployment. Unchanged. |
+
+### Protection Bypass for Automation — the third bullet, and why it matters
+
+`scripts/verify-legacy-routes.mjs` now accepts `--bypass-secret=` (falling back to
+`$VERCEL_AUTOMATION_BYPASS_SECRET`) and sends it as the `x-vercel-protection-bypass` **header**.
+
+This decouples #23 from #47 entirely: the route check can run in CI against a real deployment without
+the site being public to anyone else. It replaces the `_vercel_share` token path for automation, which
+was never viable in CI — share tokens are minted by hand, are per-person, and expire.
+
+The header matters more than it looks. The previous credential was a `_vercel_share` **query
+parameter**, and this script's whole job is to observe what the edge does with an *unmodified* legacy
+path. A secret appended to every request is a different URL than the one an old bookmark carries;
+`tests/legacy-route-verifier.test.mjs` now asserts the secret never reaches the query string.
+
+**Not yet enabled, and this session could not enable it.** The toggle lives at Project Settings →
+Deployment Protection → Protection Bypass for Automation. It is not exposed on the Vercel MCP surface
+available here (`update_project_deployment_protection` covers only `ssoProtection`,
+`passwordProtection` and `trustedIps`), and no Vercel API token is present in this environment. To
+finish it:
+
+1. Enable the toggle in the dashboard; Vercel generates the secret.
+2. Add it to the repository as an Actions secret named `VERCEL_AUTOMATION_BYPASS_SECRET`.
+3. The script picks it up from the environment with no further change.
+
+Until step 1 happens the code path is dormant, not broken — with no secret set the script behaves
+exactly as before.
+
+**Status:** DONE for the parts that are this repository's to make. The posture decision is recorded
+and defaulted to the safe direction; #23's external check is unblocked in code; #21's external half
+is blocked on #25 with the blocker named rather than left looking merely unfinished. The dashboard
+toggle and the owner's optional decision to publish early are the two things outstanding, both named.

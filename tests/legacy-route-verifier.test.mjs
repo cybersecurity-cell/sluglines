@@ -37,6 +37,27 @@ assert.match(code, /redirect: 'manual'/, 'redirects are never followed automatic
 // It cannot report success without looking.
 assert.match(code, /process\.exitCode = 1/, 'a failure sets a non-zero exit code')
 
+// --- how it gets past Vercel Authentication (#47) ----------------------------
+// The credential must never travel as a query parameter. This script's entire
+// job is to observe what the edge does with an *unmodified* legacy path, and a
+// `?secret=` appended to every request is a different URL than the one an old
+// bookmark carries.
+assert.match(code, /'x-vercel-protection-bypass'/, 'automation bypass is presented as a header')
+assert.equal(
+  /searchParams\.set\('x-vercel-protection-bypass'/.test(code),
+  false,
+  'the bypass secret must never be appended to the URL under test'
+)
+
+// CI supplies it as a secret rather than on the command line, where it would be
+// captured in the run log.
+assert.match(code, /VERCEL_AUTOMATION_BYPASS_SECRET/, 'the secret can come from the environment')
+
+// The share token is exchanged for a cookie; the bypass header is not. Sending
+// both would mean establishing a session that the header already made
+// unnecessary, and would fail noisily when only the secret is set.
+assert.match(code, /if \(bypassSecret\) return/, 'the header short-circuits share-token session setup')
+
 const inventory = JSON.parse(fs.readFileSync(path.join(root, 'src/data/legacy-site-content.json'), 'utf8'))
 assert.equal(inventory.routes.length, 165, 'the inventory is 165 routes')
 assert.equal(inventory.totals.routes, 165, 'and its own total agrees')
