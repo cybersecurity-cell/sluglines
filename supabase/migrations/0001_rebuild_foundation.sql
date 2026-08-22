@@ -8,7 +8,7 @@
 --          supabase/migrations/README.md.
 --
 -- First migration of the rebuild decided in Docs/DECISIONS.md D-13: the core is
--- built here from Docs/2026-08-14-consolidated-architecture.md (rev. 5.3) rather
+-- built here from Docs/consolidated-architecture.md (rev. 5.3) rather
 -- than transplanted from Sluglines-AI.
 --
 -- Scope, deliberately narrow -- the three tables rev. 5.3 specifies completely

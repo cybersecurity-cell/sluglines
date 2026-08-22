@@ -108,6 +108,14 @@ Stated so a later session does not over-trust it:
 
 Never edit it. The sequence is append-only, and a file whose `APPLIED:` header names a database is a
 record of what that database ran — editing it makes the record false without changing the database.
+
+**One bounded exception: a comment that has gone stale may be corrected, and nothing else.** The rule
+above is about *statements*; a header comment citing a path or a decision number that no longer
+resolves makes the record less usable rather than more faithful. Such an edit must change no
+statement, must leave `sql:check`'s statement count unmoved, and must be recorded in
+`Docs/DECISIONS.md` — `0001`'s architecture-doc path was corrected this way in D-37, and D-24 used
+the same carve-out to add the quarantine banner to `supabase/schema.sql`. This is not licence to
+edit applied SQL.
 A correction is a **new ordinal** that re-creates the affected objects, and `create or replace` keys
 on the argument type list, so the new definition must carry the old signature **exactly**: change one
 parameter name or type and Postgres adds an overload while the defect stays live. `0003` corrects

@@ -7,11 +7,11 @@ The initial product replaces recurring WhatsApp coordination patterns with priva
 ## Current status
 
 > **Corrected 2026-08-14.** This section previously read "Application implementation: not started",
-> which was false. See `Docs/DECISIONS.md` (D-17) and `Docs/2026-08-14-consolidated-architecture.md`
+> which was false. See `Docs/DECISIONS.md` (D-17) and `Docs/consolidated-architecture.md`
 > (rev. 5.3, §14 risk 5).
 
 - Architecture and phased rollout: superseded as the governing plan — see
-  `Docs/2026-08-14-consolidated-architecture.md` (rev. 5.3), which is now the authoritative
+  `Docs/consolidated-architecture.md` (rev. 5.3), which is now the authoritative
   architecture for all Sluglines effort. The specs in `docs/specs/` remain valid as inputs and
   are still referenced by rev. 5.3's deferred list.
 - Application implementation: **substantially built**, in the separate `Sluglines-AI` repo

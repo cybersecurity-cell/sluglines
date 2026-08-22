@@ -4,7 +4,7 @@
 not a measured or negotiated budget. They exist so that later phases reference an existing
 value instead of inventing one at the moment a gate is evaluated.
 
-**Source:** `Docs/2026-08-14-consolidated-architecture.md` (rev. 5.3), §11 Phase 0 and §13.
+**Source:** `Docs/consolidated-architecture.md` (rev. 5.3), §11 Phase 0 and §13.
 **Recorded:** 2026-08-14, during the P0-adapted slice.
 **Repo:** `sluglines` (canonical per the override recorded in `Docs/DECISIONS.md`).
 

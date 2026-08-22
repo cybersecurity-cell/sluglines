@@ -2,7 +2,7 @@
 
 - **Date:** 2026-08-20
 - **Status:** Accepted, with the schema-ancestry decision **superseded 2026-08-22** — see `Docs/DECISIONS.md` **D-34**
-- **Supersedes:** §5 of `Docs/2026-08-14-consolidated-architecture.md` (rev. 5.3), which adopted `Sluglines-AI` as the canonical repo
+- **Supersedes:** §5 of `Docs/consolidated-architecture.md` (rev. 5.3), which adopted `Sluglines-AI` as the canonical repo
 - **Closes:** §15 Q1 (which repo name survives)
 
 > **Superseded in part.** The three bullets below that pick `Sluglines-AI`'s migrations as the

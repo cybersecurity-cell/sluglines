@@ -17,7 +17,7 @@ import path from 'node:path'
 
 const root = process.cwd()
 const testDir = path.join(root, 'tests')
-const ARCHITECTURE_DOC = 'Docs/2026-08-14-consolidated-architecture.md'
+const ARCHITECTURE_DOC = 'Docs/consolidated-architecture.md'
 
 // The instrument, stated so a later recount uses the same one D-25 used:
 // source-level `assert(` / `assert.method(` call sites. It counts what is
