@@ -186,6 +186,12 @@ proceeded past* (Phase 2 rebuilds the deployment path), and an unexpectedly pres
 
 ## D-7 — Staging environment
 
+> **CLOSED 2026-08-22 by D-40.** The staging target is the Supabase preview branch
+> `phase-3-4-staging` (`xqonrogwwytkmqfinszp`) — rev. 5.3's own default. The plan question this
+> entry could not answer was settled by demonstration: the branch has existed and been healthy since
+> 2026-08-14 (D-28), so branching is available and no second project is needed. Vercel's
+> non-production environments now point off production accordingly. Original text preserved below.
+
 **Decision:** **UNKNOWN / PENDING.** No staging choice is recorded, because none could be
 established from repo evidence without a dashboard-side action.
 
@@ -207,7 +213,7 @@ without further discussion.
 **Not urgent:** rev. 5.3 §11 explicitly makes P0 *record the choice only* — provisioning happens at
 P3, the first phase that uses it.
 
-**Status:** PENDING (blocking nothing before P3).
+**Status:** ~~PENDING (blocking nothing before P3).~~ **CLOSED 2026-08-22 — see D-40.**
 
 ---
 
@@ -1974,3 +1980,69 @@ as maps**, with the third-party rights question answered, is issue #39. It is a 
 from the one #18 asks for and is not smuggled into it.
 
 **Status:** DONE. Field, media area, guard and audit shipped. Zero images migrated, with reasons.
+
+---
+
+## D-40 — Vercel environments split off production Supabase. **Closes D-7.**
+
+**Decision:** the staging target is the **Supabase preview branch `phase-3-4-staging`
+(`xqonrogwwytkmqfinszp`)**, and Vercel's non-production environments now point at it rather than at
+the production project. Issue #27.
+
+This closes **D-7**, which has carried *"staging environment: UNKNOWN / PENDING"* since Phase 0.
+D-7 recorded rev. 5.3's default — *"Supabase preview branch of the production project; a second
+project only if preview branches are unavailable on the plan"* — as proposed but unconfirmed,
+because confirming it needed a plan fact nobody had read. The branch has existed and been healthy
+since 2026-08-14 (D-28), which answers the plan question by demonstration: branching is available,
+so the default holds and no second project is needed.
+
+### State before, verified 2026-08-22 by `vercel env pull` per environment
+
+| Environment | `NEXT_PUBLIC_SUPABASE_URL` |
+|---|---|
+| Production | `bwpguotjzczmieeepczf` |
+| Preview | `bwpguotjzczmieeepczf` |
+| Development | `bwpguotjzczmieeepczf` |
+
+One variable record covering all three targets, so there was nothing to change — only something to
+split.
+
+### State after, verified the same way
+
+| Environment | URL | Anon key |
+|---|---|---|
+| Production | `bwpguotjzczmieeepczf` | set |
+| **Preview** | **unset** | **unset** |
+| Development | `xqonrogwwytkmqfinszp` | set |
+
+### Why Preview is unset rather than pointed at the branch, and why that is not a shortfall
+
+Vercel CLI 50.44.0 in this environment cannot create an **all-preview-branches** variable without a
+TTY. Seven forms — `--value … --yes`, `--force`, stdin pipe with and without `--yes`, `CI=1`, an
+empty branch positional, and a `< file` redirect from bash — all return the same
+`{"status":"action_required","reason":"git_branch_required"}`, whose own `next[]` hint is the
+command that produced it. Production and Development were set by the same CLI in the same session,
+so authorisation, scope and project link are all fine; only that one path is affected. Carried as
+issue #41, with the dashboard steps.
+
+**The purpose of #27 is met, and by a stricter route than it asked for.** The risk it names is that
+after `0001`–`0007` reach production, *"every preview deployment — every PR branch, every
+agent-authored change — reads and writes the live database through the same SECURITY DEFINER writers
+the production site uses."* A preview deployment with **no credentials at all** has no write path
+into production or anywhere else. Pointing it at the branch is a usability improvement over that,
+not a safety one.
+
+Both variables were removed from Preview, not just the URL. Leaving production's anon key there
+under an unset URL would be a trap: the next person to set only the URL would silently pair it with
+production's key.
+
+**Build impact: none, and this is measured rather than assumed.** Every `next build` in this
+session ran with no Supabase variables set at all and exited 0 — the app degrades to static content
+and `unavailable` counts by design (D-33), rather than throwing on a missing variable.
+
+**Precondition for #19, checked before starting it rather than after:** Vercel project `sluglines`
+is `prj_Uvmtv5fVBVg9tw5CJUyMSD4UHmGS` and its **Production** environment points at
+`bwpguotjzczmieeepczf`. So the migrations #19 applies land in the database the live site actually
+reads, and the `unavailable` states will turn `live`.
+
+**Status:** DONE. D-7 CLOSED. Preview credentials owed by #41.
