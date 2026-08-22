@@ -448,6 +448,8 @@ Shared preamble — prepend to every prompt:
 | 12 | Low | Draft PR #1 stale. | Close with reference (P0). |
 | 13 | Low | Legacy URLs carry backlink value; L&F forum is live today. | 165-route redirect tests; L&F-forum 301s to the public board; 30-day read-only overlap + notice. |
 | 14 | Low | Savings figures are a flat constant. | Labeled as estimate; real toll source deferred. |
+| 15 | **High** (security) | **No browser security headers are set.** `next.config.js` defines no `headers()`, so the app ships with no CSP, no `X-Frame-Options`, no `X-Content-Type-Options`, no `Referrer-Policy` and no `Permissions-Policy` — a public site that will hold session cookies and a pickup-details surface. Found by the issue #11 triage of `codex/phase-1`, whose own review listed this baseline as a shipped control. | Issue #33. Not folded into a content-cutover PR: a CSP is a behavioural change that needs its own report-only period. |
+| 16 | Medium (supply chain) | **GitHub Actions are pinned to mutable tags**, not commit SHAs — `actions/checkout@v4`, `github/codeql-action/*@v3`, `actions/setup-node@v4`, `gitleaks/gitleaks-action@v2`. A tag is repointable by its owner, so the security workflows that gate every merge are themselves unpinned. Same source as risk 15. | Issue #34. |
 
 ---
 
