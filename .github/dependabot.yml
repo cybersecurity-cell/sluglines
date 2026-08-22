@@ -1,0 +1,57 @@
+# Dependabot — issue #34's third bullet.
+#
+# Commit-pinning actions (D-49) closes a supply-chain hole and opens a smaller
+# one: a pinned action is frozen, so a security fix upstream never reaches this
+# repository unless a human notices. "A pinned action that is never updated is
+# its own problem" — the issue's own words.
+#
+# Dependabot resolves both halves. It opens a PR that moves the SHA and cites the
+# release notes, so the pin stays current *and* every move is a reviewable diff
+# with a named version behind it, rather than a tag silently repointing under a
+# workflow that gates every merge into main.
+#
+# It preserves the `# vN.N.N` trailing comments when it rewrites a SHA, which is
+# what keeps the human-readable version from decaying back into an opaque hash.
+version: 2
+
+updates:
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 5
+    commit-message:
+      prefix: ci
+    labels:
+      - dependencies
+    groups:
+      # One PR for routine bumps rather than five. Grouping is safe here because
+      # every one of these is gate infrastructure reviewed together anyway, and a
+      # single PR is far likelier to actually get merged than five that each look
+      # individually skippable. Majors stay ungrouped: those are behavioural.
+      actions:
+        patterns:
+          - '*'
+        update-types:
+          - minor
+          - patch
+
+  # npm is covered by `npm audit` in .github/workflows/audit.yml, which fails the
+  # build on a high-severity advisory. Dependabot is added here for the *version*
+  # half of that: an advisory-free dependency that is simply years stale is not
+  # something an audit gate can see.
+  - package-ecosystem: npm
+    directory: /
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 5
+    commit-message:
+      prefix: deps
+    labels:
+      - dependencies
+    groups:
+      dev-dependencies:
+        dependency-type: development
+        update-types:
+          - minor
+          - patch

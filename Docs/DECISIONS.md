@@ -2713,3 +2713,69 @@ subdomains this project does not yet control. Revisit with #25.
 
 **Status:** Bullets 1, 2 (the mechanism) and 4 are DONE. Bullet 3 — enforce — stays open by design,
 and now has both a collector to justify it and a test that blocks it while `'unsafe-inline'` remains.
+
+---
+
+## D-49 — Every GitHub Action commit-pinned, with Dependabot to keep the pins moving. **Closes #34**
+
+**Date:** 2026-08-22
+
+### What was wrong
+
+All 16 action references across the five workflows were pinned to mutable tags — `actions/checkout@v4`,
+`actions/setup-node@v4`, `github/codeql-action/{init,analyze}@v3`, `gitleaks/gitleaks-action@v2`.
+
+A tag is repointable by whoever owns that repository. So the gitleaks, CodeQL, audit, test and build
+jobs that gate **every merge into `main`** were running code that could change with no diff here —
+the same supply-chain shape the `audit` job exists to catch in npm dependencies, left open in the
+layer directly above it. Risk 16 in §14, now closed.
+
+Recorded as a shipped control once already: `codex/phase-1`'s `Docs/security-review.md` claimed
+"first-party GitHub actions are commit-pinned". The branch was abandoned and the claim stopped being
+true without anything failing (#11).
+
+### The pins
+
+| Action | SHA | Version |
+|---|---|---|
+| `actions/checkout` | `11d5960a326750d5838078e36cf38b85af677262` | v4.4.0 |
+| `actions/setup-node` | `49933ea5288caeca8642d1e84afbd3f7d6820020` | v4.4.0 |
+| `github/codeql-action/{init,analyze}` | `42947a340483f03ba47bb1a039b2c519aab3df85` | v3.37.8 |
+| `gitleaks/gitleaks-action` | `ff98106e4c7b2bc287b24eaf42907196329070c7` | v2.3.9 |
+
+**Each SHA is what that action's existing major tag resolved to on 2026-08-22 — not the newest
+release.** Upstream has moved on (checkout and setup-node are at v7, codeql-action at v4, gitleaks at
+v3), and pinning is a supply-chain change, not a version upgrade. Rolling four majors forward inside
+a commit whose subject is "pin the actions" would smuggle a behavioural change through a security
+fix, and the two would be indistinguishable in the diff. Major upgrades are Dependabot's to propose,
+one reviewable PR at a time.
+
+For the two annotated tags (`codeql-action`, `gitleaks-action`) the SHA recorded is the dereferenced
+**commit**, not the tag object — `git ls-remote` returns the tag object for `refs/tags/v3` and the
+commit only for `refs/tags/v3^{}`, and pinning to a tag-object SHA does not resolve.
+
+### Update procedure — #34's second bullet
+
+`.github/dependabot.yml` watches `github-actions` weekly. Dependabot opens a PR that moves the SHA
+and cites the release notes, and it preserves the `# vN.N.N` trailing comment when it rewrites the
+hash — which is what stops the human-readable version from decaying into an opaque string nobody can
+date.
+
+Minor and patch bumps are **grouped into one PR**: these are all gate infrastructure, reviewed
+together anyway, and one PR is far likelier to be merged than five that each look individually
+skippable. Majors stay ungrouped, because those are behavioural.
+
+npm is watched too. `npm audit` in `audit.yml` already fails the build on a high-severity advisory,
+but an advisory-free dependency that is simply years stale is invisible to an audit gate; the two
+cover different halves.
+
+### The gate
+
+`tests/workflow-pinning.test.mjs` walks every `uses:` in every workflow and requires a 40-character
+SHA plus a `# vN.N.N` comment. Local composite actions (`./…`) are exempt — they are this
+repository's own code and already in the diff.
+
+**Verified it can fail**, per the standing objection to gates that only look green (D-10): reverting
+one pin to `actions/checkout@v4` failed the suite with the expected message, and restoring it passed.
+
+**Status:** DONE. All three bullets closed.
