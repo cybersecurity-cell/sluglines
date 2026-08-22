@@ -81,6 +81,13 @@ out
 # Agent worktrees
 .worktrees/
 
+# Working scratch. Both patterns were tracked at some point (issue #12): two
+# dbg-*.mjs generators at the repo root, and tmp/m2-decisions-addendum.md, whose
+# content is now Docs/DECISIONS.md D-36. Decisions belong in the decision log,
+# not in a tmp/ path that survives to the next session as unread state.
+dbg-*
+tmp/
+
 # Nuxt.js build / generate output
 .nuxt
 dist
