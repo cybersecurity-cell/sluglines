@@ -2931,3 +2931,157 @@ deciding whether phone auth can be switched on depends on that sentence being ac
 
 **Status:** Phone auth remains OFF, deliberately. One real defect in the abuse controls found and
 fixed. The blockers are unchanged and each is named with what would clear it.
+
+---
+
+## D-52 — Vercel Preview Supabase variables: still unset, still tooling-blocked. **#41**
+
+**Date:** 2026-08-22
+
+Checked again from this session and the position is unchanged: **it cannot be done from here.**
+
+The Vercel MCP surface available to this session exposes projects, deployments, deployment protection
+and runtime logs — **no environment-variable management at all** — and no Vercel API token or CLI
+credential is present, so the `vercel env add` path #41 documents cannot even be retried. #41's
+finding that the blocker is tooling rather than authorisation now has a second, independent
+confirmation from a different toolchain.
+
+**#27's safety goal remains met by the stricter route.** Preview holds no Supabase credentials, so
+there is no write path from a preview deployment into production or anywhere else. Nothing regressed.
+
+### One new consequence, from D-48
+
+The CSP added for #33 builds `connect-src` from `NEXT_PUBLIC_SUPABASE_URL` **at build time**. A
+Preview build with that variable unset therefore produces `connect-src 'self'` alone.
+
+Today that is harmless twice over — the CSP is report-only, and Preview has no Supabase to connect to
+anyway. It stops being harmless the moment either changes: setting Preview's variables and enforcing
+the CSP are now coupled, and doing the second without the first would block every Supabase call on
+Preview. `src/lib/security-headers.mjs` warns loudly in the build log when the variable is missing,
+so this surfaces rather than being discovered in a browser console.
+
+### To finish it
+
+Dashboard → Project Settings → Environment Variables, scope **Preview**, all branches:
+
+- `NEXT_PUBLIC_SUPABASE_URL` = `https://xqonrogwwytkmqfinszp.supabase.co`
+- `NEXT_PUBLIC_SUPABASE_ANON_KEY` = that branch's anon key, from
+  `supabase branches get phase-3-4-staging --project-ref bwpguotjzczmieeepczf -o env`
+
+**Not `bwpguotjzczmieeepczf`** — pointing Preview at production is the state #27 exists to end.
+
+**Status:** OPEN, unchanged, blocker re-confirmed from a second toolchain. Nothing in this repository
+is blocked on it.
+
+---
+
+## D-53 — PITR is not bought. The RPO the pilot would accept, written down. **#49**
+
+**Date:** 2026-08-22
+
+### Not bought, and not buyable from here
+
+PITR on Pro is a **paid add-on**, not a plan ceiling — so there is no migration to plan, only a
+purchase to authorise. Buying it spends money, which is not this session's to do, and the Supabase
+MCP surface here exposes no billing operation in any case. `get_project` does not return
+`pitr_enabled`, so D-43's read (`false`, measured 2026-08-22) stands as the last direct measurement
+rather than being re-confirmed today.
+
+### The decidable half, decided: the RPO is written down
+
+#49's third bullet asks that if PITR is not bought, the accepted RPO be recorded "so it is a decision
+rather than an omission". Recorded:
+
+> **Without PITR, the pilot accepts a worst-case data loss of ~24 hours.** Backups are daily physical
+> snapshots taken around 07:52–08:03 UTC. A failure at 07:00 UTC loses every check-in, offer,
+> reservation and message since the previous morning's snapshot. Restore granularity is *the nightly
+> snapshot*, not a point in time, and the restore lands **in place, over the same project** — there is
+> no restore-to-a-new-project without PITR, which is also why the #22 rehearsal could not be performed
+> without either destroying production or spending money.
+>
+> With PITR the same numbers are ~2 minutes and any point in the retention window.
+
+**This is a statement of what is being accepted, not an authorisation to accept it.** Accepting a
+24-hour RPO on a service holding members' physical-location history is the owner's call, and it comes
+due at a specific moment: **the pilot's first write.** Today the cost is exactly zero — production
+holds no member rows — which is the same threshold D-34, D-40 and D-41 all turn on.
+
+### What remains, and in what order
+
+1. Decide: buy PITR, or accept the ~24-hour RPO above in writing.
+2. If bought — enable on `bwpguotjzczmieeepczf`, then run **one** restore rehearsal into a scratch
+   project with start and finish timestamps recorded. That is the outstanding half of #22, and it
+   only becomes performable once PITR exists, because restore-to-a-new-project is a PITR-tier
+   capability.
+3. Either way, settle it **before the first pilot write**.
+
+**Status:** OPEN and owner-gated on spend. The recordable half is recorded; the purchase and the
+rehearsal it unlocks are not this session's to make.
+
+---
+
+## D-54 — Content provenance adopted: per-record state, source hierarchy, one qualifier. **Closes #36**
+
+**Date:** 2026-08-22
+
+Adopts the model salvaged from `codex/phase-1` in the #11 triage. New `Docs/content-sources.md` is the
+canonical statement; this entry records the three decisions #36 asked for.
+
+### 1. Per record, not per fact
+
+`SpotLocation.provenance: SpotProvenance` — one state for the whole record, not one per field.
+
+Every operational fact on a spot came from the same place: the legacy WordPress page, or (for the 8
+I-66 additions) nothing recorded. A per-field state would be five copies of the same value on 50
+records, and would imply a precision of sourcing that does not exist. If a single fact ever gets a
+stronger source than its record, that is the moment to split the field — not before.
+
+**Required, not optional.** An unstated provenance renders as confidence the record has not earned,
+which is the whole defect. `checkedAt` *is* optional, and stays absent until a human actually checks:
+an import is not a check, and back-filling it with the migration date would make an untouched record
+look attended to. The test fails that back-fill explicitly.
+
+### 2. It renders — one qualifier, in the card it qualifies
+
+A short note at the foot of the **Quick facts** card, not a page-level banner. It qualifies peak
+hours, parking and destination — inherited claims — and deliberately not the spot's existence, its
+map link, or the live counts, which are measured. A banner at the top would have cast doubt on all of
+it.
+
+**`verified` renders nothing.** That asymmetry is the design: a badge on every state is decoration
+and readers learn to skip it, so silence is what carries the signal — the same reasoning that makes
+`unavailable` and a measured zero render differently (D-33).
+
+**Every spot shows the note today**, because all 50 are `needs-review`. That is not a bug to soften.
+Nothing in the directory has been checked against a primary source, and the note says so until
+someone does the checking. `tests/content-provenance.test.mjs` pins the count at 50, so the change
+that verifies a spot is the change that updates the number — the gate exists to make verification
+visible, not to be satisfied by relabelling.
+
+The failure mode worth guarding is not a missing field; it is someone marking records `verified` in
+bulk to clear the badge off the pages. So `verified` requires an ISO `checkedAt`, and the test
+enforces it.
+
+### 3. Not a database column
+
+Same call as the photo field in D-39, for the same reason: `0004_spot_locations_directory.sql` is
+generated and guarded byte-for-byte by `scripts/seed-locations.mjs --check`, and provenance is
+editorial metadata rather than directory data the public surface queries. Verified untouched — the
+seed check still reports "up to date (50 spots)".
+
+Both `PublicLocation` mappings resolve it the way they already resolve `image`: from the committed
+directory, so a database row cannot disagree with the directory about its own sourcing. A row whose
+slug is not in the directory resolves to `needs-review` rather than to nothing — a spot with no
+recorded source is unconfirmed, and defaulting the other way would let such a row render with more
+authority than any record that *is* in the directory.
+
+### The source hierarchy, recorded
+
+Government / transit-operator pages → current on-site signage confirmed by a dated editor review →
+corroborated community reports → legacy Sluglines material, which is background and discovery only
+and is **never sufficient for `verified` at any age**. Where a fact belongs to an operator, link to
+the operator rather than copying: their copy changes without telling us. Full statement, including
+how to verify a spot, in `Docs/content-sources.md`.
+
+**Status:** DONE. All three bullets closed. The directory is now honest about being unverified, which
+is a worse-looking and more accurate page than the one it replaces.

@@ -1,5 +1,6 @@
 import type { ReactNode } from 'react'
-import { Car, Clock, MapPin, ParkingCircle } from 'lucide-react'
+import { Car, Clock, Info, MapPin, ParkingCircle } from 'lucide-react'
+import type { SpotFactState } from '@/lib/domain/locations'
 import type { PublicLocation } from '@/lib/public-directory'
 
 interface SpotQuickFactsProps {
@@ -22,7 +23,51 @@ export default function SpotQuickFacts({ location }: SpotQuickFactsProps) {
           <Fact icon={<ParkingCircle aria-hidden className="h-4 w-4" />} label="Parking" value={location.parking} />
         )}
       </dl>
+      <FreshnessNote location={location} />
     </section>
+  )
+}
+
+/**
+ * The freshness qualifier for the facts above (issue #36).
+ *
+ * WHY IT SITS INSIDE THIS CARD rather than at the top of the page: it qualifies
+ * these specific claims — peak hours, parking, destination — and not the spot's
+ * existence, its map link, or the live counts, which are measured rather than
+ * inherited. A page-level banner would have implied all of it was doubtful.
+ *
+ * WHY `verified` RENDERS NOTHING: a badge on every state is decoration, and a
+ * reader learns to skip it. Silence is the signal that a fact was confirmed,
+ * which is the same reason `unavailable` and a measured zero render differently
+ * (D-33).
+ *
+ * Today every spot is `needs-review`, so this shows on all 50 pages. That is not
+ * a bug to soften — nothing in the directory has been checked against a primary
+ * source, and the note says exactly that until someone does the checking.
+ */
+const FRESHNESS_COPY: Record<Exclude<SpotFactState, 'verified'>, string> = {
+  'needs-review':
+    'These details came from the legacy Sluglines site and have not been confirmed against a current source. Treat them as orientation, not instructions.',
+  'community-reported':
+    'Recently reported by the community and not yet corroborated by an official source.',
+  historical:
+    'Kept for context only. This describes how the spot used to operate and may no longer be current.',
+}
+
+function FreshnessNote({ location }: { location: PublicLocation }) {
+  const { state, checkedAt } = location.provenance
+  if (state === 'verified') return null
+
+  return (
+    <p className="mt-3 flex gap-2 border-t border-slate-200 pt-3 text-xs text-slate-600">
+      <Info aria-hidden className="mt-0.5 h-4 w-4 shrink-0" />
+      <span>
+        {FRESHNESS_COPY[state]}
+        {/* Only ever a real check date. Never back-filled with the import date —
+            that would make an untouched record look attended to. */}
+        {checkedAt ? ` Last checked ${checkedAt}.` : null}
+      </span>
+    </p>
   )
 }
 

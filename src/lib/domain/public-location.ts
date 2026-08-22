@@ -14,8 +14,8 @@
  * rule keeps out of `lib/domain`.
  */
 
-import type { SpotImage, SpotLocation } from './locations.ts'
-import { spotImage } from './locations.ts'
+import type { SpotImage, SpotLocation, SpotProvenance } from './locations.ts'
+import { findSpotLocation, spotImage } from './locations.ts'
 
 export type PublicLocationSource = 'database' | 'directory'
 
@@ -46,6 +46,17 @@ export interface PublicLocation {
    * supply it, and the two mappings must still produce the same record.
    */
   image?: SpotImage
+  /**
+   * Where this record's operational facts came from and how current they are
+   * (issue #36). Like `image`, deliberately not a `locations` column, so both
+   * mappings resolve it from the committed directory and a database row cannot
+   * disagree with the directory about it.
+   *
+   * Required, and never absent: a record whose provenance could not be resolved
+   * gets `needs-review`, because "we do not know where this came from" is an
+   * unconfirmed fact, not an unqualified one.
+   */
+  provenance: SpotProvenance
   /** Which of the two answered. Rendered nowhere; load-bearing in a bug report. */
   source: PublicLocationSource
 }
@@ -104,6 +115,7 @@ export function publicLocationFromRow(row: LocationRow): PublicLocation {
     ...(row.community_url ? { communityUrl: row.community_url } : {}),
     ...(row.notes ? { notes: row.notes } : {}),
     ...imageFor(row.slug),
+    provenance: provenanceFor(row.slug),
     source: 'database',
   }
 }
@@ -112,6 +124,25 @@ export function publicLocationFromRow(row: LocationRow): PublicLocation {
 function imageFor(slug: string): { image?: SpotImage } {
   const image = spotImage(slug)
   return image ? { image } : {}
+}
+
+/**
+ * Ditto for provenance (#36) — with one difference: it has no "absent" render.
+ *
+ * A row whose slug is not in the committed directory resolves to `needs-review`
+ * rather than to nothing. That is the honest reading: the directory is where
+ * provenance is recorded, so a spot it does not know about has no recorded
+ * source, and an unsourced operational fact is exactly what this state is for.
+ * Defaulting the other way would let a row appear on the site carrying more
+ * authority than any record in the directory.
+ */
+function provenanceFor(slug: string): SpotProvenance {
+  return (
+    findSpotLocation(slug)?.provenance ?? {
+      state: 'needs-review',
+      source: 'Not in the committed directory; no source recorded',
+    }
+  )
 }
 
 export function publicLocationFromDirectory(location: SpotLocation): PublicLocation {
@@ -134,6 +165,7 @@ export function publicLocationFromDirectory(location: SpotLocation): PublicLocat
     ...(location.fbUrl ? { communityUrl: location.fbUrl } : {}),
     ...(location.notes ? { notes: location.notes } : {}),
     ...(location.image ? { image: location.image } : {}),
+    provenance: location.provenance,
     source: 'directory',
   }
 }
