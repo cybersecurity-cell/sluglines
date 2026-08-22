@@ -2192,3 +2192,61 @@ After a redeploy (`sluglines-9kb91ocwn…`, aliased to `sluglines.vercel.app`, t
 
 The zeros are measured: production has zero presence rows and zero offers. D-33's distinction
 holds on a real page — these render as "Quiet right now", not as "unavailable".
+
+---
+
+## D-42 — Sev-1 definition, and the health endpoint that makes it observable
+
+Issue #21. Later gates reference the Sev-1 definition, so it has to exist before they can.
+
+### Sev-1
+
+> **The product is unusable for members during a peak window.**
+
+Concretely, any one of these, during a peak window:
+
+| # | Condition |
+|---|---|
+| 1 | **Auth is down** — `/api/auth/send-otp` or `/api/auth/verify-otp` fails for all callers, so no member can sign in |
+| 2 | **The board is down** — `/`, `/spots/**` or `/dashboard` 5xx, or the M1 aggregates fail, so no member can see what is happening at a spot |
+| 3 | **The database is unreachable** — `/api/health` returns 503 on its `database` check |
+| 4 | **The write path is refusing valid transitions** — an offer or reservation cannot be created, confirmed or cancelled by an entitled member |
+
+**Peak windows** are the §13 commute windows: **05:30–09:30** and **15:30–19:30** US/Eastern, Monday to Friday. Outside them the same failure is Sev-2 — it still gets fixed, it does not get someone out of bed.
+
+**Explicitly NOT Sev-1**, so the definition stays usable:
+
+- Counts rendering `unavailable`. That is a designed degradation (D-33): the board still lists every line, it just declines to claim a number it did not measure. It is Sev-2.
+- A spot page with no photograph — the reserved no-image state is the intended render for all 50 (D-39).
+- A preview deployment being broken. Preview holds no database (D-40).
+- The sweeps not running. Real, tracked as #46, and invisible to a member because both read paths compute expiry at read time.
+
+The distinction the list is built around: **Sev-1 is "a commuter standing at a lot cannot use this to decide", not "something is wrong".**
+
+### `/api/health`
+
+`GET /api/health`, and its whole design rule is that it may only report what it just observed. It calls both M1 aggregates through the anonymous path a visitor uses, returns **200** when every check passes and **503** when any does, sets `no-store`, and names the deployment (`VERCEL_GIT_COMMIT_SHA`, env, region) so a green check proves *this* build is up rather than that some build is.
+
+Zero rows from the directory is treated as a failure, not a success: the query succeeded but the public surface is empty, which is condition 2 above.
+
+It carries no member data and structurally cannot — the only reads are the two counts-only functions, and it reports a row *count*, never a row. `tests/health-endpoint.test.mjs` pins that, along with the 503 and the absence of any synthesised timestamp.
+
+### The part that is NOT done, and why
+
+The issue asks for **an external check every minute, alerting the operator, test-fired at least once with the receipt recorded**. That is not done and was not attempted.
+
+Every option requires **creating an account on a third-party service**, which this session does not do. It is also not something to fake: a monitor configured but never test-fired is precisely what the issue's own wording rules out — *"an untested alert is not monitoring"*.
+
+What is ready for whoever configures it:
+
+| | |
+|---|---|
+| URL to watch | `https://<production-domain>/api/health` |
+| Interval | 60s |
+| Alert on | any non-200; the endpoint returns 503 with a JSON body naming the failed check |
+| Second URL | `/` — catches an edge or routing failure that never reaches the app |
+| Note | Vercel Authentication is currently on for all `.vercel.app` URLs (#47), so an external monitor cannot reach the site until a custom domain exists (#25) or that protection is relaxed |
+
+That last row is the real blocker and is worth stating plainly: **there is currently no publicly reachable URL for an external monitor to hit.** Configuring one before #25 would produce a check that alerts on 401 forever.
+
+**Status:** Sev-1 DEFINED. Health endpoint DONE. External monitoring and its test-fire **NOT DONE** — needs an account and a public URL.

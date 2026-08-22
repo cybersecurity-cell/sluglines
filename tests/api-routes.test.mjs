@@ -83,10 +83,18 @@ function routeSource(route) {
   return fs.readFileSync(file, 'utf8')
 }
 
-// Every route file on disk must be one of the eleven — a stray route handler
-// under src/app/api is an unreviewed write path. `auth/` is excluded: it is
-// the rev. 5.3 §8 M2 identity surface, a sibling scope with its own exact
-// inventory check in `auth-otp-routes.test.mjs`.
+// Read-only routes, which are a different category from the eleven above and
+// are listed rather than lumped in with them: they take no body, perform no
+// transition, and are exempt from the write-path assertions below.
+//
+//   health  GET /api/health — the issue #21 monitoring endpoint. Its own
+//           properties are pinned in tests/health-endpoint.test.mjs.
+const READ_ONLY_ROUTES = ['health']
+
+// Every route file on disk must be one of the eleven, or a named read-only
+// route — a stray route handler under src/app/api is an unreviewed write path.
+// `auth/` is excluded: it is the rev. 5.3 §8 M2 identity surface, a sibling
+// scope with its own exact inventory check in `auth-otp-routes.test.mjs`.
 function collectRoutes(dir, prefix = '') {
   return fs.readdirSync(dir, { withFileTypes: true }).flatMap((entry) => {
     if (entry.isDirectory() && prefix === '' && entry.name === 'auth') return []
@@ -97,7 +105,19 @@ function collectRoutes(dir, prefix = '') {
 }
 
 const onDisk = collectRoutes(apiDir).sort()
-assert.deepEqual(onDisk, [...ALL_ROUTES].sort(), 'src/app/api holds exactly the eleven §8 M3 routes, plus auth/**')
+assert.deepEqual(
+  onDisk,
+  [...ALL_ROUTES, ...READ_ONLY_ROUTES].sort(),
+  'src/app/api holds exactly the eleven §8 M3 routes plus the named read-only routes, plus auth/**'
+)
+
+// A read-only route must not export POST: that is what keeps this category a
+// category rather than a hole in the inventory above.
+for (const route of READ_ONLY_ROUTES) {
+  const source = fs.readFileSync(path.join(apiDir, route, 'route.ts'), 'utf8')
+  assert.match(source, /export async function GET\(/, `${route} must be a GET`)
+  assert.equal(/export async function POST\(/.test(source), false, `${route} is read-only and must not export POST`)
+}
 
 for (const route of ALL_ROUTES) {
   const source = routeSource(route)
