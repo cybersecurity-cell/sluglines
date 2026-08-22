@@ -1,7 +1,11 @@
 -- =============================================================================
 -- 0006_identity_home_spot.sql
 --
--- APPLIED: no
+-- APPLIED: production
+-- TARGET:  Supabase project sluglines (project ref bwpguotjzczmieeepczf), applied
+--          2026-08-22 under the project owner's authorisation of 2026-08-21.
+--          Rehearsed first on preview branch phase-3-4-staging (xqonrogwwytkmqfinszp).
+--          See Docs/DECISIONS.md D-41 and supabase/migrations/README.md.
 --
 -- rev. 5.3 sec.8 M2 "Identity": the one write `0001_rebuild_foundation.sql`
 -- deferred when it created `members.location_id` with no writer --

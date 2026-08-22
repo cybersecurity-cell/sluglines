@@ -1,7 +1,11 @@
 -- =============================================================================
 -- 0005_public_aggregates.sql
 --
--- APPLIED: no
+-- APPLIED: production
+-- TARGET:  Supabase project sluglines (project ref bwpguotjzczmieeepczf), applied
+--          2026-08-22 under the project owner's authorisation of 2026-08-21.
+--          Rehearsed first on preview branch phase-3-4-staging (xqonrogwwytkmqfinszp).
+--          See Docs/DECISIONS.md D-41 and supabase/migrations/README.md.
 --
 -- rev. 5.3 sec.8 M1 "Public data functions": the two anonymous-callable
 -- SECURITY DEFINER aggregates the M1/M3/dashboard slices have all been holding

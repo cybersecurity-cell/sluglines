@@ -1,10 +1,11 @@
 -- =============================================================================
 -- 0003_resolve_transition_conflicts.sql
 --
--- APPLIED: preview
--- TARGET:  Supabase preview branch phase-3-4-staging (project ref xqonrogwwytkmqfinszp),
---          applied 2026-08-14 by `supabase db push --db-url`. NOT applied to
---          production. See Docs/DECISIONS.md D-29 and supabase/migrations/README.md.
+-- APPLIED: production
+-- TARGET:  Supabase project sluglines (project ref bwpguotjzczmieeepczf), applied
+--          2026-08-22 under the project owner's authorisation of 2026-08-21.
+--          Rehearsed first on preview branch phase-3-4-staging (xqonrogwwytkmqfinszp).
+--          See Docs/DECISIONS.md D-41 and supabase/migrations/README.md.
 --
 -- Closes Docs/DECISIONS.md D-29, the defect 0002's own header records.
 --
