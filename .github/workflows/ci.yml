@@ -1,0 +1,55 @@
+name: ci
+
+# The correctness gates. Until this workflow existed, CI ran CodeQL, tsc, npm audit
+# and gitleaks — but never the test suite and never a build, so a change that broke
+# every test or broke the build merged green (issue #5).
+#
+# `npm test` used to be a PowerShell one-liner and could not have run here at all;
+# it is now scripts/run-tests.mjs, which spawns each tests/*.test.mjs on any platform.
+
+on:
+  push:
+    branches: [main, 'codex/**']
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    name: Test suite
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci --ignore-scripts
+
+      # tests/live-rls.test.mjs skips itself when .env.preview.local is absent, so the
+      # suite is green here without database credentials and never targets production.
+      - name: Run test suite
+        run: npm run test
+
+  build:
+    name: Next build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci --ignore-scripts
+
+      - name: Build
+        run: npm run build
