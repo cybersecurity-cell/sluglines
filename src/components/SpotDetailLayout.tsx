@@ -3,6 +3,7 @@ import type { ReactNode } from 'react'
 import { ArrowLeft, MapPinned, Navigation, Users } from 'lucide-react'
 import CommunityLinksCard from '@/components/CommunityLinksCard'
 import SpotLiveCounts from '@/components/SpotLiveCounts'
+import SpotPhoto from '@/components/SpotPhoto'
 import SpotQuickFacts from '@/components/SpotQuickFacts'
 import { getPrimaryFacebookUrlForSpot } from '@/lib/community-channels'
 import type { PublicCountsAvailability, PublicSpotCounts } from '@/lib/domain/public-counts'
@@ -128,6 +129,7 @@ export default function SpotDetailLayout({ location, counts, availability }: Spo
           </main>
 
           <aside className="space-y-4">
+            <SpotPhoto image={location.image} spotName={location.name} />
             <SpotLiveCounts
               spotName={location.name}
               counts={counts}

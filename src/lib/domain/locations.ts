@@ -42,6 +42,40 @@
 export type SpotCorridor = 'I-395 / I-95' | 'I-66'
 export type SpotDirection = 'Morning' | 'Afternoon'
 
+/**
+ * A photograph of a spot, self-hosted.
+ *
+ * NOT a database column, deliberately. `0004_spot_locations_directory.sql` is
+ * generated from this file by `scripts/seed-locations.mjs` and guarded
+ * byte-for-byte, so a field that entered `SEED_COLUMNS` would regenerate it.
+ * Nothing queries by image and no RLS decision attaches to a static asset path,
+ * so this lives in the domain module and `0004` applies untouched (issue #18).
+ *
+ * `src` is always a path under `public/`. Never a remote URL: a hotlink to
+ * sluglines.com dies the day WordPress is cancelled, which is the point of the
+ * migration.
+ *
+ * **No spot carries one today, and that is a finding rather than an omission.**
+ * All 27 assets under `sluglines.com/images/slugging_locations/` were pulled and
+ * inspected on 2026-08-22: every one is a satellite tile, a third-party transit
+ * or parking schematic, an annotated aerial route diagram, or a promotional
+ * flyer. Zero are photographs of a location. The classification is in
+ * `Docs/asset-register.md`; the reasoning is `Docs/DECISIONS.md` D-39.
+ */
+export interface SpotImage {
+  /** Path under `public/`, e.g. `/spots/horner-rd.jpg`. Never a remote URL. */
+  src: string
+  /** Intrinsic pixel size, so `next/image` reserves the box and CLS stays at 0. */
+  width: number
+  height: number
+  /** Describes the spot for a screen reader, not the file. */
+  alt: string
+  /** Provenance. Asserted to be under sluglines.com/images/slugging_locations/. */
+  sourceUrl: string
+  /** ISO date the file was pulled from the legacy site. */
+  fetchedAt: string
+}
+
 export interface SpotLocation {
   /** Canonical lower-case key: the database key and the legacy URL slug. */
   slug: string
@@ -64,6 +98,15 @@ export interface SpotLocation {
   linesTo?: string[]
   fbUrl?: string
   notes?: string
+  /** Absent where no approved photograph exists. Never a stand-in. */
+  image?: SpotImage
+}
+
+/** The only host a migrated image may have come from (issue #18). */
+export const LEGACY_IMAGE_PREFIX = 'https://sluglines.com/images/slugging_locations/'
+
+export function spotImage(slug: string): SpotImage | undefined {
+  return findSpotLocation(slug)?.image
 }
 
 export const SPOT_CORRIDORS: readonly SpotCorridor[] = ['I-395 / I-95', 'I-66']
