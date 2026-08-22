@@ -40,42 +40,71 @@ assert.equal(migrations[0].ordinal, 1)
 // -----------------------------------------------------------------------------
 // Where each migration has been applied
 //
-// This block used to require `APPLIED: no` on every file, because nothing had a
-// database to be applied to. D-28 gave the repo one -- a preview branch -- so the
-// header now carries which *kind* of target a file has reached, and the invariant
-// worth guarding moved with it: no committed migration may claim production.
-// Production is applied by its own authorised session, which is the session that
-// gets to change this test.
+// THE TRIPWIRE, AND WHY IT IS NOW A LEDGER INSTEAD
+//
+// This block has been rewritten twice, both times by the session that earned it.
+// It began as "every file must say `APPLIED: no`", because nothing had a database
+// to be applied to. D-28 gave the repo a preview branch and it became "no
+// committed migration may claim production" -- a tripwire waiting for an
+// authorisation that had not been given, and its own comment said so: "Production
+// is applied by its own authorised session, which is the session that gets to
+// change this test."
+//
+// That session was 2026-08-22 (issue #19, Docs/DECISIONS.md D-41). `0001`-`0007`
+// are applied to bwpguotjzczmieeepczf. So the blanket refusal is relaxed --
+// visibly, in the same diff as the apply, never quietly.
+//
+// What replaces it is stricter about everything the tripwire was not. A file may
+// now say `production`, but only by carrying a TARGET line that names the ref and
+// a date, and ONLY IF EVERY EARLIER ORDINAL SAYS IT TOO. That last rule is the
+// one worth having: a sequence where 0006 is applied and 0004 is not is a
+// database whose state no file describes, and it is the failure a blanket ban
+// could never have caught because it forbade the safe case along with the unsafe
+// one.
 // -----------------------------------------------------------------------------
 const PRODUCTION_REF = 'bwpguotjzczmieeepczf'
 const PREVIEW_REF = 'xqonrogwwytkmqfinszp'
+const RANK = { no: 0, preview: 1, production: 2 }
+
+let previousRank = null
 
 for (const m of migrations) {
   const applied = /--\s*APPLIED:\s*(no|preview|production)\b/.exec(m.sql)
   assert.ok(applied, `${m.file} must carry an APPLIED header line of no | preview | production`)
 
-  assert.notEqual(
-    applied[1],
-    'production',
-    `${m.file} claims APPLIED: production; applying to ${PRODUCTION_REF} needs its own authorised session`
-  )
+  const state = applied[1]
 
   // A file that claims a target must name it, or the header records nothing.
-  if (applied[1] !== 'no') {
+  if (state !== 'no') {
     assert.match(
       m.sql,
       /--\s*TARGET:\s*\S/,
-      `${m.file} is APPLIED: ${applied[1]} and must carry a TARGET line naming the database`
+      `${m.file} is APPLIED: ${state} and must carry a TARGET line naming the database`
     )
-    assert.equal(
-      m.sql.includes(PREVIEW_REF),
-      true,
-      `${m.file} is APPLIED: preview and must name the preview project ref ${PREVIEW_REF}`
+    const ref = state === 'production' ? PRODUCTION_REF : PREVIEW_REF
+    assert.equal(m.sql.includes(ref), true, `${m.file} is APPLIED: ${state} and must name ${ref}`)
+    assert.match(
+      m.sql,
+      /--\s*TARGET:[\s\S]{0,400}?\b20\d{2}-\d{2}-\d{2}\b/,
+      `${m.file} is APPLIED: ${state} and its TARGET line must carry the date it was applied`
     )
   }
 
+  // Monotonic down the sequence. 0006 applied over an unapplied 0004 is a
+  // database no file in this directory describes.
+  if (previousRank !== null) {
+    assert.ok(
+      RANK[state] <= previousRank,
+      `${m.file} claims APPLIED: ${state} but an earlier ordinal claims less. ` +
+        'A migration cannot have reached a target its predecessors have not.'
+    )
+  }
+  previousRank = RANK[state]
+
+  // Unchanged, and the reason is unchanged: a project ref belongs in a comment
+  // recording where a file ran, never in a statement that would run against it.
   assert.equal(
-    /bwpguotjzczmieeepczf/.test(m.sql.replace(/^--.*$/gm, '')),
+    new RegExp(PRODUCTION_REF).test(m.sql.replace(/^--.*$/gm, '')),
     false,
     `${m.file} must not reference the production project ref outside comments`
   )

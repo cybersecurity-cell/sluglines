@@ -1,11 +1,11 @@
 -- =============================================================================
 -- 0001_rebuild_foundation.sql
 --
--- APPLIED: preview
--- TARGET:  Supabase preview branch phase-3-4-staging (project ref xqonrogwwytkmqfinszp),
---          applied 2026-08-14 by `supabase db push`. NOT applied to production
---          (parent project bwpguotjzczmieeepczf). See Docs/DECISIONS.md D-28 and
---          supabase/migrations/README.md.
+-- APPLIED: production
+-- TARGET:  Supabase project sluglines (project ref bwpguotjzczmieeepczf), applied
+--          2026-08-22 under the project owner's authorisation of 2026-08-21.
+--          Rehearsed first on preview branch phase-3-4-staging (xqonrogwwytkmqfinszp).
+--          See Docs/DECISIONS.md D-41 and supabase/migrations/README.md.
 --
 -- First migration of the rebuild decided in Docs/DECISIONS.md D-13: the core is
 -- built here from Docs/consolidated-architecture.md (rev. 5.3) rather

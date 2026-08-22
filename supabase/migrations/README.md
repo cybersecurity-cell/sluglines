@@ -137,8 +137,15 @@ Current state:
 
 | Target | Status |
 |---|---|
-| Preview branch `phase-3-4-staging` (`xqonrogwwytkmqfinszp`) | `0001`–`0003` applied 2026-08-14, live RLS suite green — D-28, D-30 |
-| **Production `bwpguotjzczmieeepczf`** | **Nothing applied.** Requires its own authorised session |
+| Preview branch `phase-3-4-staging` (`xqonrogwwytkmqfinszp`) | `0001`–`0003` applied 2026-08-14 (D-28, D-30); `0004`–`0007` applied 2026-08-22 as the rehearsal for the production apply |
+| **Production `bwpguotjzczmieeepczf`** | **`0001`–`0007` applied 2026-08-22** under the owner's authorisation of 2026-08-21 — D-41. `tests/live-public-surface.test.mjs` verifies the anonymous surface against it |
+
+`tests/sql-migration-harness.test.mjs` no longer refuses `APPLIED: production` — that tripwire was
+relaxed by the session that earned it, visibly, in the same diff as the apply. What it enforces now
+is stricter in the direction that matters: a file claiming a target must name the ref **and the
+date**, and **no ordinal may claim a target its predecessors have not reached**. A sequence where
+`0006` is applied over an unapplied `0004` describes a database no file in this directory describes,
+and the blanket ban could never have caught it.
 
 Applying to a preview branch, for reference — note the explicit `--db-url`, which is what keeps an
 unqualified command from resolving to the parent project:

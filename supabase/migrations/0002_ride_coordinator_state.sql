@@ -1,11 +1,11 @@
 -- =============================================================================
 -- 0002_ride_coordinator_state.sql
 --
--- APPLIED: preview
--- TARGET:  Supabase preview branch phase-3-4-staging (project ref xqonrogwwytkmqfinszp),
---          applied 2026-08-14 by `supabase db push`. NOT applied to production
---          (parent project bwpguotjzczmieeepczf). See Docs/DECISIONS.md D-28 and
---          supabase/migrations/README.md.
+-- APPLIED: production
+-- TARGET:  Supabase project sluglines (project ref bwpguotjzczmieeepczf), applied
+--          2026-08-22 under the project owner's authorisation of 2026-08-21.
+--          Rehearsed first on preview branch phase-3-4-staging (xqonrogwwytkmqfinszp).
+--          See Docs/DECISIONS.md D-41 and supabase/migrations/README.md.
 --
 -- KNOWN DEFECT, found by the live suite this file was applied for: the revision
 -- conflict below raises SQLSTATE 40001, which PostgREST retries as transient.

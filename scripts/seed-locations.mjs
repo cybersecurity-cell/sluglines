@@ -119,7 +119,15 @@ export function renderLocationsMigration(locations = SPOT_LOCATIONS) {
   return `-- =============================================================================
 -- ${path.basename(MIGRATION_PATH)}
 --
--- APPLIED: no
+-- APPLIED: production
+-- TARGET:  Supabase project sluglines (project ref bwpguotjzczmieeepczf), applied
+--          2026-08-22 under the project owner's authorisation of 2026-08-21.
+--          Rehearsed first on preview branch phase-3-4-staging (xqonrogwwytkmqfinszp).
+--          See Docs/DECISIONS.md D-41 and supabase/migrations/README.md.
+--
+-- This header is emitted by the generator, not written into the .sql, because
+-- the .sql is regenerated and compared byte-for-byte. Editing the file instead
+-- would turn the guard red the next time anyone runs the generator.
 --
 -- GENERATED FILE -- DO NOT EDIT BY HAND.
 --   Source:    src/lib/domain/locations.ts

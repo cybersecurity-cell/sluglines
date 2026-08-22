@@ -2046,3 +2046,121 @@ is `prj_Uvmtv5fVBVg9tw5CJUyMSD4UHmGS` and its **Production** environment points 
 reads, and the `unavailable` states will turn `live`.
 
 **Status:** DONE. D-7 CLOSED. Preview credentials owed by #41.
+
+---
+
+## D-41 — `0001`–`0007` applied to production `bwpguotjzczmieeepczf`, 2026-08-22
+
+**Authorisation:** the project owner, 2026-08-21, naming the project and the files. Issue #19.
+Production held three legacy tables and **zero rows**, so this is a code move, not a data migration
+— the property the whole plan has been built around since the 2026-08-20 correction notice, and the
+reason it was worth doing before the pilot rather than after.
+
+### Rehearsed first, because none of it had ever been executed
+
+D-27 recorded, honestly, that `0002`'s claims included *"The file parses as SQL at all — **Unproven.
+No Postgres has read it**"*, and `0004`–`0007` had never been applied anywhere at all. Applying
+never-parsed SQL straight to production would be reckless with or without authorisation, so
+`0004`–`0007` went to the preview branch `xqonrogwwytkmqfinszp` first. All four applied without
+error; the branch then reported 50 locations, 41 active, 4 with null coordinates, 0 write policies
+and 0 table grants to `anon`. Only then did production run.
+
+### The apply
+
+Seven files, in order, byte-for-byte from the repo — read from disk and posted to the Management
+API by a one-off script, so nothing was retyped and nothing could be corrupted in transit. A runner
+is still deliberately absent from the repo (D-21): the script lives outside it.
+
+| File | Bytes | Recorded version |
+|---|---|---|
+| `0001_rebuild_foundation` | 16,145 | `20260822000001` |
+| `0002_ride_coordinator_state` | 55,290 | `20260822000002` |
+| `0003_resolve_transition_conflicts` | 10,956 | `20260822000003` |
+| `0004_spot_locations_directory` | 34,896 | `20260822000004` |
+| `0005_public_aggregates` | 8,706 | `20260822000005` |
+| `0006_identity_home_spot` | 3,553 | `20260822000006` |
+| `0007_retire_legacy_tables` | 4,806 | `20260822000007` |
+
+The versions sort after the two July rows already in `supabase_migrations.schema_migrations`
+(`20260719025630`, `20260719031015`), so `supabase db push` remains usable against this project
+rather than refusing to run out of order — the reconciliation D-28 had to perform by hand on the
+branch is not needed here.
+
+### Post-condition, read back from the catalogue rather than inferred from exit codes
+
+| | |
+|---|---|
+| Tables in `public` | **9**, every one `relrowsecurity = true` |
+| `locations` rows | **50** — 41 active, 4 with null coordinates (the D-31 legacy-only four) |
+| INSERT / UPDATE / DELETE / ALL policies | **0**, on any table, for any role |
+| Table grants to `anon` | **0** |
+| Legacy tables `spot_status`, `profiles`, `commute_log` | **gone** |
+| Legacy trigger `on_auth_user_created` | **gone** |
+| Legacy functions `handle_new_user`, `reset_daily_counts` | **gone** |
+
+`0007` did the work D-34 said it had to. The email-copying trigger described there never coexisted
+with a working identity path: it was removed in the same apply that created one.
+
+### Idempotence, measured rather than asserted
+
+`0004` was applied a **second** time against production. Afterwards:
+
+```
+rows = 50    newest updated_at = 2026-08-22 12:16:25.727763+00    rows_touched_by_rerun = 0
+```
+
+`updated_at` did not move on a single row, which is the `is distinct from` guard in the seed block
+doing exactly what `tests/spot-locations-directory.test.mjs` asserts the *shape* of. The static
+gate could only ever check the shape; this is the behaviour.
+
+### The anonymous surface, verified live
+
+`tests/live-public-surface.test.mjs` is new, and it is deliberately **not** part of
+`tests/live-rls.test.mjs`. That file creates auth users and writes rows, so it refuses the
+production ref outright and that guard is untouched. The new file issues **reads only** and holds
+**only the anon key** — it even refuses to run if handed a service-role key, since that would bypass
+RLS and report that everything is permitted. Against `bwpguotjzczmieeepczf`:
+
+| Check | Result |
+|---|---|
+| `rpc get_public_spot_counts` as anon | 41 rows, exact six-column contract |
+| `rpc get_public_open_offer_counts` as anon | rows, exact six-column contract |
+| No column outside the six leaks | asserted per row |
+| `select` on `offers`, `reservations`, `members`, `presence_checkins` | **`42501`** each |
+| `select` on `locations` | **`42501`** — reference data, but `to authenticated` |
+| `insert` into `presence_checkins` as anon | refused |
+| `rpc presence_clear` as anon | refused — R10, only the two aggregates are granted to `anon` |
+
+Each refusal is required to carry a SQLSTATE. That is the D-29 lesson made permanent: a codeless
+failure is a transport error, and an error alone is not evidence that a policy did anything.
+
+### The tripwire, relaxed in the open
+
+`tests/sql-migration-harness.test.mjs` hard-failed any migration claiming `APPLIED: production`. Its
+own comment named the condition for changing it — *"Production is applied by its own authorised
+session, which is the session that gets to change this test"* — and this is that session, so it is
+relaxed **in the same diff as the apply**, never quietly.
+
+What replaces it is stricter about what the tripwire could not see. A file may say `production`, but
+only by carrying a `TARGET:` line naming the ref **and the date**, and **only if every earlier
+ordinal has reached at least the same target**. A sequence where `0006` is applied over an unapplied
+`0004` is a database that no file in the directory describes — and the blanket ban would never have
+caught it, because it forbade the safe case along with the unsafe one.
+
+`0004`'s header is emitted by `scripts/seed-locations.mjs` rather than written into the `.sql`,
+since the file is regenerated and compared byte-for-byte. `sql:check` reports the same
+**7 migrations / 173 statements / 0 violations** before and after: only comments moved.
+
+### What this does NOT claim
+
+- **The M3 write path is not exercised in production.** `live-rls.test.mjs` proves it, and it proves
+  it on the branch, where creating and deleting test members is appropriate. Production has zero
+  rows and this session put none there.
+- **The site has not been observed rendering `live`.** The migrations are applied and the functions
+  answer an anonymous caller; whether the deployed pages show it is #23's job, after a deployment
+  carrying this commit.
+- **Preview deployments hold no database at all** (D-40, #41). Nothing in this entry changes that,
+  and the ordering was deliberate: the environment split landed first so that this apply never
+  opened a window in which preview branches had live write paths.
+
+**Status:** DONE. Production carries the lineage. Rehearsed, verified, and recorded.

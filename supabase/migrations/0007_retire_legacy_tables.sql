@@ -1,7 +1,11 @@
 -- =============================================================================
 -- 0007_retire_legacy_tables.sql
 --
--- APPLIED: no
+-- APPLIED: production
+-- TARGET:  Supabase project sluglines (project ref bwpguotjzczmieeepczf), applied
+--          2026-08-22 under the project owner's authorisation of 2026-08-21.
+--          Rehearsed first on preview branch phase-3-4-staging (xqonrogwwytkmqfinszp).
+--          See Docs/DECISIONS.md D-41 and supabase/migrations/README.md.
 --
 -- Retires the three legacy tables that are the entire contents of the production
 -- database today, together with the two functions and the one auth trigger that

@@ -224,7 +224,12 @@ assert.equal(
 )
 
 assert.match(sql, /^-- =+\n-- 0004_spot_locations_directory\.sql/, 'names itself in its header')
-assert.match(sql, /--\s*APPLIED:\s*no\b/, 'this slice applies nothing to any database')
+// Was `APPLIED: no`. Issue #19 applied 0001-0007 to production on 2026-08-22
+// (D-41); this file's header is emitted by the generator, so the state and its
+// TARGET line are asserted here rather than in the .sql the guard regenerates.
+assert.match(sql, /--\s*APPLIED:\s*production\b/, 'applied to production, D-41')
+assert.match(sql, /--\s*TARGET:[\s\S]*?bwpguotjzczmieeepczf/, 'the header names the database it ran against')
+assert.match(sql, /--\s*TARGET:[\s\S]{0,400}?2026-08-22/, 'and the date it ran')
 assert.match(sql, /GENERATED FILE -- DO NOT EDIT BY HAND/)
 
 // -----------------------------------------------------------------------------
