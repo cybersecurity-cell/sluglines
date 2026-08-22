@@ -219,6 +219,12 @@ P3, the first phase that uses it.
 
 ## D-8 — OTP configuration values
 
+> **CLOSED 2026-08-22 by D-45** (issue #24). The cooldown and an attempt cap are applied to
+> `bwpguotjzczmieeepczf` and captured in `Docs/2026-08-22-supabase-auth-config.md`. Two sub-items
+> close as **not applicable rather than done** — there are no test-OTP ranges to disable, and
+> CAPTCHA has no provider credential — and one closes **elsewhere**: the per-IP daily cap is edge
+> middleware. Read D-45 for what is genuinely enforced and what is not. Original text below.
+
 **Decision:** the rev. 5.3 §8 M2 values are **recorded as the intended configuration**; **none has
 been applied or verified.**
 
@@ -244,7 +250,8 @@ and that difference is stated rather than blurred.
 configuration at all** — it defines `spot_status`, `profiles`, `commute_log`, `riders`, `drivers`,
 and `alerts`. There is no phone-OTP identity in this repo today.
 
-**Status:** PENDING — requires explicit operator authorisation for auth-config changes.
+**Status:** ~~PENDING — requires explicit operator authorisation for auth-config changes.~~
+**CLOSED 2026-08-22 — see D-45.**
 
 ---
 
@@ -2380,3 +2387,66 @@ its output recorded here.
 command: `node scripts/verify-legacy-routes.mjs https://sluglines.com`.
 
 **Status:** DONE pre-DNS — 165/165 against a real deployment. Post-DNS re-run owed to #25.
+
+---
+
+## D-45 — OTP abuse controls applied. **Closes D-8**, which has been PENDING since Phase 0
+
+Issue #24. The full before/after, with no secret values, is
+`Docs/2026-08-22-supabase-auth-config.md` — a dated record, not a living document.
+
+### Applied to `bwpguotjzczmieeepczf`
+
+| Setting | Before | After |
+|---|---|---|
+| `sms_max_frequency` | `5` | **`60`** |
+| `rate_limit_verify` | `30` | **`10`** |
+
+The first is D-8's resend cooldown exactly. Five seconds between sends is the SMS-pumping cost
+surface §14 risk 11 names.
+
+### The one that is deliberately not D-8's number
+
+D-8 asks for **≤ 5 verify attempts per number per hour**. GoTrue's control is **per IP**. Those are
+different controls, and quietly substituting one for the other is precisely the "looks satisfied"
+this log keeps refusing.
+
+At 5/hour/IP a carrier CGNAT pool or a shared office network locks out legitimate commuters after a
+handful of collective attempts — on the app whose whole audience is people on mobile networks.
+**10** is a third of the previous ceiling, well above a real user's needs (a code mistyped twice),
+and does not break shared egress.
+
+So the per-number cap D-8 actually specifies is **still enforced only by
+`src/lib/api/rate-limit.ts`**, which is in-memory, single-process and resets on redeploy (D-36).
+Defence in depth, not the durable control. That gap is real and is not closed by this entry.
+
+### Closed as not-applicable, which is different from done
+
+- **Test-OTP ranges:** `sms_test_otp` is `null`. There are none, so there is nothing to disable.
+  Evidenced rather than assumed — a verify against a canonical test-range number with `123456`
+  returns `403 otp_expired`, *"Token has expired or is invalid"*: refused, and refused **generically**,
+  which is the T10 anti-enumeration posture `otp-http.ts` enforces on the app side.
+- **CAPTCHA:** `security_captcha_provider` is `hcaptcha` but `security_captcha_secret` is unset.
+  **No provider credential exists**, so it cannot be enabled. #24 explicitly permits reporting this
+  pending without blocking the rest, and D-8 already carried it as `PENDING [H]`.
+- **Per-IP daily send cap:** edge middleware, explicitly out of scope for #24 and still owed.
+
+### The finding this slice surfaced
+
+**`external_phone_enabled` is `false`.** Phone auth is switched off in production, so the whole M2
+identity surface — `/login`, `/verify`, `/onboarding`, both `/api/auth/*` routes — cannot function.
+An OTP send returns `400 phone_provider_disabled`.
+
+That is **condition 1 of the Sev-1 definition** (D-42), and it is only not an incident because
+there are no members yet. It was not switched on here, for two reasons either of which suffices:
+enabling it turns on a **billable** Twilio SMS path, and it is a production auth change far beyond
+"apply abuse controls". Filed as **#52**, with the ordering that matters — it should be the *last*
+thing enabled before the pilot, after CAPTCHA, the edge rate limit and a spend alarm, because those
+three are what make a public OTP endpoint safe to expose.
+
+Also flagged there, not changed: `sms_otp_exp` is **60 seconds**. A code that expires before the
+SMS arrives is indistinguishable to a member from a broken product, and 60s is aggressive for real
+carrier delivery. It is not one of D-8's controls, so it is reported rather than adjusted.
+
+**Status:** DONE for what is applicable and authorised. D-8 CLOSED. The per-number cap, CAPTCHA,
+the edge daily cap and phone auth itself are all still owed, each named above and each tracked.
