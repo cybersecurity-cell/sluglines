@@ -2321,3 +2321,62 @@ and does **not** block the rest of the work: production currently holds nothing 
 
 **Status:** BLOCKED — reported with the plan named, carried to #25, not waived and not silently
 passed. Daily physical backups are confirmed present and current; PITR is not enabled.
+
+---
+
+## D-44 — All 165 legacy routes verified at the edge, pre-DNS
+
+Issue #23. `tests/legacy-redirects.test.mjs` proves the *policy* is right; this proves the
+*deployed edge* agrees with it — the middleware matcher, Vercel's routing layer and the built app,
+three things a unit test cannot see. The issue's own framing: *"a redirect map that is correct in a
+unit test and wrong at the edge is the failure this catches."*
+
+### The run — 2026-08-22, deployment `sluglines-9kb91ocwn` (commit `3a6a732`)
+
+```
+routes checked: 165 of 165 in the inventory
+expected dispositions: 122×200, 43×301
+trailing-slash canonicalisation (308 to the slash-less path): 164
+
+PASS=165 FAIL=0
+```
+
+All 43 policy redirects returned **301** to their exact mapped target. All 122 content routes
+resolved **200**.
+
+### The finding: every legacy URL takes one extra hop
+
+164 of the 165 inventory paths carry WordPress's **trailing slash**, and the app runs Next's
+default `trailingSlash: false`, so each is canonicalised with a **308** to the slash-less form
+before being served. `/about-us/` → 308 → `/about-us` → 200.
+
+The first version of the checker called that a failure 122 times, which was the checker being
+wrong rather than the app: 308 is permanent, search engines follow it and pass signals through it,
+and one canonical URL per page is the desirable end state. But it is a genuine divergence between
+the committed policy — which classifies `/about-us/` as a pass-through 200 — and what the edge
+does, and it is exactly the class of thing #23 exists to surface, so the checker now **counts and
+reports it** rather than absorbing it silently.
+
+**Not changed, deliberately.** Setting `trailingSlash: true` would resolve legacy URLs in one hop
+and match the legacy pages' own canonical tags, but it would also change every internal URL in the
+app during a cutover. That is an SEO decision with a blast radius, not a checkbox, and it belongs
+to #25 where real traffic arrives. Carried there.
+
+### Two things about how this is verified
+
+**The checker derives every expectation from `classifyLegacyPath()`**, the same function the
+middleware calls — it is not a second copy of the map. A checker with its own copy cannot fail: it
+drifts alongside the thing it is checking and agrees with itself forever.
+`tests/legacy-route-verifier.test.mjs` pins that property, because it is not one the checker's own
+output would ever reveal.
+
+**The network run is not in CI**, and that is deliberate. There is no publicly reachable URL to hit
+— Vercel Authentication covers every `.vercel.app` URL (#47) — and this run needed a share token
+exchanged once for a cookie. A CI job that silently skips when the deployment is unreachable is the
+"gate that only looks green" this repo keeps refusing. The script is run against a named origin and
+its output recorded here.
+
+**Still owed by #23:** the same run against production after DNS. That is #25's, and it is one
+command: `node scripts/verify-legacy-routes.mjs https://sluglines.com`.
+
+**Status:** DONE pre-DNS — 165/165 against a real deployment. Post-DNS re-run owed to #25.
