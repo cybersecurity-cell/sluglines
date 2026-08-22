@@ -3,6 +3,11 @@ import {
   PUBLIC_OPEN_OFFER_COUNTS_FUNCTION,
   PUBLIC_SPOT_COUNTS_FUNCTION,
 } from '@/lib/domain/public-counts'
+import {
+  SCHEDULED_JOB_HEALTH_FUNCTION,
+  type ScheduledJobRow,
+  summariseScheduledJobs,
+} from '@/lib/domain/scheduled-jobs'
 import { createClient } from '@/lib/supabase/server'
 
 /**
@@ -90,6 +95,28 @@ export async function GET() {
     }
   }
 
+  // --- the sweeps, which nothing else in the product can observe -------------
+  //
+  // Deliberately NOT one of `checks`, so it cannot move the status code. A
+  // stopped scheduler is a real incident, but it is a slow one: the public
+  // surface stays correct for presence (read paths filter on `expires_at`) and
+  // degrades gradually for offers. Wiring it to 503 would also mean every
+  // preview branch and every local run — none of which have pg_cron — reported
+  // themselves as an outage forever, which is how a monitor gets ignored.
+  // It is reported in full instead, so a body-reading monitor can alert on
+  // `scheduledJobs.healthy` while the status line stays about reachability.
+  let scheduledJobs
+  try {
+    const { data, error } = await createClient().rpc(SCHEDULED_JOB_HEALTH_FUNCTION)
+    scheduledJobs = summariseScheduledJobs((data as ScheduledJobRow[] | null) ?? null, {
+      error: error ? `${error.code ?? 'no sqlstate'} ${error.message ?? ''}`.trim() : null,
+    })
+  } catch (error) {
+    scheduledJobs = summariseScheduledJobs(null, {
+      error: error instanceof Error ? error.message : 'unknown',
+    })
+  }
+
   const ok = Object.values(checks).every((check) => check.ok)
 
   return NextResponse.json(
@@ -107,16 +134,15 @@ export async function GET() {
       checks,
       /**
        * The sweeps rev. 5.3 §6 specifies — `sweep_expired_presence()` and
-       * `offer_expire_sweep()` — exist in production but **nothing runs them**:
-       * `pg_cron` is not installed (verified 2026-08-22). There is therefore no
-       * last-run timestamp to report, and this says so rather than omitting the
-       * field and letting its absence read as "fine". Tracked as issue #46.
+       * `offer_expire_sweep()`. Until 2026-08-22 this block was a hardcoded
+       * `supported: false`, because `pg_cron` was not installed and neither had
+       * ever run (issue #46). Both are scheduled now, so this reports what
+       * `get_scheduled_job_health()` just returned: a real `lastRunAt`, or
+       * `null` carrying the reason there is none. It is never synthesised from
+       * the clock, and the field is never omitted — an absent field reads as
+       * "fine", which is the failure D-33 is about.
        */
-      scheduledJobs: {
-        supported: false,
-        detail: 'pg_cron is not installed; sweep_expired_presence and offer_expire_sweep have never run',
-        lastRunAt: null,
-      },
+      scheduledJobs,
     },
     {
       status: ok ? 200 : 503,

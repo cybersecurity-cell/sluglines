@@ -2450,3 +2450,98 @@ carrier delivery. It is not one of D-8's controls, so it is reported rather than
 
 **Status:** DONE for what is applicable and authorised. D-8 CLOSED. The per-number cap, CAPTCHA,
 the edge daily cap and phone auth itself are all still owed, each named above and each tracked.
+
+---
+
+## D-46 — pg_cron installed and both sweeps scheduled. **Closes #46**
+
+**Date:** 2026-08-22
+**Target:** production `bwpguotjzczmieeepczf`, rehearsed on preview branch `phase-3-4-staging`
+(`xqonrogwwytkmqfinszp`)
+
+### What was wrong
+
+`0001` created `sweep_expired_presence()` and `0002` created `offer_expire_sweep()`. Each file said,
+in a comment, that scheduling it was "a database operation, not a migration concern, and is not done
+here" — correct, and then nothing ever did it. `pg_cron` was not installed, so as of 2026-08-22 both
+functions had **never run once**. Neither is granted to any client role, deliberately, because the
+scheduler was meant to be their only caller; with no scheduler they were unreachable by anything.
+
+It had not bitten yet only because both tables were empty and both read paths compute expiry at read
+time rather than trusting the sweep.
+
+### What is now scheduled, and why the two intervals differ
+
+| Job | Schedule | What it buys |
+|---|---|---|
+| `offer_expire_sweep` | `* * * * *` (1 min) | **Correctness of the public board.** `0005`'s `get_public_open_offer_counts()` filters offers on `state in ('OPEN','PARTIALLY_RESERVED')` and **not** on `window_end`. So a closed-window offer keeps being counted publicly until something moves it to `EXPIRED`, and nothing else does. Every minute of lag is a minute of a visibly wrong count, so this runs at pg_cron's floor. |
+| `sweep_expired_presence` | `*/5 * * * *` (5 min) | **Retention, not correctness.** `get_public_spot_counts()` filters `pc.expires_at > now()` and `fast-board.ts` has `isPresenceLive()` (D-33), so an unswept row is never counted or rendered. What the sweep buys is that rows recording where a member physically stood do not accumulate forever. |
+
+**The retention claim this interval supports, stated precisely.** `presence_checkin`'s `p_ttl_minutes`
+defaults to 20 and is hard-capped at 60 in `0001`. A 5-minute sweep therefore bounds an expired
+presence row's life at **TTL + 5 minutes** — 25 minutes at the default. That is the number to check
+against the canonical retention schedule (`data-classification.md` in `Sluglines-AI`, incorporated by
+reference per §2), and it is a bound rather than an average: the sweep is keyed on time and carries
+no idempotency key, so a missed run is made up by the next one.
+
+Tightening presence to the 1-minute floor would buy 4 minutes against a 20-minute TTL. The interval
+is chosen against the cost of being wrong in the *other* direction — location rows kept indefinitely
+— and 5 minutes is comfortably inside that.
+
+### Where the SQL lives, and why it is split
+
+New directory `supabase/operations/`, with its own README, holding
+`2026-08-22-schedule-sweeps.sql` (the `create extension` and the two `cron.schedule` calls).
+
+The split is not tidiness. Every file in `supabase/migrations/` is rehearsed against an ephemeral
+preview branch before production. A migration carrying `create extension pg_cron` + `cron.schedule`
+would (a) fail wherever the extension is unavailable and (b) schedule *production's* sweeps onto
+every preview branch that ever ran the sequence. So the schedule is an operation, applied by hand to
+one named database.
+
+`0008_scheduled_job_health.sql` **is** a migration, because it ships only the reader — a function is
+schema, and every environment should have it, including the ones with no scheduler for it to read.
+
+### `/api/health` now measures instead of asserting
+
+The `scheduledJobs` block was a hardcoded `supported: false` / `lastRunAt: null`. That was honest
+when written and **unfalsifiable**: it would have gone on saying the same thing after the sweeps
+started running. It is now derived from `get_scheduled_job_health()` via
+`summariseScheduledJobs()` in `src/lib/domain/scheduled-jobs.ts`.
+
+The case that test file exists for is the quiet one: a sweep that is still *scheduled* but has
+stopped running returns a row, still says `active`, and still carries a plausible timestamp from
+whenever it last worked. `stale`, `failing`, `never-run`, `inactive` and *missing from the schedule*
+all resolve to `healthy: false`. `EXPECTED_SWEEP_JOBS` is a literal list precisely so a sweep
+vanishing from the schedule cannot read as a complete healthy set of one.
+
+**It is deliberately not one of `checks`**, so it cannot move the 200/503 status line. A stopped
+scheduler is a real but slow incident; wiring it to 503 would also mean every preview branch and
+every local run — none of which have pg_cron — reported itself as a permanent outage, which is how a
+monitor gets ignored. A body-reading monitor alerts on `scheduledJobs.healthy`; the status line stays
+about reachability.
+
+### R10 widened, deliberately
+
+`get_scheduled_job_health` is the **third** function granted to `anon`, joining the two M1
+aggregates, and is named in `ANON_CALLABLE_FUNCTIONS` in `scripts/sql-lint.mjs` in the same commit —
+R10 exists to make exactly this a reviewed decision rather than a habit.
+
+What it exposes: a job name, a cron expression, a boolean, a timestamp and a status string. It has no
+column that could carry member data. What it reveals is that two sweeps exist and how often they run,
+which is already stated in this repository and in the issue tracker. `anon` is on it because the
+external uptime monitor (#21) reads `/api/health` unauthenticated, and that route reaches the
+database through the anon key like any visitor.
+
+### Verified after applying
+
+- `cron.job` — both jobs `active`, on database `postgres`, as user `postgres` (which owns both
+  SECURITY DEFINER functions).
+- `offer_expire_sweep` ran at `2026-08-22T17:02:00Z`, status `succeeded`, on its first scheduled fire.
+- `sweep_expired_presence` had not yet reached its first `*/5` boundary and correctly reported
+  `last_run_at: null` — the `never-run` state, not a synthesised timestamp.
+- On the preview branch, which has no `pg_cron`, the reader exists and returns **zero rows** rather
+  than raising, which is the whole reason for its `to_regclass` guard and its dynamic body.
+
+**Status:** DONE. All four checklist items in #46 are closed; the retention bound is stated above
+rather than left implicit.
