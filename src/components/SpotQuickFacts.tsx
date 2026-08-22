@@ -26,14 +26,19 @@ export default function SpotQuickFacts({ location }: SpotQuickFactsProps) {
   )
 }
 
+// A `dl` may wrap each pair in ONE `div`; this used to use two, which put the
+// `dt` and `dd` out of the list as far as a screen reader is concerned. Lighthouse
+// scored it `definition-list` + `dlitem`, both failing. The icon moved inside the
+// `dt` rather than sitting in a sibling span, which is also where it belongs: it
+// labels the term, not the pair.
 function Fact({ icon, label, value }: { icon: ReactNode; label: string; value: string }) {
   return (
-    <div className="flex gap-3">
-      <span className="mt-0.5 text-sky-700">{icon}</span>
-      <div>
-        <dt className="text-xs font-bold uppercase tracking-wide text-slate-600">{label}</dt>
-        <dd className="mt-0.5 text-slate-800">{value}</dd>
-      </div>
+    <div>
+      <dt className="flex items-center gap-2 text-xs font-bold uppercase tracking-wide text-slate-600">
+        <span className="text-sky-700">{icon}</span>
+        {label}
+      </dt>
+      <dd className="mt-0.5 pl-6 text-slate-800">{value}</dd>
     </div>
   )
 }

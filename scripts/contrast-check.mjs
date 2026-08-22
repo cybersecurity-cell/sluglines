@@ -77,6 +77,7 @@ const tw = {
   'slate-700': '#334155',
   'slate-800': '#1e293b',
   'slate-950': '#020617',
+  'sky-600': '#0284c7',
   'sky-700': '#0369a1',
   'sky-800': '#075985',
 }
@@ -107,6 +108,12 @@ export const PAIRS = [
   { theme: 'light', fg: ['slate-600', tw['slate-600']], bg: ['slate-100', tw['slate-100']] },
   { theme: 'light', fg: ['slate-700', tw['slate-700']], bg: ['slate-100', tw['slate-100']] },
   { theme: 'light', fg: ['white', tw.white], bg: ['sky-700', tw['sky-700']] },
+  // The footer search button. It was `bg-sky-600`, which is 3.90:1 against white
+  // and failed Lighthouse's `color-contrast` audit on the first run of this gate
+  // — a pair this table did not cover, which is exactly why the Lighthouse job
+  // and this script are both worth having: a hand-written pair list can only
+  // check the combinations someone thought of.
+  { theme: 'dark', fg: ['white', tw.white], bg: ['sky-700 (footer button)', tw['sky-700']] },
   { theme: 'light', fg: ['sky-800', tw['sky-800']], bg: ['white', tw.white] },
   { theme: 'light', fg: ['slate-800', tw['slate-800']], bg: ['white', tw.white] },
 ]
