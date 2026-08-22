@@ -14,7 +14,8 @@
  * rule keeps out of `lib/domain`.
  */
 
-import type { SpotLocation } from './locations.ts'
+import type { SpotImage, SpotLocation } from './locations.ts'
+import { spotImage } from './locations.ts'
 
 export type PublicLocationSource = 'database' | 'directory'
 
@@ -38,6 +39,13 @@ export interface PublicLocation {
   linesTo: string[]
   communityUrl?: string
   notes?: string
+  /**
+   * Absent where no approved photograph exists — which is every spot today
+   * (issue #18, D-39). Resolved from the committed directory in *both* mappings
+   * below, because it is deliberately not a `locations` column: the row cannot
+   * supply it, and the two mappings must still produce the same record.
+   */
+  image?: SpotImage
   /** Which of the two answered. Rendered nowhere; load-bearing in a bug report. */
   source: PublicLocationSource
 }
@@ -95,8 +103,15 @@ export function publicLocationFromRow(row: LocationRow): PublicLocation {
     linesTo: row.lines_to ?? [],
     ...(row.community_url ? { communityUrl: row.community_url } : {}),
     ...(row.notes ? { notes: row.notes } : {}),
+    ...imageFor(row.slug),
     source: 'database',
   }
+}
+
+/** The one field the table cannot answer, so both mappings ask the directory. */
+function imageFor(slug: string): { image?: SpotImage } {
+  const image = spotImage(slug)
+  return image ? { image } : {}
 }
 
 export function publicLocationFromDirectory(location: SpotLocation): PublicLocation {
@@ -118,6 +133,7 @@ export function publicLocationFromDirectory(location: SpotLocation): PublicLocat
     linesTo: location.linesTo ?? [],
     ...(location.fbUrl ? { communityUrl: location.fbUrl } : {}),
     ...(location.notes ? { notes: location.notes } : {}),
+    ...(location.image ? { image: location.image } : {}),
     source: 'directory',
   }
 }

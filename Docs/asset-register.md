@@ -35,3 +35,33 @@ The legacy archive at `C:\Users\kalai\OneDrive\Sluglines` is read-only research 
 - Images: use `next/image`, explicit dimensions, responsive `sizes`, descriptive alt text, and no decorative text baked into the bitmap.
 - Photography intake: record creator, capture date, location, consent status, rights, privacy remediation, and verification date.
 - Never ship an image directly from the OneDrive archive path.
+
+## Appendix — `sluglines.com/images/slugging_locations/`, classified 2026-08-22
+
+Every asset under that path was pulled and **visually inspected** for issue #18. 27 distinct files, referenced by 25 of the 42 legacy spot pages. All 42 pages were reachable and **no URL was dead**.
+
+**None of the 27 is a photograph of a location.**
+
+| Kind | Count | What it actually is |
+|---|---|---|
+| Satellite / aerial tile | 12 | Google Maps imagery, several carrying a visible `Google` credit, `Map data ©2016 Google`, and a `www.sluglines.com` watermark. `Route17.jpg` and `Mine_Road.jpg` are unannotated tiles. |
+| Third-party transit or parking schematic | 8 | VDOT, VRE, WMATA and Fairfax County lot diagrams — bus-bay listings, space counts, ADA and bicycle-parking legends. `Crystal_City_12th_St.jpg` and `Crystal_City_23rd_St.jpg` are the **same** WMATA station map. |
+| Annotated aerial route diagram | 6 | 2018–2019 change notices: *"Changes to Slug pickup location at the Pentagon going to Stafford"*, *"New traffic pattern at the pentagon starting feb 26 2018"*, *"Directions from Frontier Garage to I-95 Express Lanes"*. |
+| Promotional flyer | 1 | `21st-Street.jpg` — a marketing graphic with a speech bubble, the Sluglines logo, a Facebook group URL, a Twitter handle and `admin@SlugLines.com`. |
+| **Photograph of a spot** | **0** | — |
+
+### Consequences under the rules above
+
+- **The satellite tiles fail the "not a satellite tile posing as a photograph" line outright**, and they embed Google Maps imagery, which this register already flags: *"embedded map imagery has separate terms."*
+- **The route diagrams are the entry this register already classifies as `Historical only`** — *"Staffordboro and Pentagon route diagrams from 2018-2019 … operational directions may have changed."* Two of them are dated 2018 in their own filenames.
+- **The transit schematics are third-party operator material**, usable by link rather than by copy, per `Docs/content-sources.md`'s hierarchy (*"link to the operator rather than copying"*).
+- **The flyer carries contact details** and is a publication artefact, not a location record.
+
+So **no asset was migrated**, and all 50 spots render the reserved no-photograph state. See `Docs/DECISIONS.md` **D-39**.
+
+### Two audit corrections
+
+1. Issue #18 recorded *"32 legacy spots with a photo, 10 without"*. The real figure is **25 with an asset, 17 without**. The gap is exactly the assets the issue's own guidance excludes: 3 spots whose only image sits at `sluglines.com/images/` rather than `…/slugging_locations/` (`Franconia-Springfield.jpg`, `Landmark-Mall.jpg`, `Van-Dorn-St.jpg`), 3 whose only image is an `lh5.googleusercontent.com` commenter avatar (`mark-center`, `navy-yard`, `rosslyn`), and 1 whose only image is the `direction.png` UI icon (`telegraph-rd`). 25 + 3 + 3 + 1 = 32.
+2. The live site now references one asset the 2026-07-11 snapshot missed: `sydenstricker-rd` also loads `Saratoga.jpg`, the same file the `saratoga` page uses. Not a new photograph — the same schematic on two pages.
+
+**10 legacy pages carry an `lh5.googleusercontent.com` avatar**: `bobs-old-keene-mill-rd`, `landmark-mall`, `mark-center`, `navy-yard`, `rosslyn`, `route-234`, `route-3-gordon-rd`, `route-610-mine-rd`, `state-department`, `the-pentagon`. These are commenters' faces. They are never migrated, and the test in `tests/spot-photos.test.mjs` refuses any image whose source is not under `slugging_locations/`.

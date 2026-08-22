@@ -1882,3 +1882,95 @@ snapshot over — a tag keeps `e7b0f49` reachable permanently while removing it 
 Every claim above is checkable against it.
 
 **Status:** DONE. Four issues open; one document adopted; branch archived.
+
+---
+
+## D-39 — There are no per-location photographs to migrate. All 50 spots get the reserved no-photograph state
+
+**Decision:** issue #18's infrastructure ships — an optional `image` field on `SpotLocation`, a
+reserved 4:3 media area, `next/image` with explicit dimensions, and a test that refuses any image
+not sourced from `sluglines.com/images/slugging_locations/` — and **zero images are migrated**,
+because the legacy site has none of the kind the issue is about.
+
+### What was actually found
+
+All 27 distinct assets under `sluglines.com/images/slugging_locations/` were pulled and **visually
+inspected** on 2026-08-22, not classified from filenames. All 42 legacy spot pages were reachable
+and **no URL was dead**. The full classification is the appendix to `Docs/asset-register.md`.
+
+| Kind | Count |
+|---|---|
+| Google satellite / aerial tile (several with a visible `Google` credit and `Map data ©2016 Google`) | 12 |
+| Third-party transit or parking schematic (VDOT, VRE, WMATA, Fairfax County) | 8 |
+| Annotated aerial route diagram, 2018–2019 change notices | 6 |
+| Promotional flyer carrying a Facebook URL, a Twitter handle and an email address | 1 |
+| **Photograph of a location** | **0** |
+
+`Horner_Road.jpg` is a Google satellite tile with slug-line labels drawn on it and a `sluglines.com`
+watermark. `Route17.jpg` is an unannotated satellite tile. `Bobs.jpg` is a bus-bay and parking
+schematic. `Crystal_City_12th_St.jpg` and `Crystal_City_23rd_St.jpg` are the same WMATA station map.
+
+### Why none of it ships
+
+The instruction for this milestone is explicit that the spots without a photograph get a designed
+no-image state — *"not a broken img, not stretched filler, **not a satellite tile posing as a
+photograph**"*. The finding is that **every** candidate is one of those. Applying the rule to what
+was actually there yields "migrate none"; migrating them anyway would be the exact failure the rule
+names, applied to 25 spots instead of avoided on 18.
+
+Three independent lines converge on the same answer, which is why this is not a close call:
+
+1. **The satellite tiles are Google Maps imagery.** `Docs/asset-register.md` already says *"embedded
+   map imagery has separate terms"*, and several files carry Google's credit inside the pixels.
+2. **The route diagrams are already classified `Historical only`** by that register — *"Staffordboro
+   and Pentagon route diagrams from 2018-2019 … operational directions may have changed"*. Two are
+   dated 2018 in their own filenames. Publishing a 2018 traffic-change notice as a spot's current
+   image tells a commuter something operational that may be years wrong.
+3. **The transit schematics are third-party operator material**, which `Docs/content-sources.md`
+   says to link to rather than copy.
+
+This is the same discipline as D-31 (a `null` coordinate is never guessed, because a plausible guess
+is indistinguishable from a surveyed one) and D-33 (`unavailable`, never a fabricated zero). An
+aerial view of a car park in the slot labelled "photograph of this spot" is a fabricated answer to
+the question the slot asks.
+
+### The audit was wrong, in a specific and instructive way
+
+Issue #18 records *"32 legacy spots with a photo, 10 without"*. The real figure is **25 with an
+asset under `slugging_locations/`, 17 without** — and the seven-spot gap is made up entirely of the
+assets the issue's own guidance excludes:
+
+| Excluded | Spots | Why |
+|---|---|---|
+| Image at `sluglines.com/images/` rather than `…/slugging_locations/` | `franconia-springfield`, `landmark-mall`, `van-dorn-st` | Outside the one permitted path |
+| Only image is an `lh5.googleusercontent.com` avatar | `mark-center`, `navy-yard`, `rosslyn` | A commenter's face — the trap the issue names |
+| Only image is `direction.png` | `telegraph-rd` | A UI icon, used on 8 pages |
+
+25 + 3 + 3 + 1 = 32. The audit counted the avatars it warned about.
+
+One further correction: the live site now references an asset the 2026-07-11 snapshot missed —
+`sydenstricker-rd` also loads `Saratoga.jpg`, the same schematic the `saratoga` page uses. Not a new
+photograph.
+
+### What ships instead
+
+The reserved 4:3 media area from `Docs/asset-register.md` — *"reserve a stable 4:3 media area, but
+show a neutral route graphic until a current approved photograph exists"* — rendered by
+`src/components/SpotPhoto.tsx`. The box is reserved in **both** branches, so adding a photograph
+later reflows nothing, and the empty branch is a drawn graphic and a sentence that says what it is
+rather than implying a missing file.
+
+`image` stays out of `SEED_COLUMNS`, so `0004_spot_locations_directory.sql` is byte-identical and
+`sql:check` still reports 7 migrations / 173 statements / 0 violations. `locations` has no image
+column and `LOCATION_COLUMNS` does not ask for one; both mappings in `public-location.ts` resolve
+the field from the committed directory, so the table and the file still produce the same record.
+
+**Consequence for #26:** its scope changes from *"source photographs for the 18 spots that have
+none"* to **all 50**. Recorded as a comment on that issue.
+
+**Filed, not built:** the diagrams and schematics are genuinely useful to a commuter — a lot layout
+showing where the line forms is worth more than a photograph of tarmac. Publishing them **labelled
+as maps**, with the third-party rights question answered, is issue #39. It is a different surface
+from the one #18 asks for and is not smuggled into it.
+
+**Status:** DONE. Field, media area, guard and audit shipped. Zero images migrated, with reasons.
