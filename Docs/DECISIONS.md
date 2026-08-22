@@ -3173,3 +3173,61 @@ otherwise so CI uses its own `playwright install`. Sandboxes that pin a browser 
 match the installed `@playwright/test` are common, and `playwright install` is not always available.
 
 **Status:** DONE. All five bullets closed; 34 browser tests green in both viewports.
+
+---
+
+## D-56 — #39, #26 and #25 stay open. What blocks each, and what changed for them today
+
+**Date:** 2026-08-22
+
+Three issues that were not implemented, recorded so each reads as a blocked decision with a named
+blocker rather than as work someone forgot.
+
+### #39 — legacy diagrams as maps
+
+**Blocked on a rights determination, which is not an engineering question.** #39 says so itself: "This
+is the blocking question, not the design." The three source families each carry a different problem —
+Google Maps tiles with `Map data ©2016 Google` burned into the pixels (12 assets), VDOT / VRE / WMATA
+/ Fairfax County schematics (8), and 2018–2019 change notices the asset register already classifies
+`Historical only` (6). Re-hosting any of them is a licensing decision.
+
+**Also not inspectable from here.** The legacy host is unreachable from this environment — a direct
+fetch of `sluglines.com/images/slugging_locations/Horner_Road.jpg` fails at the proxy — so even the
+unblocked fourth bullet ("consider redrawing the best lot layouts as original graphics") cannot start:
+redrawing requires seeing the original.
+
+**One thing did change for it today.** D-54 gives #39 the vocabulary its third bullet asks for: the
+2018–2019 notices now have a defined `historical` state, rendering as *"Kept for context only. This
+describes how the spot used to operate and may no longer be current"*, rather than needing a bespoke
+badge invented at publication time.
+
+**And one thing was removed today that belongs to the same family.** `/how-it-works` was hotlinking
+three `wp-content/uploads/` photographs from that same legacy host (D-55). Those were live, not
+proposed, and they would have died at the #25 cutover. #39 is about assets nobody has published yet;
+that was one nobody noticed had already been published.
+
+### #26 — photographs for the 50 spots
+
+**Owner-performed, and correctly so.** It needs someone to take or license actual photographs. #18
+shipped the receiving end — the field, the reserved 4:3 area, the `slugging_locations`-only guard —
+so a photograph drops in one line at a time with no further engineering. Nothing here is blocked on
+it: all 50 spots render the designed no-photograph state.
+
+The standing bar in `Docs/asset-register.md` still applies to anything sourced: creator, capture date,
+consent, rights, and no readable plates or identifiable commuters without remediation. And #26's own
+rule holds — a satellite tile is not an acceptable substitute, because it would look like a photograph
+of the spot without being one.
+
+### #25 — DNS cutover
+
+**Owner-performed: it needs control of the domain.** Recorded here because two things now depend on
+it in a way they did not before:
+
+- **#21's external uptime monitor** is gated on it (D-47) — there is no public URL to watch until
+  `sluglines.com` points here, at which point `all_except_custom_domains` makes exactly the right
+  thing public with no further change.
+- **`/how-it-works` no longer breaks at cutover** (D-55). Before today it hotlinked three images from
+  `sluglines.com`; the moment that domain resolved here instead of at WordPress, those images would
+  have 404'd. That is one fewer cutover surprise, and it was found by accident.
+
+**Status:** All three OPEN, each with its blocker named. None blocks anything in this repository.
