@@ -9,11 +9,19 @@ import Link from 'next/link'
 // serialises HTML -> CSS -> font CSS -> font files against a third-party origin;
 // it was the largest single contributor to the homepage LCP, which the issue #20
 // budget (< 2.0s) failed on its first run at 2026 ms. next/font inlines the
-// @font-face rules, preloads the files from our own origin, and sets
-// `display: swap` so text paints on the first frame.
-const syne = Syne({ subsets: ['latin'], weight: ['400', '500', '600', '700', '800'], display: 'swap', variable: '--font-syne' })
-const outfit = Outfit({ subsets: ['latin'], weight: ['300', '400', '500', '600'], display: 'swap', variable: '--font-outfit' })
-const mono = JetBrains_Mono({ subsets: ['latin'], weight: ['400', '500'], display: 'swap', variable: '--font-mono' })
+// @font-face rules and preloads the files from our own origin.
+//
+// `display: 'optional'`, not 'swap', and that is the whole LCP fix. With 'swap'
+// the measured LCP element -- a paragraph -- painted in the fallback at FCP 0.9s
+// and then REPAINTED when the web font arrived, and Lighthouse records the later
+// paint: 2.6s against a 2.0s budget while every other metric was excellent
+// (FCP 0.9s, Speed Index 1.0s, TBT 30ms). 'optional' gives the font ~100ms to
+// arrive and otherwise keeps the fallback for that page load, so there is no late
+// repaint. For a commuter opening this on a lot cell signal, text readable
+// immediately in a system font beats the right typeface arriving two seconds in.
+const syne = Syne({ subsets: ['latin'], weight: ['400', '500', '600', '700', '800'], display: 'optional', variable: '--font-syne' })
+const outfit = Outfit({ subsets: ['latin'], weight: ['300', '400', '500', '600'], display: 'optional', variable: '--font-outfit' })
+const mono = JetBrains_Mono({ subsets: ['latin'], weight: ['400', '500'], display: 'optional', variable: '--font-mono' })
 
 export const metadata: Metadata = {
   title: 'Sluglines - HOV-3 Carpool for Northern Virginia',
