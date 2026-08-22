@@ -1,9 +1,17 @@
 # ADR — `sluglines` is the host repo; `Sluglines-AI`'s schema is the ancestry
 
 - **Date:** 2026-08-20
-- **Status:** Accepted
+- **Status:** Accepted, with the schema-ancestry decision **superseded 2026-08-22** — see `Docs/DECISIONS.md` **D-34**
 - **Supersedes:** §5 of `Docs/2026-08-14-consolidated-architecture.md` (rev. 5.3), which adopted `Sluglines-AI` as the canonical repo
 - **Closes:** §15 Q1 (which repo name survives)
+
+> **Superseded in part.** The three bullets below that pick `Sluglines-AI`'s migrations as the
+> schema ancestry — *"Schema ancestry"*, *"Squash, don't reconcile"*, and *"`codex/phase-3-4` is
+> demoted to a content contribution"* — were reversed on 2026-08-22 by `Docs/DECISIONS.md` D-34.
+> They contradicted D-13, which was never revisited, and the lineage they superseded is the one
+> that has live RLS evidence behind it and production authorisation. **Everything else in this ADR
+> stands**, including the host-repo decision this document exists to record. Left unedited below as
+> the record of what was decided on 2026-08-20.
 
 ## Context
 

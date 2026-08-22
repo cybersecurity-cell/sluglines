@@ -1539,3 +1539,84 @@ grant, and **counts only** in the return type, no member id and no timestamp.
 
 Then, in order: **apply `0004`** to preview (it unblocks the uuid→spot lookup, dashboard check-in,
 and corridor scoping), and **delete the four dead components** listed above.
+
+---
+
+## D-34 — One lineage, and it is this repo's `0001`–`0007`
+
+**Decision:** the competing-`0001` question (issue #4) closes in favour of **`sluglines`'
+`supabase/migrations/0001`–`0007`**. `Sluglines-AI`'s 24 migrations are **not** adopted, squashed,
+or replayed. This is the lineage that `0001`–`0003` proved live on the preview branch (D-28, D-30)
+and the one authorised for production on 2026-08-21.
+
+**This supersedes one bullet of `Docs/2026-08-20-adr-sluglines-is-the-host-repo.md`** — *"Schema
+ancestry: `Sluglines-AI`'s"* — and its two dependent bullets (*"Squash, don't reconcile"*,
+*"`codex/phase-3-4` is demoted to a content contribution"*). Every other part of that ADR stands:
+`sluglines` is the host repo, there is one Supabase project, and there is one lineage. The ADR was
+right about the shape and wrong about which lineage fills it.
+
+**Why the reversal, stated rather than assumed:**
+
+1. **It contradicts D-13, which was never revisited.** D-13 decided (human, 2026-08-14) that the
+   core is *rebuilt* in `sluglines`, not transplanted, and enumerated the consequences as
+   commitments. `0001`–`0006` **are** that rebuild. The ADR's schema-ancestry bullet re-opened the
+   question six days later without executing it, so the repo has been carrying two contradictory
+   decisions and one implementation.
+2. **The implementation is the one with evidence behind it.** `0001`–`0003` are applied to
+   `xqonrogwwytkmqfinszp` with 38 live RLS assertions green (D-28, D-30). `Sluglines-AI`'s 24
+   migrations have never been applied to any Sluglines project — the correction notice in the
+   architecture doc establishes that as verified-and-false, not merely unverified.
+3. **Adopting the other lineage is a different project.** The ADR itself says the absorption is
+   also a Next 14→16 / React 18→19 / Tailwind 3→4 upgrade that "cannot be done incrementally". The
+   app layer it would bring — the AI/chat layer and the ride-coordinator UI — is explicitly out of
+   scope for P2. Nothing in the content cutover depends on it.
+4. **Reversal stays cheap.** The ADR's own argument is that the decision is free while the database
+   is empty and expensive afterwards. It is still empty. Whichever way this goes it must go before
+   the pilot, and only one of the two candidates can be evidenced today.
+
+**What is NOT decided here:** whether `Sluglines-AI` is absorbed *at all*, and on what timetable.
+That question survives this entry intact; it is a repo-topology and upgrade decision, and it no
+longer blocks applying a schema to production. Issue #3 (the per-tool kill switches) remains tied to
+it.
+
+### The three legacy tables, and why `0007` must land before `0001` reaches production
+
+Read from `bwpguotjzczmieeepczf` on 2026-08-22, not inferred:
+
+| Object | State |
+|---|---|
+| `spot_status`, `profiles`, `commute_log` | 3 tables, **0 rows each** |
+| `spot_status` UPDATE policy `Anyone can update spot counts` | `to public`, `using (true) with check (true)` |
+| `commute_log` INSERT `Auth insert commute log` | `to public`, `with check (true)` |
+| `commute_log` SELECT `Public read commute log` | `to public`, `using (true)` |
+| `profiles` SELECT/UPDATE | `to public`, scoped `auth.uid() = id` |
+| Trigger `on_auth_user_created` on `auth.users` | live, runs `public.handle_new_user()` |
+| `public.handle_new_user()` | body is `insert into public.profiles (id, email) values (new.id, new.email)` |
+| `public.reset_daily_counts()` | zeroes `spot_status` counters |
+
+Two consequences, and the second is the load-bearing one:
+
+1. **Three unauthenticated write/read paths are live in production today.** rev. 5.3 §14 risk 4 and
+   the live half of D-24, still open because D-24 correctly declined to drop them before a
+   replacement existed. The replacement exists now.
+2. **`0001` does not remove the legacy auth trigger; it adds a second one.**
+   `on_auth_user_created_member` and `on_auth_user_created` would both be armed on `auth.users`
+   insert. The moment identity works (#24), **every signup writes the member's email address into
+   `profiles.email`** — `text unique not null` — which is precisely the duplication of an identity
+   attribute into an application table that rev. 5.3 §6 forbids and that `0001`'s own comment on
+   `handle_new_member()` singles out. This is not cleanup that can follow the apply; it is a
+   precondition of it.
+
+`0007_retire_legacy_tables.sql` drops the trigger, both functions, and the three tables, and asserts
+its own post-condition so a partial apply cannot report success. It creates nothing, so R3–R11 have
+no subject; `sql:check` reports 7 migrations, 173 statements, 0 violations.
+
+`riders`, `drivers` and `alerts` are deliberately **not** in `0007`: they exist only in the
+quarantined `supabase/schema.sql` and were never applied to production, which holds three tables and
+not six. That file stays quarantined and `tests/legacy-schema-risks.test.mjs` keeps pinning its
+unsafe set.
+
+**Consequence for #19:** the production apply is `0001`–**`0007`**, not `0001`–`0006`. Applying the
+authorised six without the seventh would arm the email-copying trigger described above.
+
+**Status:** DECIDED. `0007` written, `APPLIED: no`. Nothing applied to any database by this entry.
