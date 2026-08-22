@@ -2250,3 +2250,74 @@ What is ready for whoever configures it:
 That last row is the real blocker and is worth stating plainly: **there is currently no publicly reachable URL for an external monitor to hit.** Configuring one before #25 would produce a check that alerts on 401 forever.
 
 **Status:** Sev-1 DEFINED. Health endpoint DONE. External monitoring and its test-fire **NOT DONE** — needs an account and a public URL.
+
+---
+
+## D-43 — PITR is NOT enabled. Recorded as blocked-with-reason, not waived
+
+Issue #22. The instruction for this item is explicit: *"If the Supabase plan does not offer PITR,
+this is reported as blocked with the plan named — it is not waived and it does not silently pass."*
+So here is the plan, and the state.
+
+### Measured 2026-08-22, read-only
+
+| | |
+|---|---|
+| Organization | `ydegktkqxhabaprtofie` ("sluglines") |
+| **Plan** | **`pro`** |
+| **`pitr_enabled`** | **`false`** |
+| `walg_enabled` | `true` — physical backups are running |
+| Retained backups | **8**, all `COMPLETED`, all physical |
+| Most recent | **2026-08-22T08:03:34.398Z** |
+| Daily cadence | 08-22, 08-21, 08-20, 08-19, 08-18 … — one per day, ~07:52–08:03 UTC |
+
+Read from `GET /v1/projects/bwpguotjzczmieeepczf/database/backups`. Nothing was changed.
+
+### The precise situation, because "the plan does not offer PITR" would be wrong
+
+Pro **does** offer PITR. It is a **paid add-on on top of Pro**, and it has not been purchased. So
+this is not a plan ceiling — it is an unbought option, and the block is that **buying it spends
+money**, which this session does not do. That distinction matters for whoever picks this up: no
+plan migration is required, only a decision to spend.
+
+### What recovery actually exists today, and the gap
+
+| | Today (daily physical backup) | With PITR |
+|---|---|---|
+| RPO — worst-case data loss | **up to ~24 hours** | ~2 minutes |
+| RTO | restore from the most recent daily backup | restore to a chosen second |
+| Granularity | whole-database, to the nightly snapshot | any point in the retention window |
+
+**The RPO number is the finding.** A backup taken at ~08:00 UTC daily means a failure at 07:00 the
+next day loses a full day of member activity. Against §13's pilot envelope that is a day of
+check-ins, offers and reservations — recoverable as a database, not as a service anyone trusted.
+
+Today that costs nothing, because production holds **zero member rows**. It becomes real with the
+first pilot write, which is the same threshold every other decision in this log turns on.
+
+### The rehearsal was not performed, and why that is not a waiver
+
+#22 asks for *"one restore rehearsal into a scratch project, documented with timestamps."* Both
+available routes were rejected:
+
+1. **Restore from the daily backup.** Supabase restores a physical backup **in place**, over the
+   project it came from. Rehearsing that against production is destructive, and it is production.
+2. **Restore into a scratch project.** Creating a project on a Pro organization is billable, and
+   restore-to-a-new-project is a PITR-tier capability — the thing that is not enabled.
+
+Overwriting the existing preview branch was considered as a free scratch target and rejected: it
+would destroy the D-28/D-30 evidence base to rehearse a mechanism (`pg_restore` of a physical
+backup) that is not the one being tested.
+
+**So there is no proven recovery path for production**, and the honest form of that sentence is the
+deliverable, not a green tick next to it. Per the milestone instruction this is **carried to #25**
+and does **not** block the rest of the work: production currently holds nothing to lose.
+
+### What has to be true before the pilot writes its first row
+
+- [ ] PITR purchased and enabled on `bwpguotjzczmieeepczf` (a spend decision — #49)
+- [ ] one restore rehearsal executed and documented with start and finish timestamps
+- [ ] the RPO the pilot is actually accepting written down, whichever way the decision goes
+
+**Status:** BLOCKED — reported with the plan named, carried to #25, not waived and not silently
+passed. Daily physical backups are confirmed present and current; PITR is not enabled.
