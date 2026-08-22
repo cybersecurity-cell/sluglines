@@ -1,7 +1,7 @@
 # Sluglines — Consolidated Architecture & Product Plan
 
 - **Status:** rev. 6 — IMPLEMENTED (Phase 0/1 complete, 2026-08-14). §3.4, §5 and §15 Q1 are corrected **in place**; this document no longer carries a banner warning that its own body is wrong.
-- **Baseline N:** 30 test files / 921 assertion call sites, all passing (recounted 2026-08-22, D-35). This line is machine-checked — `tests/baseline-n.test.mjs` re-measures the repo and fails if it and this header disagree, so `N` cannot drift again without the change that moved it saying so. Supersedes D-25's "12 files / 99 assertions", which was stale by more than 2×.
+- **Baseline N:** 31 test files / 930 assertion call sites, all passing (recounted 2026-08-22, D-35). This line is machine-checked — `tests/baseline-n.test.mjs` re-measures the repo and fails if it and this header disagree, so `N` cannot drift again without the change that moved it saying so. Supersedes D-25's "12 files / 99 assertions", which was stale by more than 2×.
 - **Repo State (2026-08-22):** `main` is the only live branch and carries everything below — `codex/phase-3-4` was merged as PR #1 (`e2d922a`) and deleted. `codex/phase-1` survives as the unreviewed snapshot `e7b0f49` (issue #11). Migrations **`0001`–`0007` are applied to production `bwpguotjzczmieeepczf`** (2026-08-22, D-41), and to the preview branch `phase-3-4-staging`. The three legacy tables are gone.
 
 - **Phase 0/1 implementation summary:**

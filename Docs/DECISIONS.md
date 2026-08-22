@@ -2164,3 +2164,31 @@ since the file is regenerated and compared byte-for-byte. `sql:check` reports th
   opened a window in which preview branches had live write paths.
 
 **Status:** DONE. Production carries the lineage. Rehearsed, verified, and recorded.
+
+### Addendum, 2026-08-22 later the same day — the site is observed rendering `live`
+
+The "not claimed" list above said the deployed pages had not been observed showing live counts.
+They now have, and getting there surfaced a defect this entry introduced and fixed:
+
+**The D-40 env split had polluted the production values.** The re-added
+`NEXT_PUBLIC_SUPABASE_URL` began with a UTF-8 BOM and ended with a literal CRLF —
+`﻿https://…\r\n` — because the value was piped through PowerShell (`Get-Content -Raw` of a
+file `vercel env pull` had written with a BOM). Supabase-js then fetched a URL beginning with a
+BOM, every RPC threw, and the homepage rendered `unavailable` from a database that was answering
+fine. Diagnosed by pulling the environment back and comparing byte-for-byte; both production
+values (and Development's) were re-set with the CLI's `--value` flag, which passes the literal
+string. The lesson is banal and worth having: **a value that transits PowerShell picks up a BOM
+and a newline; verify credentials byte-for-byte after writing them, not by eyeballing `env ls`.**
+
+After a redeploy (`sluglines-9kb91ocwn…`, aliased to `sluglines.vercel.app`, the #44 commit):
+
+- `/` — corridor strip shows **"Counts refresh with every page load"** with measured zeros and
+  "Quiet right now — morning peak is 5:30–9:30", replacing "Live counts are not switched on yet".
+- `/spots/Horner-Rd` — **"LIVE COUNTS"**, riders 0 / offers 0, "Quiet right now", plus the
+  reserved no-photograph state from #18.
+- **No UI change was involved** — the same deployed components flipped from `unavailable` to
+  `live` because the RPC started answering, which is exactly the property the `availability`
+  split was designed for and the last unchecked box of #19.
+
+The zeros are measured: production has zero presence rows and zero offers. D-33's distinction
+holds on a real page — these render as "Quiet right now", not as "unavailable".
