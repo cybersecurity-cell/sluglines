@@ -91,6 +91,20 @@ function routeSource(route) {
 //           properties are pinned in tests/health-endpoint.test.mjs.
 const READ_ONLY_ROUTES = ['health']
 
+// A third category, and a deliberately narrow one: routes that accept a POST but
+// are not write paths, because they touch no database at all.
+//
+//   csp-report  POST /api/csp-report — the collector for the report-only CSP
+//               (issue #33, D-48). The browser POSTs violation reports here; the
+//               handler truncates the body, logs it, and answers 204. It writes
+//               nothing, which is what keeps it out of the M3 inventory above.
+//
+// The assertions below are what stop this from becoming a hole: a route listed
+// here that ever reaches Supabase fails, and so does one that answers with a
+// body. Adding a name to this list is a review decision, exactly as with
+// ANON_CALLABLE_FUNCTIONS in scripts/sql-lint.mjs.
+const WRITE_FREE_ROUTES = ['csp-report']
+
 // Every route file on disk must be one of the eleven, or a named read-only
 // route — a stray route handler under src/app/api is an unreviewed write path.
 // `auth/` is excluded: it is the rev. 5.3 §8 M2 identity surface, a sibling
@@ -107,8 +121,9 @@ function collectRoutes(dir, prefix = '') {
 const onDisk = collectRoutes(apiDir).sort()
 assert.deepEqual(
   onDisk,
-  [...ALL_ROUTES, ...READ_ONLY_ROUTES].sort(),
-  'src/app/api holds exactly the eleven §8 M3 routes plus the named read-only routes, plus auth/**'
+  [...ALL_ROUTES, ...READ_ONLY_ROUTES, ...WRITE_FREE_ROUTES].sort(),
+  'src/app/api holds exactly the eleven §8 M3 routes, the named read-only routes and the named ' +
+    'write-free routes, plus auth/**'
 )
 
 // A read-only route must not export POST: that is what keeps this category a
@@ -117,6 +132,22 @@ for (const route of READ_ONLY_ROUTES) {
   const source = fs.readFileSync(path.join(apiDir, route, 'route.ts'), 'utf8')
   assert.match(source, /export async function GET\(/, `${route} must be a GET`)
   assert.equal(/export async function POST\(/.test(source), false, `${route} is read-only and must not export POST`)
+}
+
+// A write-free route earns its exemption from the M3 inventory by touching no
+// database. If one ever does, it is a write path that skipped review.
+for (const route of WRITE_FREE_ROUTES) {
+  const source = routeSource(route)
+  assert.equal(
+    /@supabase|createClient|\.rpc\(|\.from\(/.test(source),
+    false,
+    `${route}: is exempt from the M3 inventory only because it touches no database`
+  )
+  // It must also not hand anything back. A public unauthenticated endpoint that
+  // echoes its request body reflects attacker-supplied content out of this
+  // origin; 204-with-no-body is what makes that impossible rather than unlikely.
+  assert.match(source, /status: 204/, `${route}: must answer 204`)
+  assert.match(source, /new NextResponse\(null/, `${route}: must answer with no body`)
 }
 
 for (const route of ALL_ROUTES) {

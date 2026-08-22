@@ -2613,3 +2613,103 @@ exactly as before.
 and defaulted to the safe direction; #23's external check is unblocked in code; #21's external half
 is blocked on #25 with the blocker named rather than left looking merely unfinished. The dashboard
 toggle and the owner's optional decision to publish early are the two things outstanding, both named.
+
+---
+
+## D-48 — Browser security headers shipped; CSP report-only pending its inventory. **Closes #33**
+
+**Date:** 2026-08-22
+
+### What was missing
+
+`next.config.js` was three lines and defined no `headers()`. The app shipped with no CSP, no
+`X-Frame-Options`, no `X-Content-Type-Options`, no `Referrer-Policy` and no `Permissions-Policy` — on
+a public site that already sets a session cookie via `@supabase/ssr` at `/verify`, and that will hold
+a confirmed-participants-only pickup-details surface now that `0002` is in production.
+
+This baseline had been designed once already. `codex/phase-1`'s own `Docs/security-review.md` listed
+CSP, frame denial, MIME-sniffing prevention, restricted referrers and denied
+camera/microphone/geolocation as **shipped** controls; the branch was abandoned and the controls went
+with it (#11). Risk 15 in §14, now downgraded from High.
+
+### Where they live, and why not in middleware
+
+`src/lib/security-headers.mjs`, imported by `next.config.js`'s `headers()` with `source: '/:path*'`.
+
+Not in `src/middleware.ts`: that matcher deliberately excludes `_next/`, `/api/` and every static
+asset extension, because middleware on every asset request is a latency tax on the §10 LCP budget.
+Security headers must cover precisely those excluded paths. `next.config.js` applies them at the edge
+to all of them without re-introducing that cost.
+
+`.mjs` rather than `.ts` because Next does not transform its own config's imports. The policy is data
+in a module rather than prose in a config so that `tests/security-headers.test.mjs` can assert it —
+the point of that file is not that the headers exist today but that **deleting them fails a gate**.
+
+### Enforced now
+
+| Header | Value |
+|---|---|
+| `X-Content-Type-Options` | `nosniff` |
+| `X-Frame-Options` | `DENY` |
+| `Referrer-Policy` | `strict-origin-when-cross-origin` |
+| `Permissions-Policy` | `camera=(), microphone=(), geolocation=(), payment=(), usb=(), interest-cohort=()` |
+
+**Note for the §9 voice feature:** `microphone=()` denies the Web Speech API outright. Whoever ships
+tap-and-speak must revisit that line deliberately rather than discover it at runtime.
+
+### CSP: report-only, and the one reason why
+
+Sent as `Content-Security-Policy-Report-Only`. #33 sequences it this way and is right to — an
+enforced policy that is wrong breaks the page it protects.
+
+The blocker is specific and worth naming rather than leaving as "needs work": **`script-src` still
+carries `'unsafe-inline'`**, because Next injects an inline bootstrap script into every document and
+without a nonce or hash there is no policy that admits it and forbids other inline script. Everything
+*else* is written strictly now — `default-src 'self'`, `base-uri 'self'`, `object-src 'none'`,
+`frame-ancestors 'none'`, `form-action 'self'` — deliberately, so the report-only period surfaces
+real violations rather than drowning in Next-bootstrap noise nobody will read.
+
+`tests/security-headers.test.mjs` makes this a tripwire rather than a comment: if `script-src` still
+allows `'unsafe-inline'`, `CSP_REPORT_ONLY` must be `true`. Enforcing while the weakening is present
+would buy the breakage without the protection, and now fails a gate.
+
+**`connect-src` names real origins.** It is built from `NEXT_PUBLIC_SUPABASE_URL` at build time
+(origin plus the `wss://` host for Realtime), never `https:` or `*` — a wildcard `connect-src` is the
+most common way a CSP is written to look strict while permitting exfiltration to any host, and the
+test rejects those tokens explicitly.
+
+Because that variable is read at **build** time, a build with it unset produces `connect-src 'self'`
+alone, which would block every Supabase call the moment the CSP is enforced — and while report-only,
+would fail silently. The module now warns loudly in the build log instead. (#41 is the matching gap
+on Vercel Preview.)
+
+### The collector
+
+`POST /api/csp-report`, returning 204. A report-only header with nowhere to report is decorative: the
+violations land in individual visitors' consoles, where nobody doing the inventory will see them.
+This endpoint is what makes #33's second bullet produce evidence and its third bullet a decision with
+data behind it.
+
+It deliberately does **no database write**. A public unauthenticated endpoint that inserts a row per
+request is a denial-of-wallet primitive, and a report body is attacker-shaped by construction —
+anyone can POST there directly. Reports go to the platform log: bounded, already access-controlled,
+and where the person doing the inventory is looking. The body is truncated to 8 KiB before logging,
+and the response carries no body so nothing attacker-supplied is reflected back out of the origin.
+
+Both `report-uri` (deprecated, still the widely-honoured one) and `report-to` + `Reporting-Endpoints`
+are sent, because browser support is split across the versions that matter.
+
+### Verified
+
+Built and served locally; all six headers observed on a real `GET /`, and `POST /api/csp-report`
+answered 204. The `connect-src 'self'` seen in that local run is the unset-variable path behaving as
+designed — and is what prompted the build-time warning above.
+
+### Deliberately not set
+
+`Strict-Transport-Security`. Vercel already sends it for custom domains, and asserting
+`includeSubDomains` from here before the #25 DNS cutover would make a claim about `sluglines.com`
+subdomains this project does not yet control. Revisit with #25.
+
+**Status:** Bullets 1, 2 (the mechanism) and 4 are DONE. Bullet 3 — enforce — stays open by design,
+and now has both a collector to justify it and a test that blocks it while `'unsafe-inline'` remains.
