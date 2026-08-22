@@ -2859,3 +2859,75 @@ premise. Noted for whoever gets those credentials; #3 is fixed in code regardles
 
 **Status:** Bullet 1 DONE (both documents corrected). Bullet 3 ANSWERED (a live Vercel project points
 at it). Bullets 2 and 4 OPEN and owner-gated, with the prerequisites named.
+
+---
+
+## D-51 — Phone auth stays off. The per-IP budget was 24× too generous; fixed. **#52**
+
+**Date:** 2026-08-22
+
+### The decision
+
+**`external_phone_enabled` is not switched on.** Two independent reasons, either sufficient, and
+neither has changed since #52 was filed:
+
+1. Twilio is the configured provider, so enabling it starts a **billable** SMS path from the first
+   send. That is a spend decision.
+2. `security_captcha_secret` is unset, so CAPTCHA — the control §14 risk 11 names against
+   SMS-pumping — **cannot** be enabled. Exposing a public, billable OTP endpoint without it is
+   precisely the combination that risk describes.
+
+#52 says this should be the last thing switched on before the pilot, after CAPTCHA, the edge rate
+limit and the spend alarm. That ordering is right and is not overridden here.
+
+### The defect found while confirming it
+
+`src/lib/api/send-otp-route.ts` carried:
+
+```ts
+/** Best-effort stand-in for D-8's "≤10 OTP sends per IP per day" — see rate-limit.ts. */
+const ipLimiter = createFixedWindowLimiter({ max: 10, windowMs: HOUR_MS })
+```
+
+The comment says *day*; the code says `HOUR_MS`. Ten per rolling hour permits **240 sends per day**
+from one address, against D-8's budget of ten — 24× too generous, in the direction that costs money.
+
+More to the point, the comment made the gap look partly covered. Anyone reading #52's "the per-IP
+daily send cap … does not exist yet" alongside that line would reasonably conclude something
+approximate was already in place. Nothing was.
+
+Now `max: 10, windowMs: DAY_MS`, and `tests/phone-otp-validation.test.mjs` pins the window so the
+regression is loud. A second, shorter burst window was considered and deliberately left out: with the
+daily maximum also at ten, any burst that would trip an hourly cap has already exhausted the day, so
+it could never bind first. Per-number bursts remain covered by the 5-per-hour `phoneLimiter`.
+
+### Why the *durable* cap is still not built, which is a finding rather than a deferral
+
+D-8 assigns the per-IP daily cap to edge middleware "because a SQL function cannot see caller IPs".
+Making it durable needs somewhere to count that survives a redeploy and is shared across instances.
+Both available routes need a decision this session cannot take:
+
+- **A Postgres counter behind a SECURITY DEFINER function.** The route reaches the database with the
+  **anon** key, so the function would need `grant execute … to anon` — a third R10 widening, and
+  unlike `get_scheduled_job_health` this one *writes*. Worse, the caller supplies the key it counts
+  against, so an anonymous client could pass arbitrary strings and grow the table without bound. That
+  is a storage-abuse vector traded for a rate limit, which is not a good trade.
+- **A service-role client in the route.** `.env.example` has no `SUPABASE_SERVICE_ROLE_KEY`; the app
+  has never held one. Introducing a service-role secret into a public request path is a real security
+  decision with its own review, not a line in a rate-limiting change.
+
+So the honest position: the in-memory limiter now enforces the right *number* over the right
+*window*, and remains best-effort — it resets on redeploy and gives a distributed sender one budget
+per instance. The file says so, and the test asserts that it says so, because the next person
+deciding whether phone auth can be switched on depends on that sentence being accurate.
+
+### Still outstanding before switch-on, unchanged
+
+- [ ] CAPTCHA — needs an hCaptcha credential.
+- [ ] The durable per-IP daily cap — needs one of the two decisions above.
+- [ ] A Twilio spend alarm — `Docs/costs.md` records 500 SMS/day as an alarm nothing measures.
+- [ ] `sms_otp_exp` is 60 seconds, which is aggressive for real SMS delivery. Flagged in #24, still
+      flagged; a code that expires before it arrives is indistinguishable from a broken product.
+
+**Status:** Phone auth remains OFF, deliberately. One real defect in the abuse controls found and
+fixed. The blockers are unchanged and each is named with what would clear it.

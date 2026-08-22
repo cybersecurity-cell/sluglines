@@ -25,9 +25,28 @@ import { createFixedWindowLimiter } from './rate-limit.ts'
 import { clientIp, readJson } from './request.ts'
 
 const HOUR_MS = 60 * 60 * 1000
+const DAY_MS = 24 * HOUR_MS
 
-/** Best-effort stand-in for D-8's "≤10 OTP sends per IP per day" — see rate-limit.ts. */
-const ipLimiter = createFixedWindowLimiter({ max: 10, windowMs: HOUR_MS })
+/**
+ * D-8's per-IP budget is "≤10 OTP sends per IP per **day**".
+ *
+ * This was a 10-per-*hour* window described in its own comment as a stand-in for
+ * that daily cap. It is not one, and it erred in the direction that matters: ten
+ * per rolling hour permits **240 sends a day** from one address against a budget
+ * of ten. The window is now the day, and the figure is D-8's.
+ *
+ * A second, shorter burst window was considered and left out deliberately: with
+ * the daily maximum also at ten, any burst that would trip an hourly cap has
+ * already exhausted the day, so the extra limiter could never bind first. Per-
+ * number bursts are covered by `phoneLimiter` below.
+ *
+ * This is still NOT the durable cap D-8 assigns to the edge (#52). It resets on
+ * every redeploy and does not coordinate across instances, so a distributed
+ * sender gets one budget per instance. That gap is real, is a reason
+ * `external_phone_enabled` should stay off, and cannot be closed here without the
+ * decision recorded in D-51 — see `rate-limit.ts` for the standing caveat.
+ */
+const ipDailyLimiter = createFixedWindowLimiter({ max: 10, windowMs: DAY_MS })
 /** Backs up Supabase Auth's own 60s resend cooldown with a coarser per-number cap. */
 const phoneLimiter = createFixedWindowLimiter({ max: 5, windowMs: HOUR_MS })
 
@@ -46,7 +65,7 @@ export async function sendOtpHandler(request: NextRequest): Promise<NextResponse
   const now = Date.now()
   const ip = clientIp(request)
 
-  if (!ipLimiter.consume(`ip:${ip}`, now).allowed || !phoneLimiter.consume(`phone:${phone}`, now).allowed) {
+  if (!ipDailyLimiter.consume(`ip:${ip}`, now).allowed || !phoneLimiter.consume(`phone:${phone}`, now).allowed) {
     return NextResponse.json(otpError('rate_limited'), { status: otpStatus('rate_limited') })
   }
 

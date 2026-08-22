@@ -5,6 +5,8 @@
 // than asserted on as source text.
 
 import { strict as assert } from 'node:assert'
+import fs from 'node:fs'
+import path from 'node:path'
 import { isE164Phone, isOtpCode, normalizePhone } from '../src/lib/domain/phone.ts'
 import {
   OTP_ERROR_KINDS,
@@ -96,4 +98,34 @@ assert.equal(classifyVerifyError(null), 'unavailable')
 
   // A different key has its own independent bucket.
   assert.equal(limiter.consume('other-key', 300).allowed, true, 'buckets are isolated per key')
+}
+
+// -----------------------------------------------------------------------------
+// The per-IP send budget is D-8's, and is a DAY (#52)
+//
+// send-otp-route.ts previously used a 10-per-hour window whose own comment called
+// it a stand-in for D-8's "≤10 OTP sends per IP per day". It was not one, and it
+// erred generously: ten per rolling hour is 240 sends a day from one address,
+// against a budget of ten. This pins the window so that regression is loud.
+// -----------------------------------------------------------------------------
+{
+  const source = fs.readFileSync(path.join(process.cwd(), 'src/lib/api/send-otp-route.ts'), 'utf8')
+
+  assert.match(source, /const DAY_MS = 24 \* HOUR_MS/, 'the daily window is defined in terms of the hour')
+  assert.match(
+    source,
+    /createFixedWindowLimiter\(\{ max: 10, windowMs: DAY_MS \}\)/,
+    "the per-IP budget must be D-8's 10 per DAY, not 10 per hour"
+  )
+  assert.equal(
+    /ipLimiter = createFixedWindowLimiter\(\{ max: 10, windowMs: HOUR_MS \}\)/.test(source),
+    false,
+    'the per-IP limiter must not be back on an hourly window'
+  )
+
+  // The in-memory limiter is explicitly not the durable edge cap #52 requires;
+  // the comment saying so is load-bearing, because the next reader deciding
+  // whether phone auth can be switched on depends on it.
+  assert.match(source, /durable cap/, 'the file states that this is not the durable cap')
+  assert.match(source, /#52/, 'and names the issue tracking the real one')
 }
