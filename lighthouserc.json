@@ -9,13 +9,21 @@
       ],
       "numberOfRuns": 3,
       "settings": {
-        "onlyCategories": ["performance", "accessibility"]
+        "onlyCategories": ["performance", "accessibility"],
+        "formFactor": "mobile",
+        "throttling": {
+          "rttMs": 170,
+          "throughputKbps": 9000,
+          "cpuSlowdownMultiplier": 4
+        }
       }
     },
     "assert": {
       "assertions": {
         "categories:accessibility": ["error", { "minScore": 0.95 }],
         "largest-contentful-paint": ["error", { "maxNumericValue": 2000, "aggregationMethod": "median" }],
+        "first-contentful-paint": ["error", { "maxNumericValue": 1800, "aggregationMethod": "median" }],
+        "total-blocking-time": ["error", { "maxNumericValue": 200, "aggregationMethod": "median" }],
         "resource-summary:script:size": ["error", { "maxNumericValue": 153600 }]
       }
     },
