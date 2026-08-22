@@ -22,7 +22,11 @@ export async function readJson(request: NextRequest): Promise<unknown> {
  * caller with no header onto one bucket, which is a coarser limit rather than
  * a bypass.
  */
-export function clientIp(request: NextRequest): string {
+// Typed structurally rather than as `NextRequest`: this reads two headers and
+// nothing else, and the narrower type forced a cast at the one call site that
+// holds a plain `Request` (the CSP report collector). `NextRequest` still
+// satisfies it, so no existing caller changes.
+export function clientIp(request: { headers: Headers }): string {
   const forwarded = request.headers.get('x-forwarded-for')
   if (forwarded) return forwarded.split(',')[0]!.trim()
   return request.headers.get('x-real-ip') ?? 'unknown'

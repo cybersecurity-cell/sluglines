@@ -148,6 +148,29 @@ for (const route of WRITE_FREE_ROUTES) {
   // origin; 204-with-no-body is what makes that impossible rather than unlikely.
   assert.match(source, /status: 204/, `${route}: must answer 204`)
   assert.match(source, /new NextResponse\(null/, `${route}: must answer with no body`)
+
+  // Anything logged from a public unauthenticated endpoint is attacker-shaped by
+  // construction, and a body with newlines forges whole log lines — including
+  // ones that look like they came from another subsystem. For the CSP collector
+  // that log IS the evidence #33's report-only period is gathering, so poisoning
+  // it corrupts the inventory the decision to enforce gets made from.
+  // JSON encoding escapes newlines and control characters into one token.
+  const logged = [...source.matchAll(/console\.(?:log|warn|error)\(([^)]*)\)/g)]
+  for (const [call, args] of logged) {
+    assert.equal(
+      /\braw\b/.test(args) && !/JSON\.stringify/.test(args),
+      false,
+      `${route}: logs the request body unencoded — ${call.trim()}. Wrap it in JSON.stringify.`
+    )
+  }
+
+  // An unauthenticated endpoint doing per-request work is a denial-of-wallet
+  // primitive on a serverless platform.
+  assert.match(
+    source,
+    /createFixedWindowLimiter|rate-limit/,
+    `${route}: a public unauthenticated endpoint must be rate limited`
+  )
 }
 
 for (const route of ALL_ROUTES) {
