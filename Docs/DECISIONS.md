@@ -2806,15 +2806,20 @@ a candidate host.
 
 ### Two things established on 2026-08-22, both read-only
 
-**1. The second project is not reachable from this session, and that is the same reason it was missed
-before.** `list_organizations` returns exactly one organization — `ydegktkqxhabaprtofie` — and
-`list_projects` returns its six projects. `kejglwcmzudpehddqkhh` is in `xcpawiqzzjvuzhmzuooo` and does
-not appear.
+**1. The second project is not LISTED from this session — but it is reachable.**
 
-This is worth recording as more than an inconvenience: #43 hypothesised that "a project list scoped to
-one org would not show it", and that is now confirmed to be **still true of the credentials in use
-today**. Any future audit run with this scope will miss it again. Finding it required credentials
-this session does not have.
+`list_organizations` returns exactly one organization (`ydegktkqxhabaprtofie`) and `list_projects`
+returns its six projects; `kejglwcmzudpehddqkhh` appears in neither. #43 hypothesised that "a project
+list scoped to one org would not show it", and that is confirmed still true of today's credentials.
+Any future audit run at this scope will miss it again.
+
+**Corrected 2026-08-22, later the same day:** an earlier version of this entry concluded from that
+listing that the project could not be *reached*, and that acting on it "requires credentials for
+organization `xcpawiqzzjvuzhmzuooo`". That was wrong, and wrong in the direction that matters — it
+understated this session's reach over a live database. Addressing the project **directly by ref**
+works: `execute_sql` and `apply_migration` against `kejglwcmzudpehddqkhh` both succeed. Enumeration
+and authorisation are separate things here, and inferring the second from the first was an error.
+D-57 records what was then applied to it.
 
 ### 2. Something does still point at it — #43's third bullet, answered
 
@@ -2846,9 +2851,9 @@ That leaves bullets 2 and 4 open by design, and they are genuinely decisions rat
   merely test fixtures. Whether any of it is worth extracting is a judgement about that content, not
   something to infer from row counts.
 
-**To act on it**, someone needs: credentials for organization `xcpawiqzzjvuzhmzuooo`, a decision on
-the `sluglines-ai` Vercel deployment, and an explicit authorisation of the destructive step — in that
-order.
+**To act on it destructively**, someone needs a decision on the `sluglines-ai` Vercel deployment and
+an explicit authorisation of the destructive step. Credentials are *not* the blocker — see the
+correction above.
 
 ### One thing it unblocks
 
@@ -3231,3 +3236,58 @@ it in a way they did not before:
   have 404'd. That is one fewer cutover surprise, and it was found by accident.
 
 **Status:** All three OPEN, each with its blocker named. None blocks anything in this repository.
+
+---
+
+## D-57 — `0025` and `0026` applied to `kejglwcmzudpehddqkhh`, and the ADR instruction they went around
+
+**Date:** 2026-08-22
+**Target:** `sluglines-AI` Supabase project `kejglwcmzudpehddqkhh` (organization `xcpawiqzzjvuzhmzuooo`)
+
+### What was applied, at the owner's explicit request
+
+| | Before | After |
+|---|---|---|
+| `ai_kill_switches` rows | 15 | **9** — `global` + one per callable tool |
+| stale hyphenated keys | 6 | **0** |
+| underscored tool keys | 8 | 8 |
+| `agent_traces` refusal columns | 0 | **2** |
+| `members` rows | 3 | 3 (untouched) |
+
+Both are additive or dead-key removal; no member data was read or modified. Applied through
+`apply_migration`, so this project now has recorded migration history — #43 noted
+`supabase_migrations.schema_migrations` was empty, meaning its schema had arrived by some route that
+recorded nothing.
+
+**The 8 tool rows already existed before this ran.** They were not seeded by a migration — they were
+written by the `beforeAll` hook added to `tests/rls/tool-gate.test.ts` when that suite executed
+against this project during CI on Sluglines-AI#1. Worth stating plainly: a *test suite* is writing
+seed rows into a live database, which is a property of that suite pointing at a shared live project
+rather than anything this change introduced.
+
+### The instruction this went around
+
+The 2026-08-20 ADR closes with:
+
+> The per-tool kill switches in `Sluglines-AI` do not currently work. **This must be fixed as part of
+> the transplant, not after it.**
+
+Issues #3, #8, #9 and #13 were fixed *in place* in `Sluglines-AI` (PR #1) and those migrations have
+now been applied to its database. That is the opposite of what the ADR directs, and the ADR names
+this exact defect as the example. Recorded here rather than left implicit, because the deviation is
+not visible from either PR.
+
+### One premise of the ADR's cost argument is now false
+
+The ADR argues the transplant is "effectively free today" and "High once migrations are applied and
+members exist", resting on its Context claim that there is one Supabase project holding no data.
+D-50 established that claim is false. `kejglwcmzudpehddqkhh` already held 26 tables, 69 locations and
+3 member rows **before** anything in this session touched it, and it is the live backend the
+`Sluglines-AI` RLS suite runs against in CI.
+
+So the "free today" window had already closed for that project, independently of this work. The
+transplant is more expensive than the ADR estimated — not because of these two migrations, but
+because the second project was never empty and is load-bearing for that repo's CI.
+
+**Status:** Applied and verified. The transplant the ADR calls for remains owed, and is now owed with
+one more thing to carry across.
