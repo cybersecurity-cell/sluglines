@@ -35,13 +35,31 @@ assert.match(code, /export const dynamic = 'force-dynamic'/, 'never prerendered'
 assert.match(code, /VERCEL_GIT_COMMIT_SHA/, 'a green check must identify the deployment it came from')
 
 // --- it never reports a fact it did not measure ------------------------------
+// This block used to assert the literals `supported: false` / `lastRunAt: null`,
+// which were true while pg_cron was uninstalled (#46) and would have stayed in
+// the source, unchallenged, after the sweeps started running. Both are now
+// derived from a reader, so what is pinned is that the derivation happens.
 assert.match(code, /scheduledJobs/, 'the sweeps are reported')
-assert.match(code, /lastRunAt: null/, 'as null, because pg_cron is not installed and they have never run (#46)')
-assert.match(code, /supported: false/)
+assert.match(code, /\.rpc\(SCHEDULED_JOB_HEALTH_FUNCTION\)/, 'sweep state is read from the database, not asserted')
+assert.match(code, /summariseScheduledJobs/, 'and folded by the tested domain function')
+assert.match(
+  code,
+  /from '@\/lib\/domain\/scheduled-jobs'/,
+  'the reader name comes from the domain contract, not a string literal'
+)
 assert.equal(
   /lastRunAt: new Date\(\)/.test(code),
   false,
   'a last-run timestamp must never be synthesised from the current time'
+)
+
+// A stopped scheduler must not turn every pg_cron-less environment — preview
+// branches, local runs — into a permanent 503. `scheduledJobs` is reported
+// beside `checks`, never inside it, so it cannot reach the status line.
+assert.equal(
+  /checks\.scheduledJobs/.test(code),
+  false,
+  'sweep state must not be one of the checks that decide 200 vs 503'
 )
 
 // --- it carries no member data ----------------------------------------------

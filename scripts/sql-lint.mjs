@@ -32,15 +32,32 @@ const WRITE_PRIVILEGES = ['insert', 'update', 'delete', 'truncate']
 const WRITE_COMMANDS = ['insert', 'update', 'delete', 'all']
 const FORBIDDEN_GRANTEES = ['anon', 'public']
 
-// R10's named exception -- rev. 5.3 sec.8 M1's two public aggregate functions,
-// and nothing else. `public` (the pseudo-role meaning "everyone, including
+// R10's named exception. `public` (the pseudo-role meaning "everyone, including
 // anon, unconditionally") is never exempted here: only `anon` may be granted,
 // and only to a function on this list. Widening this list is a security
 // decision and belongs in a reviewed migration, not a name that grew by habit,
 // so it is a literal, qualified-name allowlist rather than a pattern.
+//
+// Entries, and what each one is allowed to expose:
+//
+//   get_public_spot_counts        rev. 5.3 sec.8 M1's two public aggregates.
+//   get_public_open_offer_counts  Counts per active spot, nothing per member.
+//
+//   get_scheduled_job_health      Added 2026-08-22 for issue #46 (D-46). Not an
+//                                 M1 aggregate -- it is what lets `/api/health`
+//                                 report a real sweep last-run time instead of a
+//                                 hardcoded null. Its whole row shape is a job
+//                                 name, a cron expression, a boolean, a
+//                                 timestamp and a status string; it has no
+//                                 column that could carry member data. `anon` is
+//                                 on it because the external uptime monitor
+//                                 (#21) reads `/api/health` unauthenticated and
+//                                 that route reaches the database through the
+//                                 anon key.
 export const ANON_CALLABLE_FUNCTIONS = new Set([
   'public.get_public_spot_counts',
   'public.get_public_open_offer_counts',
+  'public.get_scheduled_job_health',
 ])
 
 // -----------------------------------------------------------------------------

@@ -2450,3 +2450,844 @@ carrier delivery. It is not one of D-8's controls, so it is reported rather than
 
 **Status:** DONE for what is applicable and authorised. D-8 CLOSED. The per-number cap, CAPTCHA,
 the edge daily cap and phone auth itself are all still owed, each named above and each tracked.
+
+---
+
+## D-46 — pg_cron installed and both sweeps scheduled. **Closes #46**
+
+**Date:** 2026-08-22
+**Target:** production `bwpguotjzczmieeepczf`, rehearsed on preview branch `phase-3-4-staging`
+(`xqonrogwwytkmqfinszp`)
+
+### What was wrong
+
+`0001` created `sweep_expired_presence()` and `0002` created `offer_expire_sweep()`. Each file said,
+in a comment, that scheduling it was "a database operation, not a migration concern, and is not done
+here" — correct, and then nothing ever did it. `pg_cron` was not installed, so as of 2026-08-22 both
+functions had **never run once**. Neither is granted to any client role, deliberately, because the
+scheduler was meant to be their only caller; with no scheduler they were unreachable by anything.
+
+It had not bitten yet only because both tables were empty and both read paths compute expiry at read
+time rather than trusting the sweep.
+
+### What is now scheduled, and why the two intervals differ
+
+| Job | Schedule | What it buys |
+|---|---|---|
+| `offer_expire_sweep` | `* * * * *` (1 min) | **Correctness of the public board.** `0005`'s `get_public_open_offer_counts()` filters offers on `state in ('OPEN','PARTIALLY_RESERVED')` and **not** on `window_end`. So a closed-window offer keeps being counted publicly until something moves it to `EXPIRED`, and nothing else does. Every minute of lag is a minute of a visibly wrong count, so this runs at pg_cron's floor. |
+| `sweep_expired_presence` | `*/5 * * * *` (5 min) | **Retention, not correctness.** `get_public_spot_counts()` filters `pc.expires_at > now()` and `fast-board.ts` has `isPresenceLive()` (D-33), so an unswept row is never counted or rendered. What the sweep buys is that rows recording where a member physically stood do not accumulate forever. |
+
+**The retention claim this interval supports, stated precisely.** `presence_checkin`'s `p_ttl_minutes`
+defaults to 20 and is hard-capped at 60 in `0001`. A 5-minute sweep therefore bounds an expired
+presence row's life at **TTL + 5 minutes** — 25 minutes at the default. That is the number to check
+against the canonical retention schedule (`data-classification.md` in `Sluglines-AI`, incorporated by
+reference per §2), and it is a bound rather than an average: the sweep is keyed on time and carries
+no idempotency key, so a missed run is made up by the next one.
+
+Tightening presence to the 1-minute floor would buy 4 minutes against a 20-minute TTL. The interval
+is chosen against the cost of being wrong in the *other* direction — location rows kept indefinitely
+— and 5 minutes is comfortably inside that.
+
+### Where the SQL lives, and why it is split
+
+New directory `supabase/operations/`, with its own README, holding
+`2026-08-22-schedule-sweeps.sql` (the `create extension` and the two `cron.schedule` calls).
+
+The split is not tidiness. Every file in `supabase/migrations/` is rehearsed against an ephemeral
+preview branch before production. A migration carrying `create extension pg_cron` + `cron.schedule`
+would (a) fail wherever the extension is unavailable and (b) schedule *production's* sweeps onto
+every preview branch that ever ran the sequence. So the schedule is an operation, applied by hand to
+one named database.
+
+`0008_scheduled_job_health.sql` **is** a migration, because it ships only the reader — a function is
+schema, and every environment should have it, including the ones with no scheduler for it to read.
+
+### `/api/health` now measures instead of asserting
+
+The `scheduledJobs` block was a hardcoded `supported: false` / `lastRunAt: null`. That was honest
+when written and **unfalsifiable**: it would have gone on saying the same thing after the sweeps
+started running. It is now derived from `get_scheduled_job_health()` via
+`summariseScheduledJobs()` in `src/lib/domain/scheduled-jobs.ts`.
+
+The case that test file exists for is the quiet one: a sweep that is still *scheduled* but has
+stopped running returns a row, still says `active`, and still carries a plausible timestamp from
+whenever it last worked. `stale`, `failing`, `never-run`, `inactive` and *missing from the schedule*
+all resolve to `healthy: false`. `EXPECTED_SWEEP_JOBS` is a literal list precisely so a sweep
+vanishing from the schedule cannot read as a complete healthy set of one.
+
+**It is deliberately not one of `checks`**, so it cannot move the 200/503 status line. A stopped
+scheduler is a real but slow incident; wiring it to 503 would also mean every preview branch and
+every local run — none of which have pg_cron — reported itself as a permanent outage, which is how a
+monitor gets ignored. A body-reading monitor alerts on `scheduledJobs.healthy`; the status line stays
+about reachability.
+
+### R10 widened, deliberately
+
+`get_scheduled_job_health` is the **third** function granted to `anon`, joining the two M1
+aggregates, and is named in `ANON_CALLABLE_FUNCTIONS` in `scripts/sql-lint.mjs` in the same commit —
+R10 exists to make exactly this a reviewed decision rather than a habit.
+
+What it exposes: a job name, a cron expression, a boolean, a timestamp and a status string. It has no
+column that could carry member data. What it reveals is that two sweeps exist and how often they run,
+which is already stated in this repository and in the issue tracker. `anon` is on it because the
+external uptime monitor (#21) reads `/api/health` unauthenticated, and that route reaches the
+database through the anon key like any visitor.
+
+### Verified after applying
+
+- `cron.job` — both jobs `active`, on database `postgres`, as user `postgres` (which owns both
+  SECURITY DEFINER functions).
+- `offer_expire_sweep` ran at `2026-08-22T17:02:00Z`, status `succeeded`, on its first scheduled fire.
+- `sweep_expired_presence` had not yet reached its first `*/5` boundary and correctly reported
+  `last_run_at: null` — the `never-run` state, not a synthesised timestamp.
+- On the preview branch, which has no `pg_cron`, the reader exists and returns **zero rows** rather
+  than raising, which is the whole reason for its `to_regclass` guard and its dynamic body.
+
+**Status:** DONE. All four checklist items in #46 are closed; the retention bound is stated above
+rather than left implicit.
+
+---
+
+## D-47 — Vercel Authentication stays on until DNS cutover; CI gets a bypass instead. **Closes #47**
+
+**Date:** 2026-08-22
+**Observed state** (`prj_Uvmtv5fVBVg9tw5CJUyMSD4UHmGS`, team `kalaikandasamy-4291s-projects`, plan Pro):
+
+```
+ssoProtection:      { enabled: true, deploymentType: "all_except_custom_domains" }
+passwordProtection: { enabled: false }
+trustedIps:         { enabled: false }
+```
+
+The project has no custom domain, so `all_except_custom_domains` currently exempts nothing: all three
+aliases are `.vercel.app` and **every URL the site has requires a Vercel login**.
+
+### The decision
+
+**Vercel Authentication stays on.** This is the status quo and, per #47's own reading, the probable
+intended end state: the moment `sluglines.com` points here (#25), `all_except_custom_domains` makes
+the custom domain public while the `.vercel.app` URLs stay private — which is the posture you want,
+and it arrives without any further change.
+
+Relaxing it now to `preview`-only would make production deployment URLs publicly reachable. That is
+publishing an unreleased site, and it is a call for the project owner rather than a side effect of
+closing a tracking issue. **It is deliberately not made here.** Nothing in this repository is blocked
+on it — see the bypass below — so the safe direction was taken and the option left open.
+
+### What that costs, recorded so it does not read as an oversight
+
+| Item | State |
+|---|---|
+| #21 external uptime monitor | **Gated on #25.** A monitor pointed at `/api/health` today alerts on a 401 forever. There is no public URL to watch, so the external half cannot be stood up before the cutover. Not incomplete work — blocked work, with a named blocker. |
+| #23 route verification at the edge | **No longer gated** — see below. |
+| #20 Lighthouse | Already worked around: the job builds and serves the app locally rather than measuring the deployment. Unchanged. |
+
+### Protection Bypass for Automation — the third bullet, and why it matters
+
+`scripts/verify-legacy-routes.mjs` now accepts `--bypass-secret=` (falling back to
+`$VERCEL_AUTOMATION_BYPASS_SECRET`) and sends it as the `x-vercel-protection-bypass` **header**.
+
+This decouples #23 from #47 entirely: the route check can run in CI against a real deployment without
+the site being public to anyone else. It replaces the `_vercel_share` token path for automation, which
+was never viable in CI — share tokens are minted by hand, are per-person, and expire.
+
+The header matters more than it looks. The previous credential was a `_vercel_share` **query
+parameter**, and this script's whole job is to observe what the edge does with an *unmodified* legacy
+path. A secret appended to every request is a different URL than the one an old bookmark carries;
+`tests/legacy-route-verifier.test.mjs` now asserts the secret never reaches the query string.
+
+**Not yet enabled, and this session could not enable it.** The toggle lives at Project Settings →
+Deployment Protection → Protection Bypass for Automation. It is not exposed on the Vercel MCP surface
+available here (`update_project_deployment_protection` covers only `ssoProtection`,
+`passwordProtection` and `trustedIps`), and no Vercel API token is present in this environment. To
+finish it:
+
+1. Enable the toggle in the dashboard; Vercel generates the secret.
+2. Add it to the repository as an Actions secret named `VERCEL_AUTOMATION_BYPASS_SECRET`.
+3. The script picks it up from the environment with no further change.
+
+Until step 1 happens the code path is dormant, not broken — with no secret set the script behaves
+exactly as before.
+
+**Status:** DONE for the parts that are this repository's to make. The posture decision is recorded
+and defaulted to the safe direction; #23's external check is unblocked in code; #21's external half
+is blocked on #25 with the blocker named rather than left looking merely unfinished. The dashboard
+toggle and the owner's optional decision to publish early are the two things outstanding, both named.
+
+---
+
+## D-48 — Browser security headers shipped; CSP report-only pending its inventory. **Closes #33**
+
+**Date:** 2026-08-22
+
+### What was missing
+
+`next.config.js` was three lines and defined no `headers()`. The app shipped with no CSP, no
+`X-Frame-Options`, no `X-Content-Type-Options`, no `Referrer-Policy` and no `Permissions-Policy` — on
+a public site that already sets a session cookie via `@supabase/ssr` at `/verify`, and that will hold
+a confirmed-participants-only pickup-details surface now that `0002` is in production.
+
+This baseline had been designed once already. `codex/phase-1`'s own `Docs/security-review.md` listed
+CSP, frame denial, MIME-sniffing prevention, restricted referrers and denied
+camera/microphone/geolocation as **shipped** controls; the branch was abandoned and the controls went
+with it (#11). Risk 15 in §14, now downgraded from High.
+
+### Where they live, and why not in middleware
+
+`src/lib/security-headers.mjs`, imported by `next.config.js`'s `headers()` with `source: '/:path*'`.
+
+Not in `src/middleware.ts`: that matcher deliberately excludes `_next/`, `/api/` and every static
+asset extension, because middleware on every asset request is a latency tax on the §10 LCP budget.
+Security headers must cover precisely those excluded paths. `next.config.js` applies them at the edge
+to all of them without re-introducing that cost.
+
+`.mjs` rather than `.ts` because Next does not transform its own config's imports. The policy is data
+in a module rather than prose in a config so that `tests/security-headers.test.mjs` can assert it —
+the point of that file is not that the headers exist today but that **deleting them fails a gate**.
+
+### Enforced now
+
+| Header | Value |
+|---|---|
+| `X-Content-Type-Options` | `nosniff` |
+| `X-Frame-Options` | `DENY` |
+| `Referrer-Policy` | `strict-origin-when-cross-origin` |
+| `Permissions-Policy` | `camera=(), microphone=(), geolocation=(), payment=(), usb=(), interest-cohort=()` |
+
+**Note for the §9 voice feature:** `microphone=()` denies the Web Speech API outright. Whoever ships
+tap-and-speak must revisit that line deliberately rather than discover it at runtime.
+
+### CSP: report-only, and the one reason why
+
+Sent as `Content-Security-Policy-Report-Only`. #33 sequences it this way and is right to — an
+enforced policy that is wrong breaks the page it protects.
+
+The blocker is specific and worth naming rather than leaving as "needs work": **`script-src` still
+carries `'unsafe-inline'`**, because Next injects an inline bootstrap script into every document and
+without a nonce or hash there is no policy that admits it and forbids other inline script. Everything
+*else* is written strictly now — `default-src 'self'`, `base-uri 'self'`, `object-src 'none'`,
+`frame-ancestors 'none'`, `form-action 'self'` — deliberately, so the report-only period surfaces
+real violations rather than drowning in Next-bootstrap noise nobody will read.
+
+`tests/security-headers.test.mjs` makes this a tripwire rather than a comment: if `script-src` still
+allows `'unsafe-inline'`, `CSP_REPORT_ONLY` must be `true`. Enforcing while the weakening is present
+would buy the breakage without the protection, and now fails a gate.
+
+**`connect-src` names real origins.** It is built from `NEXT_PUBLIC_SUPABASE_URL` at build time
+(origin plus the `wss://` host for Realtime), never `https:` or `*` — a wildcard `connect-src` is the
+most common way a CSP is written to look strict while permitting exfiltration to any host, and the
+test rejects those tokens explicitly.
+
+Because that variable is read at **build** time, a build with it unset produces `connect-src 'self'`
+alone, which would block every Supabase call the moment the CSP is enforced — and while report-only,
+would fail silently. The module now warns loudly in the build log instead. (#41 is the matching gap
+on Vercel Preview.)
+
+### The collector
+
+`POST /api/csp-report`, returning 204. A report-only header with nowhere to report is decorative: the
+violations land in individual visitors' consoles, where nobody doing the inventory will see them.
+This endpoint is what makes #33's second bullet produce evidence and its third bullet a decision with
+data behind it.
+
+It deliberately does **no database write**. A public unauthenticated endpoint that inserts a row per
+request is a denial-of-wallet primitive, and a report body is attacker-shaped by construction —
+anyone can POST there directly. Reports go to the platform log: bounded, already access-controlled,
+and where the person doing the inventory is looking. The body is truncated to 8 KiB before logging,
+and the response carries no body so nothing attacker-supplied is reflected back out of the origin.
+
+Both `report-uri` (deprecated, still the widely-honoured one) and `report-to` + `Reporting-Endpoints`
+are sent, because browser support is split across the versions that matter.
+
+### Verified
+
+Built and served locally; all six headers observed on a real `GET /`, and `POST /api/csp-report`
+answered 204. The `connect-src 'self'` seen in that local run is the unset-variable path behaving as
+designed — and is what prompted the build-time warning above.
+
+### Deliberately not set
+
+`Strict-Transport-Security`. Vercel already sends it for custom domains, and asserting
+`includeSubDomains` from here before the #25 DNS cutover would make a claim about `sluglines.com`
+subdomains this project does not yet control. Revisit with #25.
+
+**Status:** Bullets 1, 2 (the mechanism) and 4 are DONE. Bullet 3 — enforce — stays open by design,
+and now has both a collector to justify it and a test that blocks it while `'unsafe-inline'` remains.
+
+---
+
+## D-49 — Every GitHub Action commit-pinned, with Dependabot to keep the pins moving. **Closes #34**
+
+**Date:** 2026-08-22
+
+### What was wrong
+
+All 16 action references across the five workflows were pinned to mutable tags — `actions/checkout@v4`,
+`actions/setup-node@v4`, `github/codeql-action/{init,analyze}@v3`, `gitleaks/gitleaks-action@v2`.
+
+A tag is repointable by whoever owns that repository. So the gitleaks, CodeQL, audit, test and build
+jobs that gate **every merge into `main`** were running code that could change with no diff here —
+the same supply-chain shape the `audit` job exists to catch in npm dependencies, left open in the
+layer directly above it. Risk 16 in §14, now closed.
+
+Recorded as a shipped control once already: `codex/phase-1`'s `Docs/security-review.md` claimed
+"first-party GitHub actions are commit-pinned". The branch was abandoned and the claim stopped being
+true without anything failing (#11).
+
+### The pins
+
+| Action | SHA | Version |
+|---|---|---|
+| `actions/checkout` | `11d5960a326750d5838078e36cf38b85af677262` | v4.4.0 |
+| `actions/setup-node` | `49933ea5288caeca8642d1e84afbd3f7d6820020` | v4.4.0 |
+| `github/codeql-action/{init,analyze}` | `42947a340483f03ba47bb1a039b2c519aab3df85` | v3.37.8 |
+| `gitleaks/gitleaks-action` | `ff98106e4c7b2bc287b24eaf42907196329070c7` | v2.3.9 |
+
+**Each SHA is what that action's existing major tag resolved to on 2026-08-22 — not the newest
+release.** Upstream has moved on (checkout and setup-node are at v7, codeql-action at v4, gitleaks at
+v3), and pinning is a supply-chain change, not a version upgrade. Rolling four majors forward inside
+a commit whose subject is "pin the actions" would smuggle a behavioural change through a security
+fix, and the two would be indistinguishable in the diff. Major upgrades are Dependabot's to propose,
+one reviewable PR at a time.
+
+For the two annotated tags (`codeql-action`, `gitleaks-action`) the SHA recorded is the dereferenced
+**commit**, not the tag object — `git ls-remote` returns the tag object for `refs/tags/v3` and the
+commit only for `refs/tags/v3^{}`, and pinning to a tag-object SHA does not resolve.
+
+### Update procedure — #34's second bullet
+
+`.github/dependabot.yml` watches `github-actions` weekly. Dependabot opens a PR that moves the SHA
+and cites the release notes, and it preserves the `# vN.N.N` trailing comment when it rewrites the
+hash — which is what stops the human-readable version from decaying into an opaque string nobody can
+date.
+
+Minor and patch bumps are **grouped into one PR**: these are all gate infrastructure, reviewed
+together anyway, and one PR is far likelier to be merged than five that each look individually
+skippable. Majors stay ungrouped, because those are behavioural.
+
+npm is watched too. `npm audit` in `audit.yml` already fails the build on a high-severity advisory,
+but an advisory-free dependency that is simply years stale is invisible to an audit gate; the two
+cover different halves.
+
+### The gate
+
+`tests/workflow-pinning.test.mjs` walks every `uses:` in every workflow and requires a 40-character
+SHA plus a `# vN.N.N` comment. Local composite actions (`./…`) are exempt — they are this
+repository's own code and already in the diff.
+
+**Verified it can fail**, per the standing objection to gates that only look green (D-10): reverting
+one pin to `actions/checkout@v4` failed the suite with the expected message, and restoring it passed.
+
+**Status:** DONE. All three bullets closed.
+
+---
+
+## D-50 — Two Supabase projects, not one. Docs corrected; retirement stays the owner's. **#43**
+
+**Date:** 2026-08-22
+
+### The correction
+
+`Docs/consolidated-architecture.md` §3.4 and `Docs/2026-08-20-adr-sluglines-is-the-host-repo.md`
+both asserted *"there is exactly one Sluglines Supabase project"*. That is false and both are now
+corrected in place, with the original claim struck rather than deleted so the record shows what was
+believed and when.
+
+| | `sluglines` | `sluglines-AI` |
+|---|---|---|
+| ref | `bwpguotjzczmieeepczf` | `kejglwcmzudpehddqkhh` |
+| organization | `ydegktkqxhabaprtofie` | **`xcpawiqzzjvuzhmzuooo`** |
+| status | ACTIVE_HEALTHY | ACTIVE_HEALTHY |
+| public tables | 3 legacy, 0 rows → now `0001`–`0008` | 26, several with data |
+
+**The ADR's conclusion is unaffected.** D-34 stands: the lineage decision rests on which schema this
+repository builds on, not on how many databases happen to exist, and `kejglwcmzudpehddqkhh` was never
+a candidate host.
+
+### Two things established on 2026-08-22, both read-only
+
+**1. The second project is not LISTED from this session — but it is reachable.**
+
+`list_organizations` returns exactly one organization (`ydegktkqxhabaprtofie`) and `list_projects`
+returns its six projects; `kejglwcmzudpehddqkhh` appears in neither. #43 hypothesised that "a project
+list scoped to one org would not show it", and that is confirmed still true of today's credentials.
+Any future audit run at this scope will miss it again.
+
+**Corrected 2026-08-22, later the same day:** an earlier version of this entry concluded from that
+listing that the project could not be *reached*, and that acting on it "requires credentials for
+organization `xcpawiqzzjvuzhmzuooo`". That was wrong, and wrong in the direction that matters — it
+understated this session's reach over a live database. Addressing the project **directly by ref**
+works: `execute_sql` and `apply_migration` against `kejglwcmzudpehddqkhh` both succeed. Enumeration
+and authorisation are separate things here, and inferring the second from the first was an error.
+D-57 records what was then applied to it.
+
+### 2. Something does still point at it — #43's third bullet, answered
+
+A **live Vercel project `sluglines-ai`** (`prj_cFMKLGo3cVNzolzyjH0oYv6eFFYy`) exists on the same team,
+linked to GitHub `cybersecurity-cell/Sluglines-AI`. D-2's U1 check had already found
+`https://sluglines-ai.vercel.app/` answering HTTP 307.
+
+So the answer to "check whether anything still points at it before pausing or deleting" is **yes,
+probably**: there is a deployed application whose repository is the one whose schema that database
+carries. Pausing or deleting `kejglwcmzudpehddqkhh` without first dealing with that deployment would
+break a live thing, and the breakage would surface as a 500 on a hostname nobody is watching.
+
+Its environment variables were **not** read: D-5 authorises only the `sluglines` Vercel project, and
+that is unchanged.
+
+### What is deliberately NOT done
+
+**No pause, no delete, no write.** #43 says so itself — "outside the authorisation for this milestone
+and needs its own decision" — and nothing since has changed that. Beyond authorisation, it is not
+possible from here: the organization holding the project is not in these credentials.
+
+That leaves bullets 2 and 4 open by design, and they are genuinely decisions rather than tasks:
+
+- **Retire or keep.** It is the "second project" half of the question D-7 closed by choosing preview
+  branches, so on the current architecture it is surplus. It is also ACTIVE_HEALTHY and therefore
+  probably billable, unwatched since 2026-07-29.
+- **The data first.** 69 locations, 3 members, 5 audit events, and single rows across moderation,
+  lost-and-found, incidents and recurring templates. Small, but real, and `members` means it is not
+  merely test fixtures. Whether any of it is worth extracting is a judgement about that content, not
+  something to infer from row counts.
+
+**To act on it destructively**, someone needs a decision on the `sluglines-ai` Vercel deployment and
+an explicit authorisation of the destructive step. Credentials are *not* the blocker — see the
+correction above.
+
+### One thing it unblocks
+
+`ai_kill_switches` has 7 rows there. #3 — the kill switches failing open — is a defect that can be
+checked against *real* rows on that project rather than reasoned about from the seed script. That
+does not require write access, only read, and it is the cheapest available confirmation of #3's
+premise. Noted for whoever gets those credentials; #3 is fixed in code regardless.
+
+**Status:** Bullet 1 DONE (both documents corrected). Bullet 3 ANSWERED (a live Vercel project points
+at it). Bullets 2 and 4 OPEN and owner-gated, with the prerequisites named.
+
+---
+
+## D-51 — Phone auth stays off. The per-IP budget was 24× too generous; fixed. **#52**
+
+**Date:** 2026-08-22
+
+### The decision
+
+**`external_phone_enabled` is not switched on.** Two independent reasons, either sufficient, and
+neither has changed since #52 was filed:
+
+1. Twilio is the configured provider, so enabling it starts a **billable** SMS path from the first
+   send. That is a spend decision.
+2. `security_captcha_secret` is unset, so CAPTCHA — the control §14 risk 11 names against
+   SMS-pumping — **cannot** be enabled. Exposing a public, billable OTP endpoint without it is
+   precisely the combination that risk describes.
+
+#52 says this should be the last thing switched on before the pilot, after CAPTCHA, the edge rate
+limit and the spend alarm. That ordering is right and is not overridden here.
+
+### The defect found while confirming it
+
+`src/lib/api/send-otp-route.ts` carried:
+
+```ts
+/** Best-effort stand-in for D-8's "≤10 OTP sends per IP per day" — see rate-limit.ts. */
+const ipLimiter = createFixedWindowLimiter({ max: 10, windowMs: HOUR_MS })
+```
+
+The comment says *day*; the code says `HOUR_MS`. Ten per rolling hour permits **240 sends per day**
+from one address, against D-8's budget of ten — 24× too generous, in the direction that costs money.
+
+More to the point, the comment made the gap look partly covered. Anyone reading #52's "the per-IP
+daily send cap … does not exist yet" alongside that line would reasonably conclude something
+approximate was already in place. Nothing was.
+
+Now `max: 10, windowMs: DAY_MS`, and `tests/phone-otp-validation.test.mjs` pins the window so the
+regression is loud. A second, shorter burst window was considered and deliberately left out: with the
+daily maximum also at ten, any burst that would trip an hourly cap has already exhausted the day, so
+it could never bind first. Per-number bursts remain covered by the 5-per-hour `phoneLimiter`.
+
+### Why the *durable* cap is still not built, which is a finding rather than a deferral
+
+D-8 assigns the per-IP daily cap to edge middleware "because a SQL function cannot see caller IPs".
+Making it durable needs somewhere to count that survives a redeploy and is shared across instances.
+Both available routes need a decision this session cannot take:
+
+- **A Postgres counter behind a SECURITY DEFINER function.** The route reaches the database with the
+  **anon** key, so the function would need `grant execute … to anon` — a third R10 widening, and
+  unlike `get_scheduled_job_health` this one *writes*. Worse, the caller supplies the key it counts
+  against, so an anonymous client could pass arbitrary strings and grow the table without bound. That
+  is a storage-abuse vector traded for a rate limit, which is not a good trade.
+- **A service-role client in the route.** `.env.example` has no `SUPABASE_SERVICE_ROLE_KEY`; the app
+  has never held one. Introducing a service-role secret into a public request path is a real security
+  decision with its own review, not a line in a rate-limiting change.
+
+So the honest position: the in-memory limiter now enforces the right *number* over the right
+*window*, and remains best-effort — it resets on redeploy and gives a distributed sender one budget
+per instance. The file says so, and the test asserts that it says so, because the next person
+deciding whether phone auth can be switched on depends on that sentence being accurate.
+
+### Still outstanding before switch-on, unchanged
+
+- [ ] CAPTCHA — needs an hCaptcha credential.
+- [ ] The durable per-IP daily cap — needs one of the two decisions above.
+- [ ] A Twilio spend alarm — `Docs/costs.md` records 500 SMS/day as an alarm nothing measures.
+- [ ] `sms_otp_exp` is 60 seconds, which is aggressive for real SMS delivery. Flagged in #24, still
+      flagged; a code that expires before it arrives is indistinguishable from a broken product.
+
+**Status:** Phone auth remains OFF, deliberately. One real defect in the abuse controls found and
+fixed. The blockers are unchanged and each is named with what would clear it.
+
+---
+
+## D-52 — Vercel Preview Supabase variables: still unset, still tooling-blocked. **#41**
+
+**Date:** 2026-08-22
+
+Checked again from this session and the position is unchanged: **it cannot be done from here.**
+
+The Vercel MCP surface available to this session exposes projects, deployments, deployment protection
+and runtime logs — **no environment-variable management at all** — and no Vercel API token or CLI
+credential is present, so the `vercel env add` path #41 documents cannot even be retried. #41's
+finding that the blocker is tooling rather than authorisation now has a second, independent
+confirmation from a different toolchain.
+
+**#27's safety goal remains met by the stricter route.** Preview holds no Supabase credentials, so
+there is no write path from a preview deployment into production or anywhere else. Nothing regressed.
+
+### One new consequence, from D-48
+
+The CSP added for #33 builds `connect-src` from `NEXT_PUBLIC_SUPABASE_URL` **at build time**. A
+Preview build with that variable unset therefore produces `connect-src 'self'` alone.
+
+Today that is harmless twice over — the CSP is report-only, and Preview has no Supabase to connect to
+anyway. It stops being harmless the moment either changes: setting Preview's variables and enforcing
+the CSP are now coupled, and doing the second without the first would block every Supabase call on
+Preview. `src/lib/security-headers.mjs` warns loudly in the build log when the variable is missing,
+so this surfaces rather than being discovered in a browser console.
+
+### To finish it
+
+Dashboard → Project Settings → Environment Variables, scope **Preview**, all branches:
+
+- `NEXT_PUBLIC_SUPABASE_URL` = `https://xqonrogwwytkmqfinszp.supabase.co`
+- `NEXT_PUBLIC_SUPABASE_ANON_KEY` = that branch's anon key, from
+  `supabase branches get phase-3-4-staging --project-ref bwpguotjzczmieeepczf -o env`
+
+**Not `bwpguotjzczmieeepczf`** — pointing Preview at production is the state #27 exists to end.
+
+**Status:** OPEN, unchanged, blocker re-confirmed from a second toolchain. Nothing in this repository
+is blocked on it.
+
+---
+
+## D-53 — PITR is not bought. The RPO the pilot would accept, written down. **#49**
+
+**Date:** 2026-08-22
+
+### Not bought, and not buyable from here
+
+PITR on Pro is a **paid add-on**, not a plan ceiling — so there is no migration to plan, only a
+purchase to authorise. Buying it spends money, which is not this session's to do, and the Supabase
+MCP surface here exposes no billing operation in any case. `get_project` does not return
+`pitr_enabled`, so D-43's read (`false`, measured 2026-08-22) stands as the last direct measurement
+rather than being re-confirmed today.
+
+### The decidable half, decided: the RPO is written down
+
+#49's third bullet asks that if PITR is not bought, the accepted RPO be recorded "so it is a decision
+rather than an omission". Recorded:
+
+> **Without PITR, the pilot accepts a worst-case data loss of ~24 hours.** Backups are daily physical
+> snapshots taken around 07:52–08:03 UTC. A failure at 07:00 UTC loses every check-in, offer,
+> reservation and message since the previous morning's snapshot. Restore granularity is *the nightly
+> snapshot*, not a point in time, and the restore lands **in place, over the same project** — there is
+> no restore-to-a-new-project without PITR, which is also why the #22 rehearsal could not be performed
+> without either destroying production or spending money.
+>
+> With PITR the same numbers are ~2 minutes and any point in the retention window.
+
+**This is a statement of what is being accepted, not an authorisation to accept it.** Accepting a
+24-hour RPO on a service holding members' physical-location history is the owner's call, and it comes
+due at a specific moment: **the pilot's first write.** Today the cost is exactly zero — production
+holds no member rows — which is the same threshold D-34, D-40 and D-41 all turn on.
+
+### What remains, and in what order
+
+1. Decide: buy PITR, or accept the ~24-hour RPO above in writing.
+2. If bought — enable on `bwpguotjzczmieeepczf`, then run **one** restore rehearsal into a scratch
+   project with start and finish timestamps recorded. That is the outstanding half of #22, and it
+   only becomes performable once PITR exists, because restore-to-a-new-project is a PITR-tier
+   capability.
+3. Either way, settle it **before the first pilot write**.
+
+**Status:** OPEN and owner-gated on spend. The recordable half is recorded; the purchase and the
+rehearsal it unlocks are not this session's to make.
+
+---
+
+## D-54 — Content provenance adopted: per-record state, source hierarchy, one qualifier. **Closes #36**
+
+**Date:** 2026-08-22
+
+Adopts the model salvaged from `codex/phase-1` in the #11 triage. New `Docs/content-sources.md` is the
+canonical statement; this entry records the three decisions #36 asked for.
+
+### 1. Per record, not per fact
+
+`SpotLocation.provenance: SpotProvenance` — one state for the whole record, not one per field.
+
+Every operational fact on a spot came from the same place: the legacy WordPress page, or (for the 8
+I-66 additions) nothing recorded. A per-field state would be five copies of the same value on 50
+records, and would imply a precision of sourcing that does not exist. If a single fact ever gets a
+stronger source than its record, that is the moment to split the field — not before.
+
+**Required, not optional.** An unstated provenance renders as confidence the record has not earned,
+which is the whole defect. `checkedAt` *is* optional, and stays absent until a human actually checks:
+an import is not a check, and back-filling it with the migration date would make an untouched record
+look attended to. The test fails that back-fill explicitly.
+
+### 2. It renders — one qualifier, in the card it qualifies
+
+A short note at the foot of the **Quick facts** card, not a page-level banner. It qualifies peak
+hours, parking and destination — inherited claims — and deliberately not the spot's existence, its
+map link, or the live counts, which are measured. A banner at the top would have cast doubt on all of
+it.
+
+**`verified` renders nothing.** That asymmetry is the design: a badge on every state is decoration
+and readers learn to skip it, so silence is what carries the signal — the same reasoning that makes
+`unavailable` and a measured zero render differently (D-33).
+
+**Every spot shows the note today**, because all 50 are `needs-review`. That is not a bug to soften.
+Nothing in the directory has been checked against a primary source, and the note says so until
+someone does the checking. `tests/content-provenance.test.mjs` pins the count at 50, so the change
+that verifies a spot is the change that updates the number — the gate exists to make verification
+visible, not to be satisfied by relabelling.
+
+The failure mode worth guarding is not a missing field; it is someone marking records `verified` in
+bulk to clear the badge off the pages. So `verified` requires an ISO `checkedAt`, and the test
+enforces it.
+
+### 3. Not a database column
+
+Same call as the photo field in D-39, for the same reason: `0004_spot_locations_directory.sql` is
+generated and guarded byte-for-byte by `scripts/seed-locations.mjs --check`, and provenance is
+editorial metadata rather than directory data the public surface queries. Verified untouched — the
+seed check still reports "up to date (50 spots)".
+
+Both `PublicLocation` mappings resolve it the way they already resolve `image`: from the committed
+directory, so a database row cannot disagree with the directory about its own sourcing. A row whose
+slug is not in the directory resolves to `needs-review` rather than to nothing — a spot with no
+recorded source is unconfirmed, and defaulting the other way would let such a row render with more
+authority than any record that *is* in the directory.
+
+### The source hierarchy, recorded
+
+Government / transit-operator pages → current on-site signage confirmed by a dated editor review →
+corroborated community reports → legacy Sluglines material, which is background and discovery only
+and is **never sufficient for `verified` at any age**. Where a fact belongs to an operator, link to
+the operator rather than copying: their copy changes without telling us. Full statement, including
+how to verify a spot, in `Docs/content-sources.md`.
+
+**Status:** DONE. All three bullets closed. The directory is now honest about being unverified, which
+is a worse-looking and more accurate page than the one it replaces.
+
+---
+
+## D-55 — Browser tests for the public surface, and the four defects they found. **Closes #35**
+
+**Date:** 2026-08-22
+
+### What was ported, and what was refused
+
+`codex/phase-1` carried five spec files. Two drive an email/password auth journey this application
+does not have and will not have — identity is phone OTP (D-36) — and #24 disabled the test-number
+ranges that would have been the only way to drive OTP in CI. Copying those would have been porting a
+harness for a different application. #11 decided **port the idea, not the files**, and that holds:
+what landed is the half that needs no session.
+
+`playwright.config.ts` (desktop + mobile Chromium against `next start` on a built app),
+`tests/e2e/console.spec.ts`, `tests/e2e/accessibility.spec.ts`, `tests/e2e/public-surface.spec.ts`,
+and `.github/workflows/e2e.yml`. **34 tests, all passing.**
+
+`next start`, not `next dev`: hydration, the route-level `dynamic`/`revalidate` settings and the
+middleware matcher all behave differently in dev, and the point is to see what a commuter sees. The
+mobile project is not a second opinion — §10's budget is a phone on throttled 4G in a parking lot.
+
+Its own workflow rather than a job in `ci.yml`, per #35's last bullet: a browser suite has a
+different failure profile, and folding it in would make a migration-only PR wait on Chromium. Two
+workflows also let the required-checks list include one and not the other, which is what makes the
+split real rather than cosmetic.
+
+The redirect overlap with #23 is resolved rather than duplicated. `verify-legacy-routes.mjs` asks
+"does the edge return 301 to the right place" for all 165 routes; the browser spec asks "does someone
+following an old bookmark land on a page that renders" for two representative paths, and it resolves
+those paths **from `classifyLegacyPath()`** rather than restating them — the same discipline that
+keeps the script from drifting.
+
+### It found four real defects on its first run
+
+This is the argument for the harness, so it is recorded rather than folded quietly into the diff.
+
+1. **`upgrade-insecure-requests` in a report-only CSP** — a defect in D-48, one day old. The
+   directive is *ignored* in report-only mode and Chrome logs a console error saying so, on every
+   page load. It is now emitted only when the policy is enforced.
+
+2. **`/how-it-works` hotlinked three photographs from `sluglines.com/wp-content/uploads/`** — a live
+   production dependency on the host being decommissioned. At the #25 cutover those URLs stop
+   resolving and the page silently loses its images. They also violated this app's own
+   `img-src 'self' data: blob:`, so enforcing the CSP would have broken them regardless, and
+   re-hosting them is blocked on the third-party rights review in #39. They were decorative
+   (`alt=""`), so they were removed; the circular frame and its icon carry the design.
+
+   **`tests/how-it-works.test.mjs` had been asserting those three URLs were PRESENT** — a test
+   pinning the defect in place. The assertion is now inverted and covers the whole host rather than
+   three known paths.
+
+3. **`.btn-primary` failed WCAG AA contrast** — `serious`, on the primary call to action of the whole
+   site. White on `sky-500` is ~2.9:1 against a 4.5:1 requirement, and the `sky-400` hover was worse.
+   Now `sky-700` (~5.9:1) with the hover going *darker*, so the hovered state cannot be the failing
+   one.
+
+   `tests/theme-contrast.test.mjs` did not catch this and could not: it walks 22 pairs from the CSS
+   token sets, and this pair is a Tailwind utility written directly in `globals.css`. The Lighthouse
+   job (a11y ≥95) runs `/` and one spot page, not `/how-it-works`. **That gap — token contrast passing
+   while rendered contrast fails — is precisely what a rendered-tree check closes**, and it is the
+   clearest answer to "why add a third a11y gate".
+
+4. **No favicon at all** — there is no `public/` directory and no icon in the root layout, so every
+   page load 404s on `/favicon.ico`. Recorded rather than papered over. It is filtered from the
+   console gate **by path, not by status code**: a bare "ignore 404s" would swallow a genuinely
+   missing script, which is what that gate exists to catch. Choosing an icon is a design decision and
+   is left open.
+
+### Two gates were reading their own comments as code
+
+Fixed in passing, because both would have bitten the next person. `tests/domain-boundaries.test.mjs`
+matches `from` followed by a quoted string, and read a doc comment ending *"…where this came from"*
+before a quoted phrase as an import of that phrase — the failure named a paragraph of English as a
+forbidden module. `tests/how-it-works.test.mjs` had the same shape once its assertion was inverted:
+the comment explaining why the legacy host was removed necessarily names that host. Both strip
+comments before scanning now, and the boundary rule was re-verified to still fail on a real bad
+import.
+
+### Environment note
+
+The suite resolves `executablePath` from `PLAYWRIGHT_BROWSERS_PATH` when a preinstalled Chromium is
+there, by globbing for `chromium-*` rather than hard-coding a build number, and leaves it unset
+otherwise so CI uses its own `playwright install`. Sandboxes that pin a browser build which does not
+match the installed `@playwright/test` are common, and `playwright install` is not always available.
+
+**Status:** DONE. All five bullets closed; 34 browser tests green in both viewports.
+
+---
+
+## D-56 — #39, #26 and #25 stay open. What blocks each, and what changed for them today
+
+**Date:** 2026-08-22
+
+Three issues that were not implemented, recorded so each reads as a blocked decision with a named
+blocker rather than as work someone forgot.
+
+### #39 — legacy diagrams as maps
+
+**Blocked on a rights determination, which is not an engineering question.** #39 says so itself: "This
+is the blocking question, not the design." The three source families each carry a different problem —
+Google Maps tiles with `Map data ©2016 Google` burned into the pixels (12 assets), VDOT / VRE / WMATA
+/ Fairfax County schematics (8), and 2018–2019 change notices the asset register already classifies
+`Historical only` (6). Re-hosting any of them is a licensing decision.
+
+**Also not inspectable from here.** The legacy host is unreachable from this environment — a direct
+fetch of `sluglines.com/images/slugging_locations/Horner_Road.jpg` fails at the proxy — so even the
+unblocked fourth bullet ("consider redrawing the best lot layouts as original graphics") cannot start:
+redrawing requires seeing the original.
+
+**One thing did change for it today.** D-54 gives #39 the vocabulary its third bullet asks for: the
+2018–2019 notices now have a defined `historical` state, rendering as *"Kept for context only. This
+describes how the spot used to operate and may no longer be current"*, rather than needing a bespoke
+badge invented at publication time.
+
+**And one thing was removed today that belongs to the same family.** `/how-it-works` was hotlinking
+three `wp-content/uploads/` photographs from that same legacy host (D-55). Those were live, not
+proposed, and they would have died at the #25 cutover. #39 is about assets nobody has published yet;
+that was one nobody noticed had already been published.
+
+### #26 — photographs for the 50 spots
+
+**Owner-performed, and correctly so.** It needs someone to take or license actual photographs. #18
+shipped the receiving end — the field, the reserved 4:3 area, the `slugging_locations`-only guard —
+so a photograph drops in one line at a time with no further engineering. Nothing here is blocked on
+it: all 50 spots render the designed no-photograph state.
+
+The standing bar in `Docs/asset-register.md` still applies to anything sourced: creator, capture date,
+consent, rights, and no readable plates or identifiable commuters without remediation. And #26's own
+rule holds — a satellite tile is not an acceptable substitute, because it would look like a photograph
+of the spot without being one.
+
+### #25 — DNS cutover
+
+**Owner-performed: it needs control of the domain.** Recorded here because two things now depend on
+it in a way they did not before:
+
+- **#21's external uptime monitor** is gated on it (D-47) — there is no public URL to watch until
+  `sluglines.com` points here, at which point `all_except_custom_domains` makes exactly the right
+  thing public with no further change.
+- **`/how-it-works` no longer breaks at cutover** (D-55). Before today it hotlinked three images from
+  `sluglines.com`; the moment that domain resolved here instead of at WordPress, those images would
+  have 404'd. That is one fewer cutover surprise, and it was found by accident.
+
+**Status:** All three OPEN, each with its blocker named. None blocks anything in this repository.
+
+---
+
+## D-57 — `0025` and `0026` applied to `kejglwcmzudpehddqkhh`, and the ADR instruction they went around
+
+**Date:** 2026-08-22
+**Target:** `sluglines-AI` Supabase project `kejglwcmzudpehddqkhh` (organization `xcpawiqzzjvuzhmzuooo`)
+
+### What was applied, at the owner's explicit request
+
+| | Before | After |
+|---|---|---|
+| `ai_kill_switches` rows | 15 | **9** — `global` + one per callable tool |
+| stale hyphenated keys | 6 | **0** |
+| underscored tool keys | 8 | 8 |
+| `agent_traces` refusal columns | 0 | **2** |
+| `members` rows | 3 | 3 (untouched) |
+
+Both are additive or dead-key removal; no member data was read or modified. Applied through
+`apply_migration`, so this project now has recorded migration history — #43 noted
+`supabase_migrations.schema_migrations` was empty, meaning its schema had arrived by some route that
+recorded nothing.
+
+**The 8 tool rows already existed before this ran.** They were not seeded by a migration — they were
+written by the `beforeAll` hook added to `tests/rls/tool-gate.test.ts` when that suite executed
+against this project during CI on Sluglines-AI#1. Worth stating plainly: a *test suite* is writing
+seed rows into a live database, which is a property of that suite pointing at a shared live project
+rather than anything this change introduced.
+
+### The instruction this went around
+
+The 2026-08-20 ADR closes with:
+
+> The per-tool kill switches in `Sluglines-AI` do not currently work. **This must be fixed as part of
+> the transplant, not after it.**
+
+Issues #3, #8, #9 and #13 were fixed *in place* in `Sluglines-AI` (PR #1) and those migrations have
+now been applied to its database. That is the opposite of what the ADR directs, and the ADR names
+this exact defect as the example. Recorded here rather than left implicit, because the deviation is
+not visible from either PR.
+
+### One premise of the ADR's cost argument is now false
+
+The ADR argues the transplant is "effectively free today" and "High once migrations are applied and
+members exist", resting on its Context claim that there is one Supabase project holding no data.
+D-50 established that claim is false. `kejglwcmzudpehddqkhh` already held 26 tables, 69 locations and
+3 member rows **before** anything in this session touched it, and it is the live backend the
+`Sluglines-AI` RLS suite runs against in CI.
+
+So the "free today" window had already closed for that project, independently of this work. The
+transplant is more expensive than the ADR estimated — not because of these two migrations, but
+because the second project was never empty and is load-bearing for that repo's CI.
+
+**Status:** Applied and verified. The transplant the ADR calls for remains owed, and is now owed with
+one more thing to carry across.

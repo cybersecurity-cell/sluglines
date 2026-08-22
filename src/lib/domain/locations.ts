@@ -92,6 +92,12 @@ export interface SpotLocation {
   longitude: number | null
   /** Whether a line is believed to be running. Inactive spots stay in the directory. */
   active: boolean
+  /**
+   * Where this record's operational facts came from and how current they are
+   * (issue #36). Required, not optional: an unstated provenance is precisely the
+   * problem this models — it renders as confidence the record has not earned.
+   */
+  provenance: SpotProvenance
   peakHours?: string
   parking?: string
   linesFrom?: string[]
@@ -100,6 +106,56 @@ export interface SpotLocation {
   notes?: string
   /** Absent where no approved photograph exists. Never a stand-in. */
   image?: SpotImage
+}
+
+/**
+ * Publication state for a spot's operational facts — `peakHours`, `parking`,
+ * `linesFrom`/`linesTo`, `description` (issue #36).
+ *
+ * Salvaged from `codex/phase-1`'s `Docs/content-sources.md` during the #11
+ * triage. The problem it solves is the one this repo already takes seriously
+ * everywhere else: a commuter reading "peak hours 5:30–9:00" cannot tell whether
+ * that was confirmed last month or scraped from a 2018 post, because the app
+ * renders both with identical authority. Null coordinates are never guessed
+ * (D-31) and counts render `unavailable` rather than a fabricated zero (D-33);
+ * directory facts were the remaining surface with no honesty mechanism.
+ *
+ *   verified            Confirmed against a current primary source, or a dated
+ *                       on-site review by an editor.
+ *   community-reported  Recently reported, not yet corroborated by a primary
+ *                       source.
+ *   needs-review        Useful orientation whose current operation has not been
+ *                       confirmed. The honest state for anything inherited.
+ *   historical          Retained for context, never presented as current
+ *                       instructions.
+ *
+ * SOURCE HIERARCHY, strongest first: government or transit-operator pages; then
+ * current on-site signage confirmed by an editor; then corroborated community
+ * reports; then legacy Sluglines material, which is background and discovery
+ * only and never on its own sufficient for `verified`.
+ */
+export type SpotFactState = 'verified' | 'community-reported' | 'needs-review' | 'historical'
+
+export interface SpotProvenance {
+  state: SpotFactState
+  /** Where the operational facts came from. Free text, but name a real source. */
+  source: string
+  /**
+   * ISO date the facts were last checked against that source — the date of the
+   * *check*, not of the import. Absent where no check has ever happened, which is
+   * different from a check that found nothing and must not be back-filled with an
+   * import date to make the record look attended to.
+   */
+  checkedAt?: string
+}
+
+/**
+ * The states whose facts must not be presented as current instructions without a
+ * qualifier. `verified` is deliberately absent: a verified fact needs no badge,
+ * which is what keeps the badge meaningful rather than decorative.
+ */
+export function needsFreshnessQualifier(spot: Pick<SpotLocation, 'provenance'>): boolean {
+  return spot.provenance.state !== 'verified'
 }
 
 /** The only host a migrated image may have come from (issue #18). */
@@ -129,6 +185,10 @@ export const SPOT_LOCATIONS: readonly SpotLocation[] = [
     latitude: 38.7783912,
     longitude: -77.1873566,
     active: true,
+    provenance: {
+      state: 'needs-review',
+      source: 'sluglines.com WordPress export (legacy site; its own content predates 2020)',
+    },
     peakHours: '5:45 AM - 8:00 AM',
     parking: 'Large commuter parking area around Springfield Plaza and nearby lots.',
     linesFrom: ['L\'Enfant Plaza', '14th Street', '18th Street', 'Pentagon'],
@@ -147,6 +207,10 @@ export const SPOT_LOCATIONS: readonly SpotLocation[] = [
     latitude: 38.7794583,
     longitude: -77.2314818,
     active: true,
+    provenance: {
+      state: 'needs-review',
+      source: 'sluglines.com WordPress export (legacy site; its own content predates 2020)',
+    },
     peakHours: '6:00 AM - 8:30 AM',
     linesFrom: ['L\'Enfant Plaza', 'Pentagon', '14th Street'],
   },
@@ -162,6 +226,10 @@ export const SPOT_LOCATIONS: readonly SpotLocation[] = [
     latitude: 38.767306,
     longitude: -77.168972,
     active: false,
+    provenance: {
+      state: 'needs-review',
+      source: 'sluglines.com WordPress export (legacy site; its own content predates 2020)',
+    },
   },
   {
     slug: 'lorton',
@@ -175,6 +243,10 @@ export const SPOT_LOCATIONS: readonly SpotLocation[] = [
     latitude: 38.715012,
     longitude: -77.213593,
     active: false,
+    provenance: {
+      state: 'needs-review',
+      source: 'sluglines.com WordPress export (legacy site; its own content predates 2020)',
+    },
   },
   {
     slug: 'rolling-valley',
@@ -188,6 +260,10 @@ export const SPOT_LOCATIONS: readonly SpotLocation[] = [
     latitude: 38.7758648,
     longitude: -77.2629826,
     active: true,
+    provenance: {
+      state: 'needs-review',
+      source: 'sluglines.com WordPress export (legacy site; its own content predates 2020)',
+    },
     peakHours: '6:00 AM - 8:30 AM',
     linesFrom: ['Pentagon', 'L\'Enfant Plaza', '14th Street'],
   },
@@ -203,6 +279,10 @@ export const SPOT_LOCATIONS: readonly SpotLocation[] = [
     latitude: 38.7454983,
     longitude: -77.2100791,
     active: false,
+    provenance: {
+      state: 'needs-review',
+      source: 'sluglines.com WordPress export (legacy site; its own content predates 2020)',
+    },
   },
   {
     slug: 'sydenstricker-rd',
@@ -216,6 +296,10 @@ export const SPOT_LOCATIONS: readonly SpotLocation[] = [
     latitude: 38.755989,
     longitude: -77.238098,
     active: true,
+    provenance: {
+      state: 'needs-review',
+      source: 'sluglines.com WordPress export (legacy site; its own content predates 2020)',
+    },
     peakHours: '6:00 AM - 8:30 AM',
   },
   {
@@ -230,6 +314,10 @@ export const SPOT_LOCATIONS: readonly SpotLocation[] = [
     latitude: null,
     longitude: null,
     active: false,
+    provenance: {
+      state: 'needs-review',
+      source: 'sluglines.com WordPress export (legacy site; its own content predates 2020)',
+    },
     parking: '800 commuter spaces at the Frontier Garage on levels 2, 4 and 6.',
     linesFrom: ['L\'Enfant Plaza', '14th at Commerce Dept.', '18th Street'],
     linesTo: ['L\'Enfant Plaza', '14th at Commerce Dept.', '14th & Madison Dr', '19th & F Street'],
@@ -248,6 +336,10 @@ export const SPOT_LOCATIONS: readonly SpotLocation[] = [
     latitude: null,
     longitude: null,
     active: false,
+    provenance: {
+      state: 'needs-review',
+      source: 'sluglines.com WordPress export (legacy site; its own content predates 2020)',
+    },
     peakHours: '7:00 AM - 8:00 AM',
     parking: '361 spaces at the Van Dorn Metro park-and-ride.',
     linesFrom: ['L\'Enfant Plaza', '14th Street', '18th Street'],
@@ -266,6 +358,10 @@ export const SPOT_LOCATIONS: readonly SpotLocation[] = [
     latitude: null,
     longitude: null,
     active: false,
+    provenance: {
+      state: 'needs-review',
+      source: 'sluglines.com WordPress export (legacy site; its own content predates 2020)',
+    },
     peakHours: '7:00 AM - 8:00 AM',
     parking: 'Lower level of the Landmark Mall garage, rows K-O, next to bus stop #4000576. An Alexandria permit was required.',
     linesFrom: ['L\'Enfant Plaza', '14th Street', '18th Street'],
@@ -284,6 +380,10 @@ export const SPOT_LOCATIONS: readonly SpotLocation[] = [
     latitude: 38.2895891,
     longitude: -77.5634542,
     active: true,
+    provenance: {
+      state: 'needs-review',
+      source: 'sluglines.com WordPress export (legacy site; its own content predates 2020)',
+    },
     peakHours: '5:30 AM - 7:30 AM',
   },
   {
@@ -298,6 +398,10 @@ export const SPOT_LOCATIONS: readonly SpotLocation[] = [
     latitude: 38.3461443,
     longitude: -77.5018604,
     active: true,
+    provenance: {
+      state: 'needs-review',
+      source: 'sluglines.com WordPress export (legacy site; its own content predates 2020)',
+    },
     peakHours: '5:30 AM - 7:30 AM',
   },
   {
@@ -312,6 +416,10 @@ export const SPOT_LOCATIONS: readonly SpotLocation[] = [
     latitude: 38.25132,
     longitude: -77.508324,
     active: false,
+    provenance: {
+      state: 'needs-review',
+      source: 'sluglines.com WordPress export (legacy site; its own content predates 2020)',
+    },
   },
   {
     slug: 'dale-city',
@@ -325,6 +433,10 @@ export const SPOT_LOCATIONS: readonly SpotLocation[] = [
     latitude: 38.646938,
     longitude: -77.341232,
     active: false,
+    provenance: {
+      state: 'needs-review',
+      source: 'sluglines.com WordPress export (legacy site; its own content predates 2020)',
+    },
   },
   {
     slug: 'horner-rd',
@@ -338,6 +450,10 @@ export const SPOT_LOCATIONS: readonly SpotLocation[] = [
     latitude: 38.658592,
     longitude: -77.280746,
     active: true,
+    provenance: {
+      state: 'needs-review',
+      source: 'sluglines.com WordPress export (legacy site; its own content predates 2020)',
+    },
     peakHours: '6:00 AM - 8:30 AM',
     linesFrom: ['Pentagon', 'L\'Enfant Plaza', '14th Street'],
   },
@@ -353,6 +469,10 @@ export const SPOT_LOCATIONS: readonly SpotLocation[] = [
     latitude: 38.62624,
     longitude: -77.348183,
     active: true,
+    provenance: {
+      state: 'needs-review',
+      source: 'sluglines.com WordPress export (legacy site; its own content predates 2020)',
+    },
     peakHours: '6:00 AM - 8:30 AM',
     fbUrl: 'https://www.facebook.com/groups/montclairslugs/',
   },
@@ -368,6 +488,10 @@ export const SPOT_LOCATIONS: readonly SpotLocation[] = [
     latitude: 38.6105087,
     longitude: -77.359309,
     active: true,
+    provenance: {
+      state: 'needs-review',
+      source: 'sluglines.com WordPress export (legacy site; its own content predates 2020)',
+    },
     peakHours: '6:00 AM - 8:30 AM',
     fbUrl: 'https://www.facebook.com/groups/montclairslugs/',
   },
@@ -383,6 +507,10 @@ export const SPOT_LOCATIONS: readonly SpotLocation[] = [
     latitude: 38.674301,
     longitude: -77.255623,
     active: true,
+    provenance: {
+      state: 'needs-review',
+      source: 'sluglines.com WordPress export (legacy site; its own content predates 2020)',
+    },
     peakHours: '6:00 AM - 8:30 AM',
   },
   {
@@ -397,6 +525,10 @@ export const SPOT_LOCATIONS: readonly SpotLocation[] = [
     latitude: 38.640717,
     longitude: -77.293884,
     active: true,
+    provenance: {
+      state: 'needs-review',
+      source: 'sluglines.com WordPress export (legacy site; its own content predates 2020)',
+    },
     peakHours: '6:30 AM - 8:15 AM',
     parking: 'Commuter parking around Potomac Mills Circle.',
     linesTo: ['The Pentagon', '15th Street & New York Ave', 'Rosslyn'],
@@ -414,6 +546,10 @@ export const SPOT_LOCATIONS: readonly SpotLocation[] = [
     latitude: 38.6701716,
     longitude: -77.2509748,
     active: true,
+    provenance: {
+      state: 'needs-review',
+      source: 'sluglines.com WordPress export (legacy site; its own content predates 2020)',
+    },
     peakHours: '6:00 AM - 8:30 AM',
   },
   {
@@ -428,6 +564,10 @@ export const SPOT_LOCATIONS: readonly SpotLocation[] = [
     latitude: 38.576817,
     longitude: -77.315826,
     active: true,
+    provenance: {
+      state: 'needs-review',
+      source: 'sluglines.com WordPress export (legacy site; its own content predates 2020)',
+    },
     peakHours: '5:45 AM - 8:00 AM',
   },
   {
@@ -442,6 +582,10 @@ export const SPOT_LOCATIONS: readonly SpotLocation[] = [
     latitude: 38.675777,
     longitude: -77.276543,
     active: true,
+    provenance: {
+      state: 'needs-review',
+      source: 'sluglines.com WordPress export (legacy site; its own content predates 2020)',
+    },
     peakHours: '6:00 AM - 8:30 AM',
   },
   {
@@ -456,6 +600,10 @@ export const SPOT_LOCATIONS: readonly SpotLocation[] = [
     latitude: 38.658051,
     longitude: -77.288749,
     active: true,
+    provenance: {
+      state: 'needs-review',
+      source: 'sluglines.com WordPress export (legacy site; its own content predates 2020)',
+    },
     peakHours: '6:00 AM - 8:30 AM',
   },
   {
@@ -470,6 +618,10 @@ export const SPOT_LOCATIONS: readonly SpotLocation[] = [
     latitude: 38.4669945,
     longitude: -77.4160618,
     active: true,
+    provenance: {
+      state: 'needs-review',
+      source: 'sluglines.com WordPress export (legacy site; its own content predates 2020)',
+    },
     peakHours: '5:30 AM - 7:30 AM',
   },
   {
@@ -484,6 +636,10 @@ export const SPOT_LOCATIONS: readonly SpotLocation[] = [
     latitude: 38.4752647,
     longitude: -77.4129771,
     active: true,
+    provenance: {
+      state: 'needs-review',
+      source: 'sluglines.com WordPress export (legacy site; its own content predates 2020)',
+    },
     peakHours: '5:30 AM - 7:30 AM',
   },
   {
@@ -498,6 +654,10 @@ export const SPOT_LOCATIONS: readonly SpotLocation[] = [
     latitude: 38.4212359,
     longitude: -77.4254927,
     active: true,
+    provenance: {
+      state: 'needs-review',
+      source: 'sluglines.com WordPress export (legacy site; its own content predates 2020)',
+    },
     peakHours: '5:30 AM - 7:30 AM',
   },
   {
@@ -512,6 +672,10 @@ export const SPOT_LOCATIONS: readonly SpotLocation[] = [
     latitude: 38.8310454,
     longitude: -77.1176246,
     active: true,
+    provenance: {
+      state: 'needs-review',
+      source: 'sluglines.com WordPress export (legacy site; its own content predates 2020)',
+    },
     peakHours: '3:30 PM - 6:30 PM',
     fbUrl: 'https://www.facebook.com/groups/markcenterslugs/',
   },
@@ -527,6 +691,10 @@ export const SPOT_LOCATIONS: readonly SpotLocation[] = [
     latitude: 38.931906,
     longitude: -77.230132,
     active: true,
+    provenance: {
+      state: 'needs-review',
+      source: 'sluglines.com WordPress export (legacy site; its own content predates 2020)',
+    },
     peakHours: '3:30 PM - 6:30 PM',
   },
   {
@@ -541,6 +709,10 @@ export const SPOT_LOCATIONS: readonly SpotLocation[] = [
     latitude: 38.8620732,
     longitude: -77.048738,
     active: true,
+    provenance: {
+      state: 'needs-review',
+      source: 'sluglines.com WordPress export (legacy site; its own content predates 2020)',
+    },
     peakHours: '3:30 PM - 6:30 PM',
     fbUrl: 'https://www.facebook.com/groups/crystalcitysluglines/',
   },
@@ -556,6 +728,10 @@ export const SPOT_LOCATIONS: readonly SpotLocation[] = [
     latitude: 38.85238,
     longitude: -77.04964,
     active: true,
+    provenance: {
+      state: 'needs-review',
+      source: 'sluglines.com WordPress export (legacy site; its own content predates 2020)',
+    },
     peakHours: '3:30 PM - 6:30 PM',
     fbUrl: 'https://www.facebook.com/groups/crystalcitysluglines/',
   },
@@ -571,6 +747,10 @@ export const SPOT_LOCATIONS: readonly SpotLocation[] = [
     latitude: 38.898092,
     longitude: -77.071726,
     active: true,
+    provenance: {
+      state: 'needs-review',
+      source: 'sluglines.com WordPress export (legacy site; its own content predates 2020)',
+    },
     peakHours: '3:30 PM - 6:30 PM',
     fbUrl: 'https://www.facebook.com/groups/rosslynsluglines/',
   },
@@ -586,6 +766,10 @@ export const SPOT_LOCATIONS: readonly SpotLocation[] = [
     latitude: 38.8680768,
     longitude: -77.0524506,
     active: true,
+    provenance: {
+      state: 'needs-review',
+      source: 'sluglines.com WordPress export (legacy site; its own content predates 2020)',
+    },
     peakHours: '3:30 PM - 6:30 PM',
     fbUrl: 'https://www.facebook.com/groups/pentagonsluglines/',
   },
@@ -601,6 +785,10 @@ export const SPOT_LOCATIONS: readonly SpotLocation[] = [
     latitude: 38.889938,
     longitude: -77.032021,
     active: true,
+    provenance: {
+      state: 'needs-review',
+      source: 'sluglines.com WordPress export (legacy site; its own content predates 2020)',
+    },
   },
   {
     slug: '14th-st-and-g-st',
@@ -614,6 +802,10 @@ export const SPOT_LOCATIONS: readonly SpotLocation[] = [
     latitude: 38.8981415,
     longitude: -77.0320751,
     active: true,
+    provenance: {
+      state: 'needs-review',
+      source: 'sluglines.com WordPress export (legacy site; its own content predates 2020)',
+    },
   },
   {
     slug: '14th-st-and-independence',
@@ -627,6 +819,10 @@ export const SPOT_LOCATIONS: readonly SpotLocation[] = [
     latitude: 38.88733,
     longitude: -77.032156,
     active: true,
+    provenance: {
+      state: 'needs-review',
+      source: 'sluglines.com WordPress export (legacy site; its own content predates 2020)',
+    },
   },
   {
     slug: '14th-st-at-commerce-dept',
@@ -640,6 +836,10 @@ export const SPOT_LOCATIONS: readonly SpotLocation[] = [
     latitude: 38.89462,
     longitude: -77.03207,
     active: true,
+    provenance: {
+      state: 'needs-review',
+      source: 'sluglines.com WordPress export (legacy site; its own content predates 2020)',
+    },
   },
   {
     slug: '15th-st-and-new-york-ave',
@@ -653,6 +853,10 @@ export const SPOT_LOCATIONS: readonly SpotLocation[] = [
     latitude: 38.8990078,
     longitude: -77.033381,
     active: true,
+    provenance: {
+      state: 'needs-review',
+      source: 'sluglines.com WordPress export (legacy site; its own content predates 2020)',
+    },
   },
   {
     slug: '19th-st-and-f-st',
@@ -666,6 +870,10 @@ export const SPOT_LOCATIONS: readonly SpotLocation[] = [
     latitude: 38.896695,
     longitude: -77.043543,
     active: true,
+    provenance: {
+      state: 'needs-review',
+      source: 'sluglines.com WordPress export (legacy site; its own content predates 2020)',
+    },
   },
   {
     slug: '19th-st-and-i-st',
@@ -679,6 +887,10 @@ export const SPOT_LOCATIONS: readonly SpotLocation[] = [
     latitude: 38.900711,
     longitude: -77.043549,
     active: true,
+    provenance: {
+      state: 'needs-review',
+      source: 'sluglines.com WordPress export (legacy site; its own content predates 2020)',
+    },
   },
   {
     slug: 'lenfant-plaza',
@@ -692,6 +904,10 @@ export const SPOT_LOCATIONS: readonly SpotLocation[] = [
     latitude: 38.88489,
     longitude: -77.023402,
     active: true,
+    provenance: {
+      state: 'needs-review',
+      source: 'sluglines.com WordPress export (legacy site; its own content predates 2020)',
+    },
     peakHours: '3:30 PM - 6:30 PM',
     fbUrl: 'https://www.facebook.com/groups/lenfantslugs/',
   },
@@ -707,6 +923,10 @@ export const SPOT_LOCATIONS: readonly SpotLocation[] = [
     latitude: 38.8765811,
     longitude: -77.0014703,
     active: true,
+    provenance: {
+      state: 'needs-review',
+      source: 'sluglines.com WordPress export (legacy site; its own content predates 2020)',
+    },
   },
   {
     slug: 'state-department',
@@ -720,6 +940,10 @@ export const SPOT_LOCATIONS: readonly SpotLocation[] = [
     latitude: null,
     longitude: null,
     active: false,
+    provenance: {
+      state: 'needs-review',
+      source: 'sluglines.com WordPress export (legacy site; its own content predates 2020)',
+    },
     linesFrom: ['Horner Rd', 'Telegraph Rd'],
     linesTo: ['Horner Rd', 'Telegraph Rd'],
     fbUrl: 'https://www.facebook.com/groups/dcsluglines/',
@@ -737,6 +961,10 @@ export const SPOT_LOCATIONS: readonly SpotLocation[] = [
     latitude: 38.8774069,
     longitude: -77.2706202,
     active: true,
+    provenance: {
+      state: 'needs-review',
+      source: 'Directory addition for the I-66 corridor; no primary source recorded',
+    },
     peakHours: '6:00 AM - 8:30 AM',
     fbUrl: 'https://www.facebook.com/groups/viennaslugs/',
   },
@@ -752,6 +980,10 @@ export const SPOT_LOCATIONS: readonly SpotLocation[] = [
     latitude: 38.8542902,
     longitude: -77.3604273,
     active: true,
+    provenance: {
+      state: 'needs-review',
+      source: 'Directory addition for the I-66 corridor; no primary source recorded',
+    },
     peakHours: '6:00 AM - 8:30 AM',
   },
   {
@@ -766,6 +998,10 @@ export const SPOT_LOCATIONS: readonly SpotLocation[] = [
     latitude: 38.854028,
     longitude: -77.404472,
     active: true,
+    provenance: {
+      state: 'needs-review',
+      source: 'Directory addition for the I-66 corridor; no primary source recorded',
+    },
     peakHours: '6:00 AM - 8:30 AM',
   },
   {
@@ -780,6 +1016,10 @@ export const SPOT_LOCATIONS: readonly SpotLocation[] = [
     latitude: 38.9513106,
     longitude: -77.3823065,
     active: true,
+    provenance: {
+      state: 'needs-review',
+      source: 'Directory addition for the I-66 corridor; no primary source recorded',
+    },
     peakHours: '6:00 AM - 8:30 AM',
   },
   {
@@ -794,6 +1034,10 @@ export const SPOT_LOCATIONS: readonly SpotLocation[] = [
     latitude: 38.7950597,
     longitude: -77.563859,
     active: true,
+    provenance: {
+      state: 'needs-review',
+      source: 'Directory addition for the I-66 corridor; no primary source recorded',
+    },
     peakHours: '5:45 AM - 8:00 AM',
   },
   {
@@ -808,6 +1052,10 @@ export const SPOT_LOCATIONS: readonly SpotLocation[] = [
     latitude: 38.9119294,
     longitude: -77.4914467,
     active: true,
+    provenance: {
+      state: 'needs-review',
+      source: 'Directory addition for the I-66 corridor; no primary source recorded',
+    },
     peakHours: '5:45 AM - 8:00 AM',
   },
   {
@@ -822,6 +1070,10 @@ export const SPOT_LOCATIONS: readonly SpotLocation[] = [
     latitude: 38.938222,
     longitude: -77.555917,
     active: true,
+    provenance: {
+      state: 'needs-review',
+      source: 'Directory addition for the I-66 corridor; no primary source recorded',
+    },
     peakHours: '5:45 AM - 8:00 AM',
   },
   {
@@ -836,6 +1088,10 @@ export const SPOT_LOCATIONS: readonly SpotLocation[] = [
     latitude: 38.90075,
     longitude: -77.049611,
     active: true,
+    provenance: {
+      state: 'needs-review',
+      source: 'Directory addition for the I-66 corridor; no primary source recorded',
+    },
     peakHours: '3:30 PM - 6:30 PM',
   },
 ]

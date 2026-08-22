@@ -12,7 +12,9 @@
     "typecheck": "tsc --noEmit",
     "sql:check": "node scripts/sql-lint.mjs && node --experimental-strip-types scripts/seed-locations.mjs --check",
     "seed:locations": "node --experimental-strip-types scripts/seed-locations.mjs --write",
-    "audit:check": "node scripts/audit-check.mjs --level=high"
+    "audit:check": "node scripts/audit-check.mjs --level=high",
+    "e2e": "playwright test",
+    "e2e:ui": "playwright test --ui"
   },
   "dependencies": {
     "@supabase/ssr": "^0.3.0",
@@ -26,6 +28,8 @@
     "react-dom": "^18.3.0"
   },
   "devDependencies": {
+    "@axe-core/playwright": "^4.13.0",
+    "@playwright/test": "^1.62.1",
     "@types/node": "^20.12.12",
     "@types/react": "^18.3.2",
     "@types/react-dom": "^18.3.0",

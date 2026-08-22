@@ -17,10 +17,27 @@
 //
 // Usage:
 //   node scripts/verify-legacy-routes.mjs <origin> [--token=<vercel share token>]
+//                                                  [--bypass-secret=<secret>]
 //
-// The token is only needed while the deployment sits behind Vercel Authentication
-// (#47). It is appended as a query parameter and does not affect path matching;
-// redirects are NOT followed, so the token is never needed for a second hop.
+// Both credentials exist for the same reason -- the deployment sits behind Vercel
+// Authentication and has no public URL (#47) -- but they are not interchangeable,
+// and CI should use the second:
+//
+//   --token          A `_vercel_share` link, minted by hand from the dashboard.
+//                    Exchanged once for a cookie (see establishSession). Expires,
+//                    is per-person, and cannot be put in CI without a human
+//                    reminting it. Fine for a one-off manual check.
+//
+//   --bypass-secret  Protection Bypass for Automation. Sent as the
+//                    `x-vercel-protection-bypass` header on every request, so
+//                    there is no session to establish and nothing to expire. This
+//                    is what lets the #23 route check run in CI against a real
+//                    deployment WITHOUT making the site public -- which is the
+//                    third bullet of #47, and the reason that issue does not have
+//                    to be resolved before this check can run.
+//                    Falls back to $VERCEL_AUTOMATION_BYPASS_SECRET so CI can
+//                    supply it as a secret rather than on the command line, where
+//                    it would land in the run log.
 //
 // Exit 0 only when every route matches. Node built-ins plus the repo's own policy.
 
@@ -34,10 +51,16 @@ const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..')
 const args = process.argv.slice(2)
 const origin = args.find((a) => !a.startsWith('--'))
 const token = (args.find((a) => a.startsWith('--token=')) ?? '').replace('--token=', '')
+const bypassSecret =
+  (args.find((a) => a.startsWith('--bypass-secret=')) ?? '').replace('--bypass-secret=', '') ||
+  process.env.VERCEL_AUTOMATION_BYPASS_SECRET ||
+  ''
 const concurrency = Number((args.find((a) => a.startsWith('--concurrency=')) ?? '').replace('--concurrency=', '')) || 8
 
 if (!origin) {
-  console.error('usage: node scripts/verify-legacy-routes.mjs <origin> [--token=…] [--concurrency=N]')
+  console.error(
+    'usage: node scripts/verify-legacy-routes.mjs <origin> [--token=…] [--bypass-secret=…] [--concurrency=N]'
+  )
   process.exit(1)
 }
 
@@ -69,6 +92,11 @@ function expectation(pathname) {
 let authCookie = ''
 
 async function establishSession() {
+  // The bypass header needs no session: it is presented per request and Vercel
+  // answers directly rather than bouncing to a login. Exchanging a share token
+  // as well would be redundant, and would fail noisily when only the secret is
+  // configured, so the header wins when both are supplied.
+  if (bypassSecret) return
   if (!token) return
   const url = new URL('/', origin)
   url.searchParams.set('_vercel_share', token)
@@ -80,10 +108,20 @@ async function establishSession() {
   }
 }
 
+/**
+ * Credentials for one request. The bypass secret is a header rather than a query
+ * parameter on purpose: a query parameter changes the URL, and this script's
+ * whole job is to observe what the edge does with an *unmodified* legacy path.
+ */
+function authHeaders() {
+  if (bypassSecret) return { 'x-vercel-protection-bypass': bypassSecret }
+  return authCookie ? { cookie: authCookie } : {}
+}
+
 async function hop(pathname) {
   const res = await fetch(new URL(pathname, origin), {
     redirect: 'manual',
-    headers: authCookie ? { cookie: authCookie } : {},
+    headers: authHeaders(),
     signal: AbortSignal.timeout(30000),
   })
   const location = res.headers.get('location')

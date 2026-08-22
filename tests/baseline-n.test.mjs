@@ -78,11 +78,35 @@ for (const name of files) {
   assert.match(name, /^[a-z0-9-]+\.test\.mjs$/, `${name}: test files are kebab-case *.test.mjs at the top of tests/`)
 }
 
-const nested = fs.readdirSync(testDir, { withFileTypes: true }).filter((entry) => entry.isDirectory())
+// The Node suite is flat, because scripts/run-tests.mjs does not recurse and a
+// nested *.test.mjs would silently never run. `tests/e2e/` is the one exception
+// and is not one really: it holds Playwright *.spec.ts, run by `npm run e2e` in
+// its own workflow (#35, D-55), and the runner's glob cannot pick them up by
+// accident. What still must not happen is a *.test.mjs hiding in there, so the
+// rule is now "no nested Node test" rather than "no directories".
+const PLAYWRIGHT_DIR = 'e2e'
+
+const nested = fs
+  .readdirSync(testDir, { withFileTypes: true })
+  .filter((entry) => entry.isDirectory())
+  .map((entry) => entry.name)
+
 assert.deepEqual(
-  nested.map((entry) => entry.name),
+  nested.filter((name) => name !== PLAYWRIGHT_DIR),
   [],
-  'tests/ is flat: scripts/run-tests.mjs does not recurse, so a nested file would never run'
+  `tests/ is flat apart from ${PLAYWRIGHT_DIR}/: run-tests.mjs does not recurse, so a nested file would never run`
 )
+
+if (nested.includes(PLAYWRIGHT_DIR)) {
+  const strays = fs
+    .readdirSync(path.join(testDir, PLAYWRIGHT_DIR))
+    .filter((name) => name.endsWith('.test.mjs'))
+
+  assert.deepEqual(
+    strays,
+    [],
+    `tests/${PLAYWRIGHT_DIR}/ holds Playwright specs only; a *.test.mjs there would never be run by npm test`
+  )
+}
 
 console.log(`baseline N: ${measured.files} test files / ${measured.assertions} assertion call sites`)

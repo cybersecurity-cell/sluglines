@@ -46,13 +46,21 @@ for (const file of files) {
   const rel = path.relative(root, file).replace(/\\/g, '/')
   const source = fs.readFileSync(file, 'utf8')
 
+  // Comments are stripped before the import scan. `SPECIFIER` matches the word
+  // `from` followed by a quoted string, which ordinary prose produces by
+  // accident — a doc comment ending "...where this came from" immediately before
+  // a quoted phrase was read as an import of that phrase, and the failure named
+  // a paragraph of English as a forbidden module. The rule is about imports, so
+  // it should only ever read code.
+  const code = source.replace(/\/\*[\s\S]*?\*\//g, '').replace(/^\s*\/\/.*$/gm, '')
+
   // No React in the domain layer: it is called from server code and SQL-facing
   // services, and a React import is the first step to putting rendering
   // concerns behind a domain function.
   assert.equal(/\.tsx$/.test(file), false, `${rel}: lib/domain must not contain .tsx files`)
   assert.equal(/^['"]use client['"]/m.test(source), false, `${rel}: lib/domain must not be a client module`)
 
-  for (const match of source.matchAll(SPECIFIER)) {
+  for (const match of code.matchAll(SPECIFIER)) {
     const spec = match[1]
 
     if (spec.startsWith('.')) {
