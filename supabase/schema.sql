@@ -5,7 +5,7 @@
 -- against. It is UNSAFE and must not be applied to any database, including
 -- Supabase project bwpguotjzczmieeepczf.
 --
--- rev. 5.3 (Docs/2026-08-14-consolidated-architecture.md) sec.14 risks 1 and 4
+-- rev. 5.3 (Docs/consolidated-architecture.md) sec.14 risks 1 and 4
 -- flag the policies below: any anonymous client can update spot_status counts,
 -- and can insert, update, or DELETE any other person's row in riders and
 -- drivers. Identity here is a client-supplied device_id, so there is nothing to

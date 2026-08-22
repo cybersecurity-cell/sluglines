@@ -1,8 +1,8 @@
 # Sluglines — Consolidated Architecture & Product Plan
 
-- **Status:** IMPLEMENTED (Phase 0/1 complete, 2026-08-14); §5 SUPERSEDED and §3.4 CORRECTED 2026-08-20 — see the rev. 6 banner below
+- **Status:** rev. 6 — IMPLEMENTED (Phase 0/1 complete, 2026-08-14). §3.4, §5 and §15 Q1 are corrected **in place**; this document no longer carries a banner warning that its own body is wrong.
 - **Baseline N:** 28 test files / 872 assertion call sites, all passing (recounted 2026-08-22, D-35). This line is machine-checked — `tests/baseline-n.test.mjs` re-measures the repo and fails if it and this header disagree, so `N` cannot drift again without the change that moved it saying so. Supersedes D-25's "12 files / 99 assertions", which was stale by more than 2×.
-- **Repo State:** Branch `codex/phase-3-4` at commit `8e1ed0d`, pushed to `origin`. `main` = `origin/main` = `97ca88f`.
+- **Repo State (2026-08-22):** `main` is the only live branch and carries everything below — `codex/phase-3-4` was merged as PR #1 (`e2d922a`) and deleted. `codex/phase-1` survives as the unreviewed snapshot `e7b0f49` (issue #11). Migrations `0001`–`0007` are in `supabase/migrations/`; `0001`–`0003` are applied to the preview branch `phase-3-4-staging`, and **nothing is applied to production** (issue #19).
 
 - **Phase 0/1 implementation summary:**
   - Foundations: Security gates, architecture, decision logs, and cost caps (Commit `aa7b306`).
@@ -10,7 +10,7 @@
   - M1 Directory: 50-spot directory, seed utility, and public aggregate wiring (Commit `417c7ac`).
   - M3 API Write Path: Full ride-coordinator HTTP write endpoints with hardened error contracts (Commit `165650d`).
   - Dashboard: Power-user view with realtime aggregates and presence panel (Commit `0bf9def`).
-**Date:** August 14, 2026; corrected August 20, 2026 (rev. 5.4 — applied the 2026-08-20 consolidation review: §5 superseded, §3.4 corrected against live infrastructure, §15 Q1 closed, baseline `N` and repo state refreshed. rev. 5.3 was three cold-reader loops: 15, 8, then 6 forced assumptions; final 6 fixed unre-certified; rev. 5 applied the six-seat SME panel review, ~180 findings; changelogs in §18)
+**Date:** August 14, 2026; corrected August 20, 2026 (rev. 5.4) and August 22, 2026 (rev. 6 — the 5.4 corrections folded into the sections themselves, the schema-ancestry decision reversed per `Docs/DECISIONS.md` D-34, and the file renamed off its dated path. rev. 5.3 was three cold-reader loops: 15, 8, then 6 forced assumptions; final 6 fixed unre-certified; rev. 5 applied the six-seat SME panel review, ~180 findings; changelogs in §18)
 **Scope:** All Sluglines engineering and product effort, not one repo
 **Supersedes:** rev. 4. This revision is self-contained: nothing normative lives only in an earlier revision.
 **Inputs:** `sluglines.com` (live), the `sluglines` repo (`main` + `codex/phase-3-4`), `Sluglines-AI`, `SluglinesAgent`, two WhatsApp group exports (pattern review only), cross-repo knowledge graph at `C:\Users\kalai\Projects\graphify-out\`
@@ -19,21 +19,11 @@
 
 ---
 
-## ⚠️ Correction notice — 2026-08-20
+## The one fact that reshapes everything below
 
-**Three claims in this document were checked directly against live infrastructure on 2026-08-20 and are wrong. Read this before acting on §3.4, §5, or §15 Q1.**
+**The production database is empty.** `bwpguotjzczmieeepczf` holds three legacy tables — `spot_status`, `profiles`, `commute_log` — with **zero rows** and no lineage applied, verified directly on 2026-08-20 and again on 2026-08-22. Every plan below that assumes migrating or preserving existing state is over-built for the actual situation: consolidation today is a **code move, not a data migration**. That stops being true the moment the pilot writes its first member row, which is the argument for doing the irreversible parts now rather than after.
 
-| § | Claim as written | Status |
-|---|---|---|
-| §5 | "Adopt `Sluglines-AI` as the canonical application, schema, and Supabase project." | **SUPERSEDED.** Reversed by the project owner. `sluglines` is the host repo; `Sluglines-AI` becomes a module inside it. Schema ancestry still comes from `Sluglines-AI`. See `Docs/2026-08-20-adr-sluglines-is-the-host-repo.md`. |
-| §3.4 | `Sluglines-AI` has a "live-DB RLS suite (~98 tests)" and is a deployed implementation. | **FALSE as written.** There is exactly one Sluglines Supabase project (`bwpguotjzczmieeepczf`); its applied migration history is two July entries (`create_sluglines_ai_schema`, `drop_stray_sluglines_ai_schema`) and it holds three empty legacy tables. `Sluglines-AI`'s 24 migrations were never applied to it. Whatever the RLS suite ran against, it was not this project. §2 flagged this as UNVERIFIED-until-P0; it is now verified and false. |
-| §15 Q1 | "Which repo name survives" — logged as open. | **ANSWERED:** `sluglines`. |
-
-**The single most consequential fact this document does not contain:** the production database is empty — three tables, zero rows, no lineage applied. Every plan below that assumes migrating or preserving existing state is over-engineered for the actual situation. Consolidation today is a code move, not a data migration. That stops being true the moment the pilot writes its first member row.
-
-Two further staleness corrections are recorded in the header above: the baseline `N` and the repo-state commit.
-
-**Structural note.** This filename is dated but the document is on revision 5.3 and is revised repeatedly — a date in the filename of something that keeps being updated signals the writer thought they were creating when they were continuing. This file should be renamed to an undated path (`Docs/consolidated-architecture.md`) with the revision history kept inside, so the next session edits it rather than forking a dated sibling. Tracked as issue #6.
+Three claims that were wrong in rev. 5.3 are corrected **in the sections themselves** as of rev. 6, not flagged here — §3.4 (`Sluglines-AI`'s "live-DB RLS suite"), §5 (which stack is canonical), and §15 Q1 (which repo name survives). §18 records what changed. If you are looking for the warning banner that used to sit here, its contents are now the text it was warning you about.
 
 ---
 
@@ -72,7 +62,7 @@ Claims in §3–§4 were checked on 2026-08-14 by these methods, **with the limi
 | Supabase project (the only one) | ref `bwpguotjzczmieeepczf`, region `us-east-2`; preview branch `phase-3-4-staging` = ref `xqonrogwwytkmqfinszp` |
 | `SluglinesAgent` | `C:\Users\kalai\Projects\SluglinesAgent` — local directory only, no remote |
 | Legacy content inventory | `codex/phase-3-4:Docs/sluglines-content-inventory.md` |
-| This document | `codex/phase-3-4:Docs/2026-08-14-consolidated-architecture.md` — **it has landed**; the earlier `C:\Users\kalai\Projects\Temp\Sluglines\...` path is obsolete. Should be renamed to an undated path (issue #6). |
+| This document | `Docs/consolidated-architecture.md` on `main`. Renamed off its dated path in rev. 6; the earlier `C:\Users\kalai\Projects\Temp\Sluglines\...` and `Docs/2026-08-14-...` paths are both obsolete. |
 | ADR closing §15 Q1 | `codex/phase-3-4:Docs/2026-08-20-adr-sluglines-is-the-host-repo.md` |
 | Issue tracker | `github.com/cybersecurity-cell/sluglines/issues` — 12 issues filed 2026-08-20 (#3–#14) |
 
@@ -93,10 +83,13 @@ Nine routes, two components, three tables; the "live board" is two integer count
 ### 3.3 `sluglines` repo, `codex/phase-3-4` — draft PR #1, do not merge as written
 Keep: `scripts/migrate-sluglines-content.mjs` (WP REST → JSON, working), spot directory/search libs, `community-channels.ts` (40+ spots mapped to corridor Facebook groups), the 165-route content inventory. Reject: `riders`/`drivers`/`alerts` tables whose RLS allows any anonymous client to update or delete any other user's row. The feature exists correctly in `Sluglines-AI` as `presence_checkins`.
 
-### 3.4 `Sluglines-AI` — the module to be absorbed
-> **Corrected 2026-08-20.** This section previously called `Sluglines-AI` "the canonical build" and described its Vitest suite as running "against a live database". Neither survives verification. `Sluglines-AI` is now the *module* absorbed into the `sluglines` host repo (ADR 2026-08-20), and **its 24 migrations have never been applied to any live Sluglines database.** The only Sluglines Supabase project (`bwpguotjzczmieeepczf`) records two applied migrations, both from July, and holds three empty legacy tables. The RLS suite therefore ran against a local or since-deleted instance; its ~98-test figure is not evidence about production. The "UNVERIFIED until P0" marker below is now resolved — as false.
+### 3.4 `Sluglines-AI` — a dormant parallel build, not a deployed one
 
-Next.js 16 / React 19 / TS / Zod 4 / Tailwind 4 / Supabase (Postgres + Auth + Realtime + pg_cron) / web-push / Vitest against a database that is **not** the production project / `@anthropic-ai/sdk`. Repo evidence shows deployment config for `sluglines-ai.vercel.app` and a CI workflow on push (live status: still unconfirmed; the repo has been dormant since 2026-07-29). Security docs exist **in the `Sluglines-AI` repo** and are incorporated here by reference as normative (they travel with the module into `sluglines`): `docs/security/threat-model.md` (threats T1–T10 — the T-numbers cited in this document resolve there), `docs/security/authorization-matrix.md`, `docs/security/data-classification.md` (this is "the retention schedule" this document cites; P0 verifies it covers every table named in §8 and extends it where it does not). Known gaps: AI layer never run against a live model; SMS fallback is a stub; savings estimates are a flat constant; voice is browser-only Web Speech API.
+**Its 24 migrations have never been applied to any live Sluglines database.** The only Sluglines Supabase project (`bwpguotjzczmieeepczf`) records two applied migrations, both from July (`create_sluglines_ai_schema`, `drop_stray_sluglines_ai_schema`), and holds three empty legacy tables. Rev. 5.3 called this repo "the canonical build" and described its Vitest suite as running "against a live database"; §2 carried that as UNVERIFIED-until-P0. It was checked on 2026-08-20 and is **false**. Whatever the RLS suite ran against, it was a local or since-deleted instance, so its ~98-test figure is evidence about that instance and about nothing in production.
+
+Next.js 16 / React 19 / TS / Zod 4 / Tailwind 4 / Supabase (Postgres + Auth + Realtime + pg_cron) / web-push / Vitest against a database that is **not** the production project / `@anthropic-ai/sdk`. Repo evidence shows deployment config for `sluglines-ai.vercel.app` and a CI workflow on push (live status: still unconfirmed; the repo has been dormant since 2026-07-29). Security docs exist **in the `Sluglines-AI` repo** and are incorporated here by reference as normative: `docs/security/threat-model.md` (threats T1–T10 — the T-numbers cited in this document resolve there), `docs/security/authorization-matrix.md`, `docs/security/data-classification.md` (this is "the retention schedule" this document cites; P0 verifies it covers every table named in §8 and extends it where it does not). Known gaps: AI layer never run against a live model; SMS fallback is a stub; savings estimates are a flat constant; voice is browser-only Web Speech API.
+
+**Whether this repo is absorbed at all, and on what timetable, is an open question** — see §5. Nothing in the content cutover depends on the answer.
 
 ### 3.5 `SluglinesAgent` — brand-ops utility, not the product
 ~60-line X posting script, human approval queue. No git repo; live OAuth credentials in plaintext. Rotate (verified, see P0), git init, keep out of product architecture.
@@ -117,26 +110,35 @@ The structural problem: **state scrolls away.** No queryable answer to "who is d
 
 ---
 
-## 5. Decision: one canonical stack
+## 5. Decision: one repo, one Supabase project, one migration lineage
 
-> **SUPERSEDED 2026-08-20 by `Docs/2026-08-20-adr-sluglines-is-the-host-repo.md`.** The direction below — adopt `Sluglines-AI` as the canonical repo — was reversed by the project owner. **`sluglines` is the host repo; `Sluglines-AI` flattens into it as a module.** What survives from this section is the *schema* half of the decision: `Sluglines-AI`'s migration lineage is still the ancestry, because the comparison table below is still accurate about why (default-deny RLS, threat model, authorization matrix). Read the table as "which schema wins", not "which repo wins". Because the production database is empty, the two competing `0001` lineages are squashed into one rather than reconciled.
+**`sluglines` is the host repo, and the schema is the one built inside it.** Rev. 5.3 said the opposite — *"adopt `Sluglines-AI` as the canonical application, schema, and Supabase project"* — and was reversed in two steps, both recorded:
 
-**Adopt `Sluglines-AI` as the canonical application, schema, and Supabase project.** The comparison (restored inline; it must not live only in a superseded revision):
+| Decision | Where | Date |
+|---|---|---|
+| Host repo is `sluglines`; `Sluglines-AI` becomes a module | `Docs/2026-08-20-adr-sluglines-is-the-host-repo.md` | 2026-08-20 |
+| Schema lineage is this repo's `supabase/migrations/0001`–`0007`, **not** `Sluglines-AI`'s 24 | `Docs/DECISIONS.md` **D-34** | 2026-08-22 |
 
-| | `sluglines` repo (`main` + PR #1) | `Sluglines-AI` |
+The second reversal is the one that is easy to miss. The ADR kept `Sluglines-AI`'s migrations as the ancestry on the strength of the comparison below, but that contradicted D-13 (rebuild here, decided 2026-08-14) without revisiting it, and left the repo carrying two contradictory decisions and one implementation. D-34 resolves it toward the lineage that exists, is applied to a preview branch, and has 38 live RLS assertions behind it (D-28, D-30).
+
+### The comparison that drove the original decision, and what is left of it
+
+Retained because it is still the argument for taking `Sluglines-AI` seriously — and because it must not live only in a superseded revision. Read it as a description of **2026-08-14**, not of today.
+
+| | `sluglines` repo, as of 2026-08-14 | `Sluglines-AI` |
 |---|---|---|
 | Identity | none / anonymous device ID | phone + SMS OTP |
 | RLS posture | open write on `spot_status`; open write **and delete** on check-ins | default-deny on every table |
 | Ride coordination | two integer counters | full state machine, atomic reservations |
-| Tests | ~12 unit assertions | live-DB suite (~98; exact N recorded at P0) |
+| Tests | ~12 unit assertions | Vitest suite (~98) against a non-production database |
 | Security docs | skill checklists only | threat model + authorization matrix + data classification |
-| CI | none | lint + build + live suite on every push |
+| CI | none | lint + build + suite on every push |
 
-Porting this repo's *content* onto `Sluglines-AI`'s *core* is a content task; the reverse means rebuilding identity, the state machine, the RLS suite, and the tool gate.
+**Every row of the left-hand column has since been closed inside `sluglines`**, which is why the schema half of the decision reversed: phone-OTP identity (`0006`, D-36), default-deny RLS with zero write policies on any table (`0001`–`0007`), the full M3 state machine with revision checks and idempotency keys (`0002`, `0003`, D-27), 28 test files including a live RLS suite (D-35), and CI that runs the suite and a build (issue #5). The security documents remain `Sluglines-AI`'s and remain normative by reference.
 
-- **The `sluglines` repo contributes:** WP migration script + 165-route inventory, spot directory/search/`community-channels.ts`, informational content.
-- **Dropped:** `riders`/`drivers`/`alerts`; the `spot_status` counter model; legacy forum content.
-- **Repo identity: DECIDED 2026-08-20 — `sluglines` survives.** Q1 resolved to "transplant into the `sluglines` repo". Accordingly the §12 execution prompts now target `github.com/cybersecurity-cell/sluglines`, not `Sluglines-AI`. As anticipated, nothing else in this document changes as a result — but §12's prompt text still names `Sluglines-AI` as its default and must be updated before it is handed to an implementation session.
+- **What `Sluglines-AI` still holds that this repo does not:** the AI/assistant layer with its deterministic tool gate, notifications, lost & found, incidents, and moderation. All are later-phase modules; none blocks the content cutover.
+- **Dropped:** `riders`/`drivers`/`alerts`; the `spot_status` counter model; legacy forum content. `0007` retires the three legacy tables that survived in production.
+- **Still open:** whether `Sluglines-AI` is absorbed at all. It is a repo-topology and upgrade question (Next 14→16, React 18→19, Tailwind 3→4 — the ADR's own note says it cannot be done incrementally), and it no longer gates applying a schema. Issue #3 rides on it.
 
 ---
 
@@ -386,7 +388,7 @@ Measurements are tagged **[S]** session-verifiable (the implementing session pro
 
 Shared preamble — prepend to every prompt:
 
-> You are implementing one phase of the Sluglines consolidation, specified in `2026-08-14-consolidated-architecture.md` **(rev. 5.4 — verify the header says rev. 5.4 before starting; if the file is a different revision, stop and report)**. Constraints that override any convenience: (1) Models propose; code and database transactions decide — no AI in authoritative paths. (2) Every new/changed table ships default-deny RLS + positive and negative RLS tests in the same PR. (3) **PII rule, precise form:** no phone numbers, no contact-detail columns, and no PII-typed fields in application tables; user free text exists only in the fields §8 defines (pickup instructions, L&F descriptions and messages, incident descriptions), each confined to its §8 visibility scope; no member free text or identifiers in logs, telemetry, or metrics; member free text enters model prompts only inside tagged data blocks (§8 M8). (4) The WhatsApp chat exports are research inputs only — never fixtures, prompts, or test data. (5) Module boundaries per §8's dependency rule. (6) State transitions are SECURITY DEFINER SQL functions with revision checks and idempotency keys. (7) Run the full test suite (baseline count N per DECISIONS.md) before claiming completion; paste output. Work in the host repo `github.com/cybersecurity-cell/sluglines` (§15 Q1 closed 2026-08-20; `Sluglines-AI` is a module absorbed into it, not the target repo); all other artifact locations are in §2's location table — never guess a path. **Access preconditions — verify before starting, stop and report if any is missing:** GitHub auth covering both repos, Supabase credentials for the suite's configured target, and (P0/P5 only) access to the linked Vercel project; a CAPTCHA-provider credential is optional at P0 (its absence downgrades one sub-item to [H] pending, per §11 Phase 0's edge rules). Small, reviewable commits. Measurements tagged [S] are yours to evidence; [C] and [H] items are out of your scope — report them as pending, never as done. If a gate check fails, stop and report — do not waive it.
+> You are implementing one phase of the Sluglines consolidation, specified in `Docs/consolidated-architecture.md` **(rev. 6 — verify the header says rev. 6 before starting; if the file is a different revision, stop and report)**. Constraints that override any convenience: (1) Models propose; code and database transactions decide — no AI in authoritative paths. (2) Every new/changed table ships default-deny RLS + positive and negative RLS tests in the same PR. (3) **PII rule, precise form:** no phone numbers, no contact-detail columns, and no PII-typed fields in application tables; user free text exists only in the fields §8 defines (pickup instructions, L&F descriptions and messages, incident descriptions), each confined to its §8 visibility scope; no member free text or identifiers in logs, telemetry, or metrics; member free text enters model prompts only inside tagged data blocks (§8 M8). (4) The WhatsApp chat exports are research inputs only — never fixtures, prompts, or test data. (5) Module boundaries per §8's dependency rule. (6) State transitions are SECURITY DEFINER SQL functions with revision checks and idempotency keys. (7) Run the full test suite (baseline count N per DECISIONS.md) before claiming completion; paste output. Work in the host repo `github.com/cybersecurity-cell/sluglines` (§15 Q1 closed 2026-08-20; `Sluglines-AI` is a module absorbed into it, not the target repo); all other artifact locations are in §2's location table — never guess a path. **Access preconditions — verify before starting, stop and report if any is missing:** GitHub auth covering both repos, Supabase credentials for the suite's configured target, and (P0/P5 only) access to the linked Vercel project; a CAPTCHA-provider credential is optional at P0 (its absence downgrades one sub-item to [H] pending, per §11 Phase 0's edge rules). Small, reviewable commits. Measurements tagged [S] are yours to evidence; [C] and [H] items are out of your scope — report them as pending, never as done. If a gate check fails, stop and report — do not waive it.
 
 **P0 — Consolidation & foundations.** Execute Phase 0 of rev. 5.3 §11 — the phase text there is authoritative and now enumerates every destination, list, and configuration step; this prompt adds only sequencing. Tasks in order: (1) `docs/DECISIONS.md` per §11 Phase 0 (decision, N, staging name, three UNVERIFIED-check results — presence only, never secret values —, OTP values, cost caps, lint allowlist). (2) Close draft PR #1 (repo location: §2 table) with a decision reference; do not merge. (3) Port assets per §11's stated destinations. (4) Update `AI/README.md` per §11. (5) CI: the three new jobs per §11's gate, audit with the documented-exceptions file (advisory ID, reason, expiry). (6) `0025_product_events.sql` per §8 M10 (event list and corridor_pairs seed are enumerated there — nothing is left to invent) + `manual_metrics` + `metrics_weekly` computing the computable §13 subset (domain/outbox/events metrics; parallel-run and spend rows come from `manual_metrics`). (7) Lint first slice per §11's allowlist. (8) `SluglinesAgent` per §11. (9) Apply OTP config per §11; capture artifact. (10) `docs/costs.md`.
 **Measurements [S]:** suite = N baseline + new P0 tests, all green, 0 failures; the 3 new CI jobs green; audit 0 unwaived high/critical; secret scan 0 findings; ≥4 RLS tests on `product_events` (anon insert denied; direct member insert denied; `log_product_event()` succeeds; non-moderator select denied) + `manual_metrics` moderator-only tests; boundary-violation commit fails lint (then reverted); `SluglinesAgent` has ≥1 commit and **zero tracked secret-bearing files of any name** — run the secret scanner over the working tree before the initial commit; the `.env*` check alone is insufficient if credentials sit in a differently named file; OTP config artifact captured; DECISIONS.md contains every §11-listed item. **[H] pending:** rotation itself, founding-driver recruiting, volume baseline.
@@ -451,12 +453,13 @@ Shared preamble — prepend to every prompt:
 
 ## 15. Open questions for a human
 
-1. ~~**Repo topology** — merge `sluglines` into `Sluglines-AI` or transplant to keep the `sluglines` name.~~ **CLOSED 2026-08-20: transplant into `sluglines`.** `Sluglines-AI` becomes a module inside the `sluglines` repo; its schema lineage remains the ancestry. See `Docs/2026-08-20-adr-sluglines-is-the-host-repo.md`. §12's prompt text still names `Sluglines-AI` and needs updating.
+1. ~~**Repo topology** — merge `sluglines` into `Sluglines-AI` or transplant to keep the `sluglines` name.~~ **CLOSED 2026-08-20: `sluglines` is the host repo** (`Docs/2026-08-20-adr-sluglines-is-the-host-repo.md`). The schema half of that ADR was reversed on 2026-08-22: the lineage is this repo's, not `Sluglines-AI`'s (`Docs/DECISIONS.md` D-34). **What remains open is narrower and is now Q7 below:** whether `Sluglines-AI` is absorbed at all.
 2. **Legacy archive** — static read-only archive (e.g. `archive.sluglines.com`) or full 410 after the 30-day overlap. Gates WordPress cancellation.
 3. **`SluglinesAgent`** — keep as brand-ops tooling after rotation, or retire.
 4. **Pilot scope** — Horner ↔ L'Enfant only, or both exported groups from day one. Decides Phase 3 invite and gate denominators.
 5. **Founding-driver thank-you** — any recognition that stays on the right side of the no-gamification principle.
 6. **Leaderboard** — it exposes individual activity, which §7's non-goals prohibit; it ships hidden during the pilot. Keep (with specified masking + opt-in), or cut.
+7. **Absorb `Sluglines-AI`, or leave it dormant?** Split out of Q1 on 2026-08-22. Now that the schema question is settled (D-34), what the module would bring is its *app layer*: the assistant and tool gate, notifications, lost & found, incidents, moderation. Absorbing it is also a Next 14→16 / React 18→19 / Tailwind 3→4 upgrade the ADR says cannot be done incrementally. Decides whether issue #3 (the per-tool kill switches, which do not currently work) is live work or moot.
 
 ---
 
@@ -473,6 +476,17 @@ As rev. 4 (red-team pass, persona walkthroughs, gap sweeps, decision-log discipl
 ---
 
 ## 18. Changelog
+
+**Rev. 6 (2026-08-22 — issue #6).** Rev. 5.4 established that three claims were wrong; it recorded the corrections in a banner at the top and left the wrong text standing underneath. A document that opens by telling you not to trust three of its own sections is not corrected, it is annotated. Rev. 6 folds them in:
+
+1. **§3.4 rewritten.** `Sluglines-AI` is described as a dormant parallel build whose migrations have never reached a live Sluglines database — no longer as "the module to be absorbed", which presumed an answer to a question that is still open.
+2. **§5 rewritten, and reversed a second time.** Rev. 5.4 kept `Sluglines-AI`'s migration lineage as the schema ancestry. `Docs/DECISIONS.md` **D-34** reverses that: the lineage is this repo's `0001`–`0007`. The comparison table is retained, explicitly dated to 2026-08-14, with a row-by-row account of what has since closed inside `sluglines` — which is *why* the schema half reversed.
+3. **§15 Q1 narrowed rather than left ambiguous.** Q1 is closed; the genuinely open remainder — *absorb `Sluglines-AI` at all?* — is split out as **Q7** instead of hiding inside a closed question.
+4. **The banner is gone.** What replaces it is the one fact that actually reshapes the plans: the production database is empty.
+5. **Renamed to `Docs/consolidated-architecture.md`.** Rev. 5.4 identified the dated filename as the bug and declined to fix it. A date in the filename of a document on its sixth revision is the signal that a writer thought they were creating when they were continuing; the next session forks a dated sibling instead of editing this. All 13 references across the repo were updated, including a comment in the applied migration `0001` (comment-only — no statement changed; recorded in D-37).
+6. **Header facts refreshed.** Baseline `N` is now 28 files / 872 assertion call sites and is **machine-checked** — `tests/baseline-n.test.mjs` fails if this header and the repo disagree (D-35, issue #7). Repo state re-stated against `main`, which is now the only live branch.
+
+Not done, deliberately: the three cold-reader loops were not re-run. Rev. 6 is verification and consolidation of existing decisions, not new design, and re-certifying 500 lines was out of scope — the same limit rev. 5.4 recorded.
 
 **Rev. 5.4 (2026-08-20 — consolidation review; the first revision driven by direct infrastructure verification rather than repo reading).** Four claims corrected, none of them cosmetic:
 

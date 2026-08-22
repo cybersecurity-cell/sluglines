@@ -4,21 +4,22 @@ Append-only decision record. Each entry states the decision, the evidence behind
 status. Nothing here is inferred: where a fact could not be verified within this session's
 authorised scope, the entry says `PENDING` or `BLOCKED` and names what is needed to close it.
 
-**Architecture input:** `Docs/2026-08-14-consolidated-architecture.md` (rev. 5.3)
-**Slice executed:** P0-adapted (see D-3)
-**Date:** 2026-08-14
-**Repo:** `sluglines`, branch `codex/phase-3-4`
+**Architecture input:** `Docs/consolidated-architecture.md` — currently **rev. 6**. Entries below are
+dated; each was written against the revision current at its own date, and D-1 records rev. 5.3 as
+the one originally adopted.
+**First slice executed:** P0-adapted (see D-3), 2026-08-14, on branch `codex/phase-3-4` — since
+merged as PR #1. **`main` is now the only live branch.**
 
 ---
 
 ## D-1 — rev. 5.3 adopted as the architecture input
 
-**Decision:** `2026-08-14-consolidated-architecture.md` **rev. 5.3** is adopted as the governing
+**Decision:** `Docs/consolidated-architecture.md` **rev. 5.3** is adopted as the governing
 architecture and product plan for Sluglines.
 
 **Header verification (required by the rev. 5.3 §12 preamble):** the source file's `**Status:**`
 line reads *"Proposed rev. 5.3"*. Verified before any change was made. The document was copied
-byte-identically into this repo at `Docs/2026-08-14-consolidated-architecture.md` (`diff` clean
+byte-identically into this repo at `Docs/consolidated-architecture.md` (`diff` clean
 against the source at `C:\Users\kalai\Projects\Temp\Sluglines\`).
 
 **Status:** ADOPTED.
@@ -894,7 +895,7 @@ D-23 is unchanged and now covers more surface than before.
 | File | Change |
 |---|---|
 | `Docs/DECISIONS.md` | **New** — this file |
-| `Docs/2026-08-14-consolidated-architecture.md` | **New** — rev. 5.3 committed to the repo (byte-identical copy) |
+| `Docs/consolidated-architecture.md` | **New** — rev. 5.3 committed to the repo (byte-identical copy) |
 | `Docs/costs.md` | **New** — provisional cost caps |
 | `.eslintrc.json` | **New** — repairs the broken `next lint` gate (D-14) |
 | `.github/workflows/audit.yml` | **New** — dependency audit gate |
@@ -1770,3 +1771,52 @@ is two lines against a list the analyser already exports.
 
 **Status:** DONE for what a static harness and a preview-less database can prove. Not proven
 against a live database.
+
+---
+
+## D-37 — Architecture doc cut to rev. 6, corrected in place, and renamed off its dated path
+
+**Decision:** `Docs/2026-08-14-consolidated-architecture.md` becomes **`Docs/consolidated-architecture.md`**
+at **rev. 6**, with the rev. 5.4 corrections folded into §3.4, §5 and §15 rather than carried as a
+banner above them. Issue #6.
+
+**The problem rev. 5.4 left behind.** It verified three claims against live infrastructure, found
+all three false, and recorded that in a correction notice at the top — leaving the wrong text
+standing underneath it. A document whose first section tells you not to trust three of its own
+sections is annotated, not corrected, and every reader after that pays the cost of reconciling the
+two. Rev. 6 rewrites the sections and deletes the notice. What replaces it is the single fact those
+corrections all turned on: **the production database is empty.**
+
+**What changed, section by section**, is in the document's own §18 changelog and is not duplicated
+here. Two items are worth restating because they are decisions rather than edits:
+
+1. **§5 reverses a second time.** Rev. 5.4 kept `Sluglines-AI`'s migration lineage as the schema
+   ancestry; D-34 reverses that. §5 now retains the 2026-08-14 comparison table — explicitly dated
+   — with a row-by-row account of what has since closed inside `sluglines`, because *that* is the
+   reason the schema half reversed and it is not obvious from the table alone.
+2. **§15 Q1 is narrowed, not just closed.** The genuinely open remainder — *absorb `Sluglines-AI`
+   at all?* — is split out as **Q7**. Leaving it inside a question marked CLOSED is how it would
+   have been lost.
+
+### The one edit that needed permission from a rule
+
+`supabase/migrations/0001_rebuild_foundation.sql` cited the old filename in a header comment, and
+`0001` is `APPLIED: preview`. `supabase/migrations/README.md` says an applied migration is never
+edited, because *"a file whose `APPLIED:` header names a database is a record of what that database
+ran — editing it makes the record false without changing the database."*
+
+That reasoning is about **statements**, and it holds. A comment carrying a path that no longer
+resolves makes the record *less* usable, not more faithful, so the path was corrected and nothing
+else in the file was touched — the same comment-only carve-out D-24 used when it added the
+quarantine banner to `supabase/schema.sql`. The rule in the README is amended to say so explicitly,
+so the exception is bounded rather than precedent for editing applied SQL in general. `sql:check`
+reports the same 7 migrations / 173 statements / 0 violations before and after.
+
+All 13 references to the dated path across seven files were updated in the same change, including
+`tests/baseline-n.test.mjs`, which reads the header this document now owns — so a rename that missed
+a reference would fail the suite rather than rot quietly.
+
+**Not done:** the three cold-reader loops were not re-run, the same limit rev. 5.4 recorded. Rev. 6
+consolidates verified decisions; it introduces no new design to certify.
+
+**Status:** DONE.
