@@ -1820,3 +1820,65 @@ a reference would fail the suite rather than rot quietly.
 consolidates verified decisions; it introduces no new design to certify.
 
 **Status:** DONE.
+
+---
+
+## D-38 — `codex/phase-1` triaged: one document adopted, four issues filed, branch archived as a tag
+
+**Decision:** the unreviewed `codex/phase-1` snapshot (`e7b0f49`, 116 files, committed 2026-08-20
+purely to make its worktree removable) is triaged and retired. Issue #11.
+
+**What it was.** A fourth parallel implementation, dated 2026-06-21 by its own plan documents:
+email/password auth over Supabase Auth, a nine-table Phase 1 schema
+(`supabase/migrations/202606210001..03`), `src/app/{auth,account,advisories,report,find,locations}`,
+a Vitest + Playwright harness, and six documents. It predates every decision in this log from D-13
+onward and was never reviewed.
+
+### Adopted
+
+**`Docs/asset-register.md`**, copied in verbatim under a provenance header. It is the only written
+image-rights and image-privacy policy the project has, and issue #18 is migrating photographs from
+`sluglines.com` right now. Two of its rules are directly load-bearing for that issue:
+
+- *"Location pages: reserve a stable 4:3 media area, but show a neutral route graphic until a
+  current approved photograph exists."* 18 of the 50 spots have no photograph and will not get one
+  from migration. This is the designed no-image state, already specified, and it is the same
+  discipline as D-31 (never guess a coordinate) and D-33 (`unavailable`, never a fabricated zero).
+- *"Photos with commuters, readable plates, or incident details — do not publish without
+  remediation"*, and *"never ship an image directly from the OneDrive archive path"*.
+
+### Filed as issues rather than folded in
+
+Outstanding work belongs in the tracker, not in a log entry nobody revisits.
+
+| Issue | From | Why not now |
+|---|---|---|
+| **#33** — browser security headers | `Docs/security-review.md` listed CSP, frame denial, nosniff, referrer and permissions policy as **shipped** controls. This repo sets **none**: `next.config.js` defines no `headers()`. Recorded as §14 risk 15. | A CSP needs a report-only period against a real deployment. It is a behavioural change, not a config line, and does not belong in a content-cutover PR. |
+| **#34** — commit-pin GitHub Actions | Same review recorded first-party actions as commit-pinned. All eleven `uses:` lines here are mutable tags, so the workflows that gate every merge are themselves unpinned. §14 risk 16. | Small and safe, but unrelated to the cutover. |
+| **#35** — public-surface Playwright harness | The repo has no browser-level test at all. | See the decision below. |
+| **#36** — content-provenance model | `Docs/content-sources.md`: source hierarchy plus four publication states (verified / community reported / needs review / historical). | A data-model and editorial-workflow change, not a cutover step. |
+
+**On the Playwright harness — port the idea, not the files.** Two of its five spec files drive an
+email/password auth journey this app does not have and will not have (identity is phone OTP, D-36),
+and #24 disables the test-number ranges that would be the only way to drive OTP in CI. Copying them
+in would be porting a harness for a different application. What transfers is the half needing no
+session: console-error, accessibility, and public-surface specs. That is #35's scope.
+
+### Discarded, with reasons
+
+- **The auth layer** (`src/lib/auth/`, `src/app/auth/**`): email/password, superseded by phone OTP
+  (D-36). Not a partial overlap — a different identity model.
+- **The nine-table Phase 1 schema and `supabase/tests/phase1_rls.sql`**: a third competing lineage.
+  D-34 settled that there is one, and it is `0001`–`0007`.
+- **`Docs/phase-2-roadmap.md`**: its assistant design is superseded by §8 M8, and its "do not scrape
+  WhatsApp groups" rule is already §12 constraint 4. Nothing novel survived.
+- **`Docs/superpowers/{plans,specs}/2026-06-21-*`**: plan and design documents for the above.
+
+### The branch itself
+
+Deleted, after tagging the commit as **`archive/codex-phase-1`**. The tag is the point: the issue
+asks for the branch to go so no folder becomes a backlog, and nothing here is worth destroying the
+snapshot over — a tag keeps `e7b0f49` reachable permanently while removing it from the working set.
+Every claim above is checkable against it.
+
+**Status:** DONE. Four issues open; one document adopted; branch archived.
