@@ -86,6 +86,23 @@ not a workspace package, no git history replay.
 - **Also collapses:** the `sluglines-ai` Vercel project
   (`prj_cFMKLGo3cVNzolzyjH0oYv6eFFYy`) alongside `sluglines`
   (`prj_Uvmtv5fVBVg9tw5CJUyMSD4UHmGS`), same team. This is what unblocks issue #43.
+- **There is no UI shell to bring across.** `Sluglines-AI`'s `apps/web/app/layout.tsx`
+  is still create-next-app — `title: "Create Next App"`, no nav, no footer — and there
+  is no `middleware.ts`; every page carries its own ad-hoc chrome. `sluglines` has a
+  full chromed site: `Navbar` plus footer in `src/app/layout.tsx`, nav driven by
+  `PRIMARY_NAV`/`ABOUT_NAV` in `src/lib/site-content.ts`. None of that is inherited
+  automatically. The two are also different products: every AI page except `/login`
+  and `/verify` redirects an unauthenticated visitor to `/login` or `/onboarding`,
+  whereas `sluglines` is a public content site.
+- **`/api/agent` is uncapped, and every model class is Opus.** The route validates the
+  message (<= 2000 chars) and checks membership; there is no rate limit, no per-member
+  turn cap and no daily cap. One turn is up to `MAX_STEPS = 6` model calls. There is
+  exactly one model call site in application code (`lib/ai/agent.ts`), reachable only
+  through `POST /api/agent`. `lib/ai/model-router.ts` routes every class — `filter`
+  included — to `claude-opus-5`. `Docs/costs.md` records C1 (<= $0.10/turn, a hard
+  gate) and C2 (<= $50/month, an alarm) as PENDING with no instrument; `agent_traces`
+  already records `input_tokens`/`output_tokens`, so C1's data source arrives with the
+  transplant and nothing reads it.
 
 ## Constraints
 
@@ -102,9 +119,44 @@ not a workspace package, no git history replay.
    functions to satisfy R4/R7.
 3. Per-route resolution for the four collisions.
 4. Decisions needed from the owner before work starts, each stated as a question
-   with options and a recommendation.
+   with options and a recommendation. At minimum it must include: does the AI module
+   ship authed-only, or with an anonymous free tier ("a couple of free chats, then
+   sign in")? Note for that one that `sluglines` has no separate sign-up step —
+   `src/lib/api/send-otp-route.ts` is a single phone-OTP flow, so the gate is "verify
+   a number", not "log in vs register" — and that an anonymous tier is not a config
+   change. It needs a second mode through the tool gate, whose `IntentEnvelope`
+   requires a non-optional `memberId`/`locationId` and whose stated invariant is that
+   a tool call can only ever act as the authenticated caller; a schema change to
+   `agent_traces`, whose `member_id` is `not null references members(id)` under an
+   RLS policy of `member_id = auth.uid()`; and a durable meter, which does not exist
+   — `src/lib/api/rate-limit.ts` is in-memory and resets on redeploy (see #53), and
+   CAPTCHA has no provider credential (#24). Recommendation: authed-only, with a
+   zero-LLM scripted demo on the public page as the funnel instead.
 5. Risks, with the ones that are cheap now and expensive after the pilot called out.
 6. A rough size estimate per phase.
+7. The UI integration plan. There is no shell to bring across, so decide what the
+   transplanted pages inherit and what they replace: which layout the AI route group
+   renders under, whether the AI surfaces appear in `PRIMARY_NAV` or behind an
+   authenticated-only nav, and what an unauthenticated visitor to an AI route sees on
+   a site whose other routes are public. State it per surface — `assistant`, `board`,
+   `history`, `leaderboard`, `moderator`, `lostfound` — not as one blanket rule.
+8. The AI enable/disable design, framed as **off by default plus spend bounds**, not
+   as a feature flag. Before scoping it, note that the switch already exists and
+   already works: `lib/ai/agent.ts` checks `ai_skill_enabled('global')` *before* any
+   model call and returns a canned reply with no trace and no spend, and
+   `lib/ai/tool-gate.ts` checks it again per tool call. What is missing is the bound,
+   not the switch. Scope:
+   a. The migration creating `ai_kill_switches` seeds `global` as **disabled**, so the
+      module is dark on arrival and costs nothing until a row is deliberately flipped.
+   b. A per-member turn cap and a global daily turn cap, enforced before the model
+      call. This is what makes C2 a bound rather than an alarm. Cheap inside this
+      work; expensive to retrofit once a pilot has run up an invoice.
+   c. Per-turn cost enforcement for C1. `MAX_STEPS = 6` is a step bound, not a dollar
+      bound, and the tokens are already summed for `agent_traces`.
+   d. Whether `model-router.ts` keeps every class on Opus. That one is a decision for
+      item 4, not a default.
+   When the module is disabled the UI hides its nav entries and its routes 404; it
+   does not render a chat box that answers "I am switched off".
 ```
 
 ---
@@ -120,6 +172,12 @@ allowlisted — is design work with a security review attached.
 false on 2026-08-22: the "exactly one Supabase project" claim in the ADR (D-50), the schema-ancestry
 decision the ADR records (D-34), and a reachability claim in D-50 itself, corrected the same day. The
 prompt tells the session to check rather than trust, and it should.
+
+**Items 7 and 8 were added after the brief was first written**, from a read of the AI repo
+rather than of the ADR. Item 8 is the one most likely to be misread as small: the ask is not
+"build a feature flag", it is "ship the module off, and bound what it can spend while it is
+on". The kill switch already stops spend; nothing currently bounds volume, and every model
+class is Opus.
 
 **The timing argument still favours doing it.** `bwpguotjzczmieeepczf` holds zero member rows, so
 there is no cutover window and no backfill. The ADR's reasoning — that this is a code move now and a
