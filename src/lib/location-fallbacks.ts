@@ -1,8 +1,19 @@
-import type { LocationCardLocation } from '@/components/LocationCard'
 import type { DirectorySpot } from './spot-directory.ts'
 import { findSpotBySlug } from './spot-directory.ts'
 
-export interface SlugLocation extends LocationCardLocation {
+// Was `LocationCardLocation`, exported by the client component this module's
+// rows used to render into. That component read `riders`/`drivers` — tables
+// dropped by D-13 — and was deleted with the other four (issue #17). The shape
+// stays because the legacy row shape is what it describes; only its home moved.
+interface LegacySpotFields {
+  id: string
+  spot_name: string
+  location?: string
+  destination: string
+  last_updated?: string
+}
+
+export interface SlugLocation extends LegacySpotFields {
   slug: string
   latitude: number | null
   longitude: number | null

@@ -208,6 +208,44 @@ assert.equal(
   'the dropped-schema dashboard client is gone, not merely unused'
 )
 
+// The other four of the same defect class, named as owed in D-33 and deleted by
+// issue #17, plus the fifth that only they reached. All read riders/drivers/
+// spot_status, dropped by D-13.
+for (const dead of [
+  'src/components/HomeLocationGrid.tsx',
+  'src/components/LiveBoardPreview.tsx',
+  'src/components/RealTimeBoard.tsx',
+  'src/components/CheckIn.tsx',
+  'src/components/LocationCard.tsx',
+]) {
+  assert.equal(fs.existsSync(path.join(root, dead)), false, `${dead} is gone, not merely unreachable`)
+}
+
+// The point of deleting them, stated as the property rather than the file list:
+// nothing in src/ imports the browser Supabase client any more. D-33 removed it
+// from /dashboard on measured grounds -- 62 kB/162 kB of route JavaScript down to
+// 1.11 kB/97.1 kB -- and every remaining importer was one of the files above.
+// This assertion is what stops one coming back by accident.
+function sourceFiles(dir) {
+  return fs.readdirSync(dir, { withFileTypes: true }).flatMap((entry) => {
+    const full = path.join(dir, entry.name)
+    if (entry.isDirectory()) return sourceFiles(full)
+    return /\.(ts|tsx)$/.test(entry.name) ? [full] : []
+  })
+}
+
+const BROWSER_CLIENT_IMPORT = /(?:from|import\()\s*['"](?:@\/lib\/supabase\/client|(?:\.{1,2}\/)+supabase\/client)['"]/
+
+const browserClientImporters = sourceFiles(path.join(root, 'src'))
+  .filter((file) => BROWSER_CLIENT_IMPORT.test(fs.readFileSync(file, 'utf8')))
+  .map((file) => path.relative(root, file).replace(/\\/g, '/'))
+
+assert.deepEqual(
+  browserClientImporters,
+  [],
+  `the browser Supabase client is imported by: ${browserClientImporters.join(', ')}`
+)
+
 const dashboardIo = read('src/lib/dashboard.ts')
 assert.match(dashboardIo, /from\('presence_checkins'\)/, 'presence comes from the 0001 table')
 assert.match(dashboardIo, /auth\.getUser\(\)/, 'the row is scoped to the caller, not to a device id')

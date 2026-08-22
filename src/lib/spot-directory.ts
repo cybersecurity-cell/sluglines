@@ -15,7 +15,6 @@
  * nullable, since four legacy-only spots publish no coordinates.
  */
 
-import type { LocationCardLocation } from '@/components/LocationCard'
 import type {
   SpotCorridor as DomainCorridor,
   SpotDirection as DomainDirection,
@@ -131,14 +130,4 @@ export function groupSpotsByCorridor(spots: DirectorySpot[]): CorridorGroup[] {
       })),
     })),
   }))
-}
-
-export function directorySpotToLocationCard(spotItem: DirectorySpot): LocationCardLocation {
-  return {
-    id: `fallback-${canonicalSlug(spotItem.slug)}`,
-    spot_name: spotItem.name,
-    location: `${spotItem.county} / ${spotItem.corridor}`,
-    destination: spotItem.destination,
-    last_updated: new Date().toISOString(),
-  }
 }
