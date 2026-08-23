@@ -54,10 +54,21 @@ const FORBIDDEN_GRANTEES = ['anon', 'public']
 //                                 (#21) reads `/api/health` unauthenticated and
 //                                 that route reaches the database through the
 //                                 anon key.
+//
+//   get_public_location           Added 2026-08-22 for issue #72 (D-60). One
+//                                 active spot row, by slug. Returns exactly the
+//                                 columns LOCATION_COLUMNS already names -- the
+//                                 same record the committed directory renders to
+//                                 anonymous visitors today -- and carries the
+//                                 `is_active` predicate from
+//                                 locations_select_active, so it exposes no row
+//                                 an authenticated caller could not read. No
+//                                 member data is reachable from `locations`.
 export const ANON_CALLABLE_FUNCTIONS = new Set([
   'public.get_public_spot_counts',
   'public.get_public_open_offer_counts',
   'public.get_scheduled_job_health',
+  'public.get_public_location',
 ])
 
 // -----------------------------------------------------------------------------

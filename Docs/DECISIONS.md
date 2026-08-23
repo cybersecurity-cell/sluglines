@@ -3420,3 +3420,56 @@ content pass reached an identifier, and only the identifier invariant noticed.
 
 `0009` carries `APPLIED: no`. Applying it is a separate, separately authorised act, and it
 rewrites operational facts that commuters read — not a schema change with no reader.
+
+---
+
+## D-60 — Anonymous spot reads go through `get_public_location`, not a table grant. **Closes #72**
+
+**Date:** 2026-08-22
+**Issue:** #72
+
+### The ask, and why it could not be done as asked
+
+The instruction was "grant anon select on locations". That cannot work, for two independent
+reasons, and both are this repository's own rules:
+
+1. **A bare grant returns nothing.** `locations` has RLS on and exactly one read policy —
+   `locations_select_active`, created `to authenticated` in 0004. `grant select ... to anon` would
+   succeed and then every row would be refused by RLS. The caller sees an empty result, not an
+   error, which is the worst shape a failure can take.
+2. **A policy admitting `anon` fails the gate.** sql-lint R5 lists `anon` and `public` in
+   `FORBIDDEN_GRANTEES` and rejects any policy naming either. `npm run sql:check` gates CI, so that
+   route does not merge.
+
+So the read goes through the mechanism 0005 already established for the M1 aggregates: a
+`security definer` function on sql-lint's reviewed `ANON_CALLABLE_FUNCTIONS` allowlist. `anon`
+still touches no table directly, which is the whole point of R4 and R7.
+
+### What `0010` exposes
+
+`get_public_location(p_slug text)` returns one row: exactly the columns `LOCATION_COLUMNS` already
+names, which is the same record the committed directory has been rendering to anonymous visitors
+all along. `id`, `created_at` and `updated_at` are not returned.
+
+It carries `where is_active`, copied from `locations_select_active`, so it exposes no row an
+authenticated caller could not already read. Inactive spots keep resolving from the committed
+directory — unchanged behaviour, and one predicate to maintain rather than two that must be kept
+in step.
+
+### The ordering hazard, stated because it is silent
+
+`getPublicLocation` is database-first. Before this migration the database branch never won for an
+anonymous visitor, so every public spot page rendered from the committed directory — including the
+content D-59 rewrote from the legacy pages, which is why that content went live on merge without
+`0009` being applied.
+
+Applying `0010` makes the table answer. **If `0009` has not been applied first, the table still
+holds `0004`'s paraphrases, and `0010` alone would regress every spot page to the shorter pre-D-59
+text** — with no error, no failing test, and no log line. Apply `0009` first, or apply both
+together. The hazard is recorded in `0010`'s own header as well, because a decision log is not
+what someone reads at 2am.
+
+### Neither is applied
+
+`0009` and `0010` both carry `APPLIED: no`. Applying them is a separate, separately authorised
+act.

@@ -55,8 +55,19 @@ for (const droppedTable of ['spot_status', "from('riders')", "from('drivers')", 
   )
 }
 
+// The spot page reads `locations` through `get_public_location`, not with a
+// select. The table is RLS-on and its only read policy is `to authenticated`, so
+// a direct select returned nothing for anonymous visitors and every public page
+// fell through to the committed directory (#72, D-60). Admitting `anon` in a
+// policy is refused by sql-lint R5, so the read goes through the same
+// `security definer` mechanism 0005 established for the M1 aggregates.
 const publicDirectory = read('src/lib/public-directory.ts')
-assert.match(publicDirectory, /from\('locations'\)/, 'the spot page reads the 0004 locations table')
+assert.match(publicDirectory, /\.rpc\('get_public_location'/, 'the spot page reads through 0010')
+assert.equal(
+  /from\('locations'\)/.test(publicDirectory),
+  false,
+  'a direct select on locations is invisible to anon: it returns zero rows, not an error'
+)
 
 const detailLayout = read('src/components/SpotDetailLayout.tsx')
 assert.match(detailLayout, /SpotLiveCounts/)
