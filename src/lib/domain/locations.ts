@@ -725,7 +725,7 @@ export const SPOT_LOCATIONS: readonly SpotLocation[] = [
     county: 'Stafford / Fredericksburg',
     destination: 'Pentagon and L\'Enfant Plaza',
     description: 'The Mine Road lot with 750 parking spaces is on the south of Rt. 610 Garrisonville Road. This parking lot fills up early, alternate parking space is on the Staffordboro Blvd. not or Rt. 610. There are two lines one going to Arlington and the other to DC destinations.',
-    linesTo: ['L’Enfant Plaza', 'The Pentagon', 'Rosslyn', 'Crystal City', '14th and G Street', '14th and Independence Ave (New)', 'Public Transportation', 'FRED Routes D4 and D6'],
+    linesTo: ['L’Enfant Plaza', 'The Pentagon', 'Rosslyn', 'Crystal City', '14th and G Street', '14th and Independence Ave (New)'],
     linesFrom: ['L’Enfant Plaza', 'Navy Yard', '14th & G Street', '18th Street', 'The Pentagon', 'Crystal City'],
     parking: '750 spaces. Alternate parking at Staffordboro Parking Lot.',
     latitude: 38.4669945,
