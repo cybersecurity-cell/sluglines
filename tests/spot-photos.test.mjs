@@ -1,18 +1,17 @@
-// Issue #18 — per-location photographs, and the media area that renders when
-// there is none.
+// Issue #18 — per-location media, and the area that renders when there is none.
 //
-// Today there is never one. All 27 assets under
-// sluglines.com/images/slugging_locations/ were pulled and inspected on
-// 2026-08-22 and every one is a satellite tile, a third-party transit or parking
-// schematic, an annotated aerial route diagram, or a promotional flyer. Zero are
-// photographs. Docs/asset-register.md carries the classification; D-39 the
-// reasoning.
+// 8 spots carry a **transit diagram**. None carries a photograph, and the
+// difference is the point. Docs/asset-register.md classifies all 27 legacy
+// assets: 12 Google Maps aerials, 8 third-party transit or parking schematics,
+// 6 dated route-change notices, 1 promotional flyer, zero photographs. D-39
+// declined all of them; D-58 migrated only the 8 schematics and held the other
+// 19 out — Google's imagery carries Google's terms, the notices are 2018-2019
+// and would render as current, and the flyer has a contact address on it.
 //
 // So the assertions here have two jobs. The ones over SPOT_LOCATIONS hold the
-// line as data: nothing may claim to be a photograph unless it came from the one
-// permitted path and is actually on disk. A fixture then carries an image through
-// the mapping, so the path that runs when #26 supplies real photographs is not
-// shipped never having carried one.
+// line as data: an image may only have come from the one permitted prefix and
+// must actually be on disk. The ones over SpotPhoto hold it as copy: the
+// populated branch must say what the file is, and must not crop it.
 
 import { strict as assert } from 'node:assert'
 import fs from 'node:fs'
@@ -59,13 +58,28 @@ for (const location of withImage) {
 // which is #26's job — update the count here in the same change.
 assert.equal(
   withImage.length,
-  0,
-  `${withImage.length} spot(s) now carry a photograph. None did as of 2026-08-22 (D-39); ` +
-    'if #26 has supplied one, update this assertion in the change that added it.'
+  8,
+  `${withImage.length} spots carry a diagram; 8 did after the D-58 migration, which took ` +
+    'only the 8 agency schematics of the 27 legacy assets. Changing the inventory changes ' +
+    'this number — update it in the change that did so.'
 )
 
-assert.equal(spotImage('Horner-Rd'), undefined, 'lookup is case-insensitive and returns nothing today')
+// Case-insensitive lookup, and it now returns something.
+const bobs = spotImage('bobs-old-keene-mill-rd')
+assert.ok(bobs, "Bob's carries a diagram")
+assert.deepEqual(spotImage('Bobs-Old-Keene-Mill-Rd'), bobs, 'lookup is case-insensitive')
 assert.equal(spotImage('no-such-spot'), undefined)
+
+// Horner Rd's only legacy asset was a Google Maps aerial, so it deliberately has
+// none. Pinned because it is the spot most likely to be "fixed" by someone who
+// notices the gap without reading why (D-58).
+assert.equal(spotImage('Horner-Rd'), undefined, 'Horner Rd had only a Google aerial; not migrated')
+
+// Crystal City 12th and 23rd publish the same file under two legacy names. One
+// copy on disk, claimed twice, is correct — the orphan check below counts
+// basenames for exactly this reason.
+const sharing = withImage.filter((l) => l.image.src === '/spots/Crystal_City_12th_St.jpg')
+assert.equal(sharing.length, 2, 'the two Crystal City spots share one diagram file')
 
 // -----------------------------------------------------------------------------
 // The field is NOT a database column — 0004 must apply untouched
@@ -163,10 +177,25 @@ assert.equal(
   'both the photograph and the no-photograph state reserve the same 4:3 area'
 )
 
-// The no-image state says what it is rather than implying a missing file.
-assert.match(photo, /No photograph of this spot yet/)
-assert.match(photo, /satellite view/, 'it names what it is deliberately not showing')
+// The no-image state says what it is rather than implying a missing file. It no
+// longer claims we refuse satellite views: several migrated diagrams are
+// annotated aerials, and a page cannot claim a discipline its neighbour breaks.
+assert.match(photo, /No diagram for this spot yet/)
+// Read the code, not the prose about it — the header explains *why* the refusal
+// was dropped and therefore says the words. Same reason the `<img>` ban above
+// strips comments first.
+assert.equal(
+  /satellite view/.test(photoCode),
+  false,
+  'the old copy refused satellite views; 27 spots now show annotated aerials'
+)
 assert.match(photo, /aria-hidden/, 'the drawn graphic is decorative and hidden from screen readers')
+
+// The populated branch must not crop a map, and must say what the file is.
+assert.match(photoCode, /object-contain/, 'a cropped map loses its legend and scale bar')
+assert.equal(/object-cover/.test(photoCode), false, 'object-cover would crop the diagram')
+assert.match(photo, /Transit diagram, not a photograph/, 'the caption states what it is')
+assert.match(photoCode, /\{image\.fetchedAt\}/, 'the caption dates the migration')
 
 const layout = read('src/components/SpotDetailLayout.tsx')
 assert.match(layout, /<SpotPhoto image=\{location\.image\} spotName=\{location\.name\} \/>/)
@@ -185,6 +214,7 @@ assert.deepEqual(
 )
 
 console.log(
-  `spot photos: ${withImage.length}/${SPOT_LOCATIONS.length} spots carry a photograph; ` +
-    `${SPOT_LOCATIONS.length - withImage.length} render the reserved no-photograph state`
+  `spot media: ${withImage.length}/${SPOT_LOCATIONS.length} spots carry a transit diagram; ` +
+    `${SPOT_LOCATIONS.length - withImage.length} render the reserved no-diagram state; ` +
+    `${new Set(withImage.map((l) => l.image.src)).size} files on disk`
 )

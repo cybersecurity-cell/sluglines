@@ -3291,3 +3291,65 @@ because the second project was never empty and is load-bearing for that repo's C
 
 **Status:** Applied and verified. The transplant the ADR calls for remains owed, and is now owed with
 one more thing to carry across.
+
+---
+
+## D-58 — 8 of 27 legacy assets migrate as **transit diagrams**. Supersedes D-39 in part
+
+**Date:** 2026-08-22
+**Issue:** #18 (the migration), #26 (real photographs, still open)
+
+### What changed and why
+
+D-39 declined to migrate any of the 27 legacy assets under
+`sluglines.com/images/slugging_locations/`, on the classification in `Docs/asset-register.md`:
+12 Google Maps aerials, 8 third-party transit or parking schematics, 6 dated route-change
+notices, 1 promotional flyer, and **zero photographs of a location**. The owner directed that
+legacy content and images be migrated. This entry records what that direction was applied to and
+what it was not.
+
+**Migrated: the 8 schematics.** Drawn agency lot diagrams — bus-bay listings keyed to Metrobus
+routes, commuter-parking shading, space counts, scale bars. Seven files serving eight spots;
+Crystal City 12th St and 23rd St publish the same WMATA station map. They are self-hosted under
+`public/spots/`, never hotlinked: a hotlink dies the day WordPress is cancelled, which is the
+whole point of migrating them.
+
+**Not migrated: 19, for three different reasons.** The 12 Google aerials carry Google's own
+credit and terms and are the one category on the list that is not the owner's to license. The 6
+route notices are dated 2018-2019 and in an undated media slot would read as current operational
+instructions. The flyer carries `admin@SlugLines.com` and is a publication artefact, not a
+location record.
+
+### Why they are called diagrams and not photographs
+
+Nothing in the UI calls these photographs, and that is enforced rather than intended.
+`SpotPhoto`'s populated branch prints *"Transit diagram, not a photograph"* with the migration
+date beneath every image, and `tests/spot-photos.test.mjs` asserts that string. The same branch
+uses `object-contain` rather than `object-cover`, asserted too: cropping a lot diagram to fill a
+4:3 box removes the legend and the scale bar that make it a map rather than a picture.
+
+The no-diagram branch also lost its old claim that we refuse satellite views. We refused the
+Google aerials on **rights**, not on principle, and a page should not claim a discipline that was
+not the actual reason.
+
+### What did not change
+
+`image` stays out of `SEED_COLUMNS`. `0004_spot_locations_directory.sql` is generated from
+`lib/domain/locations.ts` and guarded byte-for-byte, and it is `APPLIED: production` — so a field
+that entered the seed would regenerate an applied migration, which
+`supabase/migrations/README.md` forbids. Both mappings in `lib/domain/public-location.ts` resolve
+the image from the committed directory, so no database row can disagree about it and `0004`
+applies untouched.
+
+`LEGACY_IMAGE_PREFIX` also stays narrow, at `.../images/slugging_locations/`. Three spots publish
+their asset one directory up and all three are Google aerials; widening the prefix to admit them
+would have removed the guard at the moment it was doing its job.
+
+### The correction this entry exists to record
+
+Two independent readings of these files during this session concluded the asset register had
+mischaracterised them. Both were wrong, and the register was right. The register's per-file
+classification — which names the Google credits, the `Map data ©2016 Google` watermark, the
+shared WMATA map and the flyer's contact details — is more specific than a visual pass over a
+sample, and it is what this decision is built on. Re-deriving a conclusion from a sample is not a
+check on a document that already did the full pass.
