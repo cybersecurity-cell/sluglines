@@ -3473,3 +3473,63 @@ what someone reads at 2am.
 
 `0009` and `0010` both carry `APPLIED: no`. Applying them is a separate, separately authorised
 act.
+
+---
+
+## D-61 — `0009` and `0010` applied to production, in that order
+
+**Date:** 2026-08-23
+**Target:** production `bwpguotjzczmieeepczf`, under the owner's explicit authorisation.
+
+### The order mattered and it was honoured
+
+D-60 recorded a silent hazard: `0010` makes the `locations` table answer for anonymous visitors,
+and if `0009` had not run first the table still held `0004`'s paraphrases, so `0010` alone would
+have regressed every spot page to the shorter pre-D-59 text with no error and no failing test.
+`0009` was applied first, verified, and only then `0010`.
+
+### Two bugs caught in the pre-apply read, before they reached production
+
+Reading `0009` row by row before applying it surfaced extraction artifacts the D-59 gates had not
+caught, because they are content defects and every gate in this repo is structural:
+
+- **Section labels and corridor headings inside the destination lists** (#74). `lenfant-plaza`
+  carried 16 entries of which two were `I-95 corridor` and `I-66 corridor`, and seven had a
+  `Slug lines to ` prefix on an otherwise correct name. 16 entries across 3 spots.
+- **A section heading and a bus route in `route-610-mine-rd`'s destinations** (#75).
+  `Public Transportation` and `FRED Routes D4 and D6` — the page nests its transit block *inside*
+  the "Slug lines to" section. Rendered, it told a rider they could slug to Public Transportation.
+
+Both were fixed and merged before anything was written. Worth recording as a property of the
+process rather than luck: nothing in CI can catch these, and the only reason they were caught is
+that applying a data migration by hand forces you to read the data.
+
+### How `0009` was applied, and the asymmetry that leaves
+
+As four idempotent DML batches through `execute_sql`, because it is an UPDATE and the tooling
+reserves `apply_migration` for DDL. **It is therefore not in
+`supabase_migrations.schema_migrations`.** `0010` is DDL, went through `apply_migration`, and is
+recorded there as `20260823114757`.
+
+So the two authoritative records disagree about `0009`: this repository's ledger says applied,
+Supabase's own migration history does not know about it. Stated here rather than tidied, because
+anyone running `supabase db push` later will see `0009` as pending. It is idempotent, so
+re-running it is harmless — but they should know that before they are surprised by it.
+
+### Verification
+
+Not "it ran without error". After `0009`, an md5 over the five refreshed columns across all 50
+rows, computed in Postgres, was compared against the same digest computed from
+`lib/domain/locations.ts`. **Both `e4527efd7b99d980255beb5a399db8d1`.** That is what makes the
+hand-batched apply trustworthy: a single wrong character anywhere in 26 KB of content would have
+changed it.
+
+After `0010`: `get_public_location('bobs-old-keene-mill-rd')` returns one row with a 683-character
+description, an inactive spot returns zero rows, the lookup is case-insensitive,
+`has_function_privilege('anon', ...)` is true, and
+`has_table_privilege('anon','public.locations','select')` is **still false** — `anon` gained a
+function, not a table.
+
+Finally the live page, which is the check that would have caught a regression: production at
+`52d0e35` still serves the closure notice, the 685-space breakdown, both relocation instructions,
+the peak-hour window and the transit diagram. Nothing regressed.

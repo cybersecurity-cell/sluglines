@@ -252,7 +252,19 @@ assert.equal(
   `${CONTENT_MIGRATION_PATH} is stale — run \`npm run seed:locations -- --write\``
 )
 
-assert.match(contentSql, /--\s*APPLIED:\s*no/, '0009 is not applied; applying it is authorised separately')
+// Applied to production 2026-08-23 (D-61). Like 0004's, this header is emitted by
+// the generator rather than written into the .sql, because the .sql is regenerated
+// and compared byte-for-byte -- editing the file instead would turn this guard red
+// the next time anyone ran the generator.
+assert.ok(
+  contentSql.includes('-- APPLIED: production'),
+  '0009 is applied to production; the generator emits that header (D-61)'
+)
+assert.ok(
+  contentSql.includes('e4527efd7b99d980255beb5a399db8d1'),
+  'the header carries the digest the apply was verified against, so a later content ' +
+    'change that forgets to re-apply leaves a visible stale fingerprint'
+)
 assert.match(contentSql, /^update public\.locations as l set$/m, 'an UPDATE, not a re-seed')
 assert.equal(
   /create\s+(table|policy|function)/i.test(contentSql),
