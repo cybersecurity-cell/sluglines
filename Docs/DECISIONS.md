@@ -3353,3 +3353,70 @@ classification — which names the Google credits, the `Map data ©2016 Google` 
 shared WMATA map and the flyer's contact details — is more specific than a visual pass over a
 sample, and it is what this decision is built on. Re-deriving a conclusion from a sample is not a
 check on a document that already did the full pass.
+
+---
+
+## D-59 — Legacy per-spot content migrated; 0004 frozen against a snapshot, content moves in 0009
+
+**Date:** 2026-08-22
+**Issue:** #18 (the migration). Related: #36 (provenance), #25 (cutover).
+
+### The deadlock this entry resolves
+
+`0004_spot_locations_directory.sql` is generated from `src/lib/domain/locations.ts` and guarded
+byte-for-byte by `tests/spot-locations-directory.test.mjs`. It is also `APPLIED: production`, and
+`supabase/migrations/README.md` forbids editing an applied migration.
+
+Those two rules were compatible only while the directory never changed. The moment a seeded
+column moved, the guard demanded a regenerated 0004 and the README forbade writing it. The guard
+and the append-only rule had become mutually exclusive, and nothing in the repo said so.
+
+**Resolution:** `supabase/migrations/0004.seed-snapshot.json` holds the `SEED_COLUMNS` projection
+of the directory as it stood when 0004 was applied. The guard now proves 0004 is the file *its
+own inputs* generate, which is the property it was always really asserting. The live module is
+free to move, and it moves into a new ordinal.
+
+`0009_spot_content_refresh.sql` is that ordinal: an UPDATE over five columns — `description`,
+`peak_hours`, `parking`, `lines_from`, `lines_to`. It creates no table, policy or function, which
+is why sql-lint R3–R11 have nothing to say about it, and it is idempotent. Identity, geography,
+`is_active`, `community_url` and `notes` are untouched: "what does this spot's page say" is a
+different question from "which spot is this", and mixing them makes the diff unreadable.
+
+### What the content change actually is
+
+The directory shipped with paraphrases. The legacy pages carry materially more, and the gap was
+not cosmetic — measured across the 42 legacy spot pages, the directory held roughly 5–20% of the
+per-spot text. Bob's is the clearest case: its legacy page states the pickup location **is closed
+for construction**, names the two relocations and the group coordinating one of them, and itemises
+685 parking spaces across four named lots with addresses. The directory said *"Large commuter
+parking area around Springfield Plaza and nearby lots."*
+
+Applied with **merge semantics**: legacy wins where it has a value, the existing value survives
+where the legacy page is silent. 16 spots publish no parking section and 21 no `Slug lines to`;
+replacing wholesale would have emptied those fields, which is content loss dressed as fidelity.
+Field counts: description 38, peak hours 39, parking 26, lines-from 38, lines-to 21.
+
+### What was not taken, and why it is owed
+
+Two legacy sections have no field in `SpotLocation` and were therefore dropped: **Public
+Transportation** (on 40 of 42 pages) and **External links** (37). Giving them a home means new
+seeded columns, which means more migration surface, and that decision did not belong inside this
+one. It is real content and it is owed.
+
+### One normalisation, and the line it did not cross
+
+The legacy site spells the same destination `L’Enfant`, `L Enfant` and `LEnfant` **within the same
+imported list**, so items that should be one string were three. Those were normalised to
+`L’Enfant`. `Bobs`, `Tacketts` and `Hechingers` were left exactly as written: the legacy site is
+internally consistent about them, so changing them would be editing content rather than repairing
+a mangled proper noun.
+
+The normalisation was first applied as a blind string replace and hit
+`routeSlug: 'LEnfant-Plaza'` — a **live URL**. `tests/spot-locations-directory.test.mjs` caught it
+on the next run ("slug is lower(route_slug)"). Recorded because the guard earned its place: a
+content pass reached an identifier, and only the identifier invariant noticed.
+
+### Not applied
+
+`0009` carries `APPLIED: no`. Applying it is a separate, separately authorised act, and it
+rewrites operational facts that commuters read — not a schema change with no reader.

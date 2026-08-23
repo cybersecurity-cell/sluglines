@@ -29,7 +29,13 @@ import {
   spotLocationDistance,
 } from '../src/lib/domain/locations.ts'
 import { SPOT_DIRECTORY, findSpotBySlug, getSpotDetailHref } from '../src/lib/spot-directory.ts'
-import { renderLocationsMigration, MIGRATION_PATH } from '../scripts/seed-locations.mjs'
+import {
+  renderLocationsMigration,
+  renderContentRefresh,
+  MIGRATION_PATH,
+  SNAPSHOT_PATH,
+  CONTENT_MIGRATION_PATH,
+} from '../scripts/seed-locations.mjs'
 
 const root = process.cwd()
 const migrationFile = path.join(root, MIGRATION_PATH)
@@ -217,10 +223,41 @@ assert.equal(
 // byte-for-byte. Editing the .sql by hand fails this; changing the .ts without
 // regenerating fails this.
 // -----------------------------------------------------------------------------
+// 0004 is checked against its FROZEN INPUTS, not against the live directory.
+// It is APPLIED: production, so it must never be regenerated -- but it was
+// generated, so something still has to prove it was not hand-edited. The
+// snapshot is that something. Content moves in 0009 instead (D-59).
+const snapshot = JSON.parse(fs.readFileSync(path.join(root, SNAPSHOT_PATH), 'utf8'))
+
 assert.equal(
   sql,
-  renderLocationsMigration(),
-  `${MIGRATION_PATH} is stale or hand-edited — run \`npm run seed:locations\``
+  renderLocationsMigration(snapshot),
+  `${MIGRATION_PATH} no longer matches ${SNAPSHOT_PATH}. 0004 is applied to ` +
+    'production and must not be edited; if the snapshot changed, restore it.'
+)
+
+assert.equal(snapshot.length, SPOT_LOCATION_COUNT, 'the snapshot covers every spot')
+assert.equal(
+  snapshot.some((row) => 'image' in row),
+  false,
+  'the snapshot is the SEED_COLUMNS projection; image is not a seeded column'
+)
+
+// 0009 is the one that tracks the live directory.
+const contentSql = fs.readFileSync(path.join(root, CONTENT_MIGRATION_PATH), 'utf8')
+
+assert.equal(
+  contentSql,
+  renderContentRefresh(),
+  `${CONTENT_MIGRATION_PATH} is stale — run \`npm run seed:locations -- --write\``
+)
+
+assert.match(contentSql, /--\s*APPLIED:\s*no/, '0009 is not applied; applying it is authorised separately')
+assert.match(contentSql, /^update public\.locations as l set$/m, 'an UPDATE, not a re-seed')
+assert.equal(
+  /create\s+(table|policy|function)/i.test(contentSql),
+  false,
+  '0009 creates nothing, which is why sql-lint R3-R11 have nothing to say about it'
 )
 
 assert.match(sql, /^-- =+\n-- 0004_spot_locations_directory\.sql/, 'names itself in its header')
