@@ -57,7 +57,33 @@ Every asset under that path was pulled and **visually inspected** for issue #18.
 - **The transit schematics are third-party operator material**, usable by link rather than by copy, per `Docs/content-sources.md`'s hierarchy (*"link to the operator rather than copying"*).
 - **The flyer carries contact details** and is a publication artefact, not a location record.
 
-So **no asset was migrated**, and all 50 spots render the reserved no-photograph state. See `Docs/DECISIONS.md` **D-39**.
+So under D-39 **no asset was migrated**, and all 50 spots rendered the reserved no-photograph
+state.
+
+### Superseded in part — D-58, 2026-08-22
+
+The owner directed that legacy content and images be migrated. **8 of the 27 were**: the
+third-party transit and parking schematics — drawn agency lot diagrams with bus-bay listings,
+space counts and legends. They ship as *diagrams*, never captioned as photographs, with their
+`sourceUrl` recorded and the issuing agency's credit left in the pixels.
+
+**19 were held out, and the reason differs by kind:**
+
+| Kind | Held out because |
+|---|---|
+| Satellite / aerial tile (12) | Google Maps imagery carrying Google's own credit and terms. Rehosting it in this repo is the one thing on this list that is not the owner's to license. |
+| Annotated aerial route diagram (6) | Dated 2018-2019. In a media slot with no date on it they would read as current operational instructions, which is the failure D-31 and D-33 exist to prevent. They belong to the content migration, where a date can be shown. |
+| Promotional flyer (1) | `21st-Street.jpg` is a marketing graphic carrying `admin@SlugLines.com`, a Facebook URL and a Twitter handle. It is not a record of a location at all. |
+
+The 8 that shipped, and the spots they serve: `Bobs.jpg`, `14th_St_at_Commerce_Dept.jpg`,
+`Crystal_City_12th_St.jpg` (**two** spots — 12th St and 23rd St publish the same WMATA station
+map), `Lorton.jpg`, `Rolling_Valley.jpg`, `Saratoga.jpg`, `Sydenstricker.jpg`. Seven files, eight
+spots. The remaining 42 spots still render the reserved no-diagram state.
+
+`tests/spot-photos.test.mjs` pins the count at 8 and refuses any image whose `sourceUrl` is not
+under `slugging_locations/` — which is also what keeps the three `/images/`-root assets
+(`Franconia-Springfield.jpg`, `Landmark-Mall.jpg`, `Van-Dorn-St.jpg`) out, all three being Google
+aerials.
 
 ### Two audit corrections
 

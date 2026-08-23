@@ -43,7 +43,7 @@ export type SpotCorridor = 'I-395 / I-95' | 'I-66'
 export type SpotDirection = 'Morning' | 'Afternoon'
 
 /**
- * A photograph of a spot, self-hosted.
+ * A spot's media asset, self-hosted. **A transit diagram, not a photograph.**
  *
  * NOT a database column, deliberately. `0004_spot_locations_directory.sql` is
  * generated from this file by `scripts/seed-locations.mjs` and guarded
@@ -55,12 +55,22 @@ export type SpotDirection = 'Morning' | 'Afternoon'
  * sluglines.com dies the day WordPress is cancelled, which is the point of the
  * migration.
  *
- * **No spot carries one today, and that is a finding rather than an omission.**
- * All 27 assets under `sluglines.com/images/slugging_locations/` were pulled and
- * inspected on 2026-08-22: every one is a satellite tile, a third-party transit
- * or parking schematic, an annotated aerial route diagram, or a promotional
- * flyer. Zero are photographs of a location. The classification is in
- * `Docs/asset-register.md`; the reasoning is `Docs/DECISIONS.md` D-39.
+ * WHAT THESE FILES ARE, AND WHAT THEY ARE NOT
+ * ---------------------------------------------------------------------------
+ * `Docs/asset-register.md` classifies all 27 legacy assets: 12 Google Maps
+ * aerials, 8 third-party transit or parking schematics, 6 dated route-change
+ * notices, 1 promotional flyer, and **zero photographs of a location**. D-39
+ * declined to migrate any of them. D-58 migrates **only the 8 schematics** —
+ * drawn agency lot diagrams with bus-bay listings, space counts and legends —
+ * and holds the other 19 out: the Google aerials carry Google's own credit and
+ * its terms, the notices are 2018-2019 and would render as current, and the
+ * flyer is a marketing graphic with a contact address on it.
+ *
+ * So this field is a **transit diagram**, never a photograph. A diagram of a lot
+ * is useful orientation; the same file captioned as a photograph would claim a
+ * currency and an authorship it does not have — the same failure as a guessed
+ * coordinate (D-31) or a fabricated count (D-33). #26 still tracks sourcing real
+ * photographs, and this field is not it.
  */
 export interface SpotImage {
   /** Path under `public/`, e.g. `/spots/horner-rd.jpg`. Never a remote URL. */
@@ -70,7 +80,7 @@ export interface SpotImage {
   height: number
   /** Describes the spot for a screen reader, not the file. */
   alt: string
-  /** Provenance. Asserted to be under sluglines.com/images/slugging_locations/. */
+  /** Provenance: the legacy URL this file came from. Asserted against LEGACY_IMAGE_PREFIX. */
   sourceUrl: string
   /** ISO date the file was pulled from the legacy site. */
   fetchedAt: string
@@ -104,7 +114,7 @@ export interface SpotLocation {
   linesTo?: string[]
   fbUrl?: string
   notes?: string
-  /** Absent where no approved photograph exists. Never a stand-in. */
+  /** Absent where the legacy page published no diagram. Never a stand-in. */
   image?: SpotImage
 }
 
@@ -158,7 +168,16 @@ export function needsFreshnessQualifier(spot: Pick<SpotLocation, 'provenance'>):
   return spot.provenance.state !== 'verified'
 }
 
-/** The only host a migrated image may have come from (issue #18). */
+/**
+ * The only path a migrated image may have come from (issue #18).
+ *
+ * Deliberately the narrow `slugging_locations/` path and not `images/`. Three
+ * spots publish their asset one directory up, and all three are Google Maps
+ * aerials that D-58 declined to migrate; widening the prefix to admit them would
+ * remove the guard at the moment it was doing its job. Some legacy pages also
+ * embed an `lh5.googleusercontent.com` commenter avatar, which is a person, not
+ * a spot.
+ */
 export const LEGACY_IMAGE_PREFIX = 'https://sluglines.com/images/slugging_locations/'
 
 export function spotImage(slug: string): SpotImage | undefined {
@@ -194,6 +213,14 @@ export const SPOT_LOCATIONS: readonly SpotLocation[] = [
     linesFrom: ['L\'Enfant Plaza', '14th Street', '18th Street', 'Pentagon'],
     linesTo: ['L\'Enfant Plaza', '14th Street', '18th Street', 'Pentagon'],
     fbUrl: 'https://www.facebook.com/groups/springfieldsluglines/',
+    image: {
+      src: '/spots/Bobs.jpg',
+      width: 460,
+      height: 344,
+      alt: 'Transit diagram for Bob\'s - Old Keene Mill Rd, republished from the legacy sluglines.com page for this spot.',
+      sourceUrl: 'https://sluglines.com/images/slugging_locations/Bobs.jpg',
+      fetchedAt: '2026-08-22',
+    },
   },
   {
     slug: 'cardinal-forest-plaza',
@@ -247,6 +274,14 @@ export const SPOT_LOCATIONS: readonly SpotLocation[] = [
       state: 'needs-review',
       source: 'sluglines.com WordPress export (legacy site; its own content predates 2020)',
     },
+    image: {
+      src: '/spots/Lorton.jpg',
+      width: 460,
+      height: 302,
+      alt: 'Transit diagram for Lorton, republished from the legacy sluglines.com page for this spot.',
+      sourceUrl: 'https://sluglines.com/images/slugging_locations/Lorton.jpg',
+      fetchedAt: '2026-08-22',
+    },
   },
   {
     slug: 'rolling-valley',
@@ -266,6 +301,14 @@ export const SPOT_LOCATIONS: readonly SpotLocation[] = [
     },
     peakHours: '6:00 AM - 8:30 AM',
     linesFrom: ['Pentagon', 'L\'Enfant Plaza', '14th Street'],
+    image: {
+      src: '/spots/Rolling_Valley.jpg',
+      width: 460,
+      height: 341,
+      alt: 'Transit diagram for Rolling Valley, republished from the legacy sluglines.com page for this spot.',
+      sourceUrl: 'https://sluglines.com/images/slugging_locations/Rolling_Valley.jpg',
+      fetchedAt: '2026-08-22',
+    },
   },
   {
     slug: 'saratoga',
@@ -282,6 +325,14 @@ export const SPOT_LOCATIONS: readonly SpotLocation[] = [
     provenance: {
       state: 'needs-review',
       source: 'sluglines.com WordPress export (legacy site; its own content predates 2020)',
+    },
+    image: {
+      src: '/spots/Saratoga.jpg',
+      width: 460,
+      height: 355,
+      alt: 'Transit diagram for Saratoga, republished from the legacy sluglines.com page for this spot.',
+      sourceUrl: 'https://sluglines.com/images/slugging_locations/Saratoga.jpg',
+      fetchedAt: '2026-08-22',
     },
   },
   {
@@ -301,6 +352,14 @@ export const SPOT_LOCATIONS: readonly SpotLocation[] = [
       source: 'sluglines.com WordPress export (legacy site; its own content predates 2020)',
     },
     peakHours: '6:00 AM - 8:30 AM',
+    image: {
+      src: '/spots/Sydenstricker.jpg',
+      width: 460,
+      height: 309,
+      alt: 'Transit diagram for Sydenstricker Rd, republished from the legacy sluglines.com page for this spot.',
+      sourceUrl: 'https://sluglines.com/images/slugging_locations/Sydenstricker.jpg',
+      fetchedAt: '2026-08-22',
+    },
   },
   {
     slug: 'springfield-town-center',
@@ -715,6 +774,14 @@ export const SPOT_LOCATIONS: readonly SpotLocation[] = [
     },
     peakHours: '3:30 PM - 6:30 PM',
     fbUrl: 'https://www.facebook.com/groups/crystalcitysluglines/',
+    image: {
+      src: '/spots/Crystal_City_12th_St.jpg',
+      width: 460,
+      height: 421,
+      alt: 'Transit diagram for Crystal City 12th St, republished from the legacy sluglines.com page for this spot.',
+      sourceUrl: 'https://sluglines.com/images/slugging_locations/Crystal_City_12th_St.jpg',
+      fetchedAt: '2026-08-22',
+    },
   },
   {
     slug: 'crystal-city-23rd-st',
@@ -734,6 +801,14 @@ export const SPOT_LOCATIONS: readonly SpotLocation[] = [
     },
     peakHours: '3:30 PM - 6:30 PM',
     fbUrl: 'https://www.facebook.com/groups/crystalcitysluglines/',
+    image: {
+      src: '/spots/Crystal_City_12th_St.jpg',
+      width: 460,
+      height: 421,
+      alt: 'Transit diagram for Crystal City 23rd St, republished from the legacy sluglines.com page for this spot.',
+      sourceUrl: 'https://sluglines.com/images/slugging_locations/Crystal_City_12th_St.jpg',
+      fetchedAt: '2026-08-22',
+    },
   },
   {
     slug: 'rosslyn',
@@ -839,6 +914,14 @@ export const SPOT_LOCATIONS: readonly SpotLocation[] = [
     provenance: {
       state: 'needs-review',
       source: 'sluglines.com WordPress export (legacy site; its own content predates 2020)',
+    },
+    image: {
+      src: '/spots/14th_St_at_Commerce_Dept.jpg',
+      width: 460,
+      height: 396,
+      alt: 'Transit diagram for 14th St at Commerce Dept., republished from the legacy sluglines.com page for this spot.',
+      sourceUrl: 'https://sluglines.com/images/slugging_locations/14th_St_at_Commerce_Dept.jpg',
+      fetchedAt: '2026-08-22',
     },
   },
   {
