@@ -33,6 +33,36 @@ import { SPOT_LOCATIONS } from '../src/lib/domain/locations.ts'
 
 export const MIGRATION_PATH = 'supabase/migrations/0004_spot_locations_directory.sql'
 
+/**
+ * 0004's inputs, frozen.
+ *
+ * 0004 is `APPLIED: production`, and supabase/migrations/README.md forbids
+ * editing an applied migration -- a file whose APPLIED header names a database
+ * is a record of what that database ran. But 0004 was *generated* from
+ * src/lib/domain/locations.ts, so the moment that module's seeded content
+ * changed, regenerating 0004 became the only way to keep the byte-for-byte guard
+ * green, and that is exactly the edit the README forbids. The guard and the
+ * append-only rule had become mutually exclusive.
+ *
+ * This file resolves it. It holds the SEED_COLUMNS projection of the directory
+ * as it stood when 0004 was applied, so the guard can still prove 0004 is the
+ * file its inputs generate -- without pinning the live module to it forever.
+ * Content moves in a new ordinal instead. See Docs/DECISIONS.md D-59.
+ */
+export const SNAPSHOT_PATH = 'supabase/migrations/0004.seed-snapshot.json'
+
+/** The content refresh: the seeded facts as they stand now. */
+export const CONTENT_MIGRATION_PATH = 'supabase/migrations/0009_spot_content_refresh.sql'
+
+/**
+ * The columns 0009 refreshes -- the operational facts, and nothing structural.
+ * Identity, geography and corridor come from 0004 and do not move: a spot that
+ * changed county or coordinates is a different question from a spot whose
+ * parking paragraph was rewritten, and mixing them in one UPDATE would make the
+ * diff unreadable.
+ */
+const CONTENT_COLUMNS = ['description', 'peak_hours', 'parking', 'lines_from', 'lines_to']
+
 // Column list, in the order the table declares it. Used for the INSERT, the
 // VALUES rows, the DO UPDATE SET clause and the change-detection tuple, so those
 // four can never fall out of step with each other.
@@ -381,34 +411,126 @@ end
 // -----------------------------------------------------------------------------
 // CLI
 // -----------------------------------------------------------------------------
+/**
+ * 0009 -- refresh the seeded operational facts from the directory.
+ *
+ * An UPDATE, not a re-seed. Every row already exists (0004 inserted all 50), so
+ * inserting again would either conflict or re-assert identity columns this
+ * migration has no business touching. It creates no table, no policy and no
+ * function, which is why sql-lint's R3-R11 have nothing to say about it.
+ *
+ * Idempotent: running it twice sets the same values. It is safe to re-apply, and
+ * safe to apply to a database that already matches.
+ */
+export function renderContentRefresh(locations = SPOT_LOCATIONS) {
+  const rows = locations
+    .map(
+      (l) =>
+        `      (${text(l.slug)}, ${text(l.description)}, ${text(l.peakHours)}, ` +
+        `${text(l.parking)}, ${textArray(l.linesFrom)}, ${textArray(l.linesTo)})`
+    )
+    .join(',\n')
+
+  const setClause = CONTENT_COLUMNS.map((c) => `  ${c} = seed.${c}`).join(',\n')
+
+  return `-- =============================================================================
+-- ${path.basename(CONTENT_MIGRATION_PATH)}
+--
+-- APPLIED: no
+-- TARGET:  not yet applied. Applying it is a separate, separately authorised act
+--          -- see supabase/migrations/README.md.
+--
+-- GENERATED FILE -- DO NOT EDIT BY HAND.
+--   Source:    src/lib/domain/locations.ts
+--   Generator: scripts/seed-locations.mjs   (\`npm run seed:locations\`)
+--   Guard:     tests/spot-locations-directory.test.mjs re-runs the generator and
+--              compares the result with this file byte-for-byte.
+--
+-- WHY THIS EXISTS RATHER THAN A REGENERATED 0004
+-- -----------------------------------------------------------------------------
+-- 0004 seeded these columns and is APPLIED: production. The directory it was
+-- generated from has since been rewritten from the legacy sluglines.com pages,
+-- which carried materially more per-spot detail than the paraphrases this repo
+-- shipped with -- parking broken down by lot and space count, peak-hour windows,
+-- and the actual named lines each spot runs to and from. Editing 0004 to match
+-- would falsify a record of what production ran. So the facts move forward in a
+-- new ordinal and 0004 stays exactly as it was applied. Docs/DECISIONS.md D-59.
+--
+-- SCOPE
+-- -----------------------------------------------------------------------------
+-- Five columns, all of them operational facts. Identity (slug, route_slug,
+-- name), geography (latitude, longitude, county, corridor, direction),
+-- is_active, community_url and notes are untouched: this migration answers "what
+-- does this spot's page say", not "which spot is this".
+-- =============================================================================
+
+update public.locations as l set
+${setClause}
+from (
+  values
+${rows}
+) as seed(slug, description, peak_hours, parking, lines_from, lines_to)
+where l.slug = seed.slug;
+`
+}
+
 function main(argv) {
   const mode = argv.includes('--write') ? 'write' : 'check'
   const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..')
-  const file = path.join(root, MIGRATION_PATH)
-  const generated = renderLocationsMigration()
 
+  const snapshotFile = path.join(root, SNAPSHOT_PATH)
+  const seedFile = path.join(root, MIGRATION_PATH)
+  const contentFile = path.join(root, CONTENT_MIGRATION_PATH)
+
+  // 0009 is the only generated file that moves. 0004 is applied to production and
+  // is checked against its frozen inputs, never rewritten -- see SNAPSHOT_PATH.
   if (mode === 'write') {
-    fs.mkdirSync(path.dirname(file), { recursive: true })
-    fs.writeFileSync(file, generated)
-    console.log(`seed-locations: wrote ${MIGRATION_PATH} (${SPOT_LOCATIONS.length} spots)`)
+    fs.mkdirSync(path.dirname(contentFile), { recursive: true })
+    fs.writeFileSync(contentFile, renderContentRefresh())
+    console.log(
+      `seed-locations: wrote ${CONTENT_MIGRATION_PATH} (${SPOT_LOCATIONS.length} spots)`
+    )
     return 0
   }
 
-  if (!fs.existsSync(file)) {
-    console.error(`seed-locations: ${MIGRATION_PATH} does not exist; run with --write`)
-    return 1
+  for (const [label, file] of [
+    [SNAPSHOT_PATH, snapshotFile],
+    [MIGRATION_PATH, seedFile],
+    [CONTENT_MIGRATION_PATH, contentFile],
+  ]) {
+    if (!fs.existsSync(file)) {
+      console.error(`seed-locations: ${label} does not exist`)
+      return 1
+    }
   }
 
-  if (fs.readFileSync(file, 'utf8') !== generated) {
+  const snapshot = JSON.parse(fs.readFileSync(snapshotFile, 'utf8'))
+  if (fs.readFileSync(seedFile, 'utf8') !== renderLocationsMigration(snapshot)) {
     console.error(
-      `seed-locations: ${MIGRATION_PATH} is stale.\n` +
-        '  src/lib/domain/locations.ts has changed since it was generated.\n' +
-        '  Re-run `npm run seed:locations` and review the diff before committing.'
+      [
+        `seed-locations: ${MIGRATION_PATH} no longer matches ${SNAPSHOT_PATH}.`,
+        '  0004 is APPLIED: production and must not be edited. If the snapshot is',
+        '  what changed, restore it -- it is the record of what generated that file.',
+      ].join('\n')
     )
     return 1
   }
 
-  console.log(`seed-locations: ${MIGRATION_PATH} is up to date (${SPOT_LOCATIONS.length} spots)`)
+  if (fs.readFileSync(contentFile, 'utf8') !== renderContentRefresh()) {
+    console.error(
+      [
+        `seed-locations: ${CONTENT_MIGRATION_PATH} is stale.`,
+        '  src/lib/domain/locations.ts has changed since it was generated.',
+        '  Re-run `npm run seed:locations -- --write` and review the diff.',
+      ].join('\n')
+    )
+    return 1
+  }
+
+  console.log(
+    `seed-locations: ${MIGRATION_PATH} matches its frozen snapshot; ` +
+      `${CONTENT_MIGRATION_PATH} is up to date (${SPOT_LOCATIONS.length} spots)`
+  )
   return 0
 }
 

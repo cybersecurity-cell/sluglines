@@ -73,8 +73,19 @@ assert.equal(fallback.routeSlug, 'Horner-Rd')
 assert.equal(fallback.slug, 'horner-rd')
 assert.equal(fallback.isActive, true)
 assert.equal(fallback.county, 'Prince William')
-assert.deepEqual(fallback.linesFrom, ['Pentagon', "L'Enfant Plaza", '14th Street'])
-assert.deepEqual(fallback.linesTo, [])
+// Rewritten from the legacy page in D-59. The old values were a three-item
+// paraphrase and an empty `linesTo`; the legacy page names ten destinations.
+assert.deepEqual(fallback.linesFrom, [
+  '14th Street',
+  '18th Street',
+  'Crystal City',
+  'L’Enfant Plaza and Navy Yard',
+  'Mark Center',
+  'Rosslyn',
+  'The Pentagon',
+])
+assert.equal(fallback.linesTo.length, 10, 'the legacy page names ten afternoon destinations')
+assert.equal(fallback.linesTo[0], 'L’Enfant Plaza')
 
 // The four legacy-only spots publish no coordinates (D-31). The page must carry
 // the null through rather than substitute a plausible-looking one.
