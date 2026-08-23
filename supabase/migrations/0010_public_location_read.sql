@@ -1,9 +1,18 @@
 -- =============================================================================
 -- 0010_public_location_read.sql
 --
--- APPLIED: no
--- TARGET:  not yet applied. Applying it is a separate, separately authorised act
---          -- see supabase/migrations/README.md.
+-- APPLIED: production
+-- TARGET:  Supabase project sluglines (project ref bwpguotjzczmieeepczf), applied
+--          2026-08-23 under the project owner's explicit authorisation of the same
+--          day, through apply_migration -- recorded in
+--          supabase_migrations.schema_migrations as 20260823114757. 0009 was
+--          applied immediately before it; see the hazard note below, which was
+--          honoured.
+--          Verified after applying: get_public_location('bobs-old-keene-mill-rd')
+--          returns 1 row with a 683-character description, an inactive spot
+--          returns 0 rows, the lookup is case-insensitive,
+--          has_function_privilege('anon', ...) is true, and
+--          has_table_privilege('anon','public.locations','select') is still FALSE.
 --
 -- Anonymous read for a single spot row, issue #72.
 --

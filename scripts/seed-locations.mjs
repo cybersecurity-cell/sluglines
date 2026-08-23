@@ -436,9 +436,15 @@ export function renderContentRefresh(locations = SPOT_LOCATIONS) {
   return `-- =============================================================================
 -- ${path.basename(CONTENT_MIGRATION_PATH)}
 --
--- APPLIED: no
--- TARGET:  not yet applied. Applying it is a separate, separately authorised act
---          -- see supabase/migrations/README.md.
+-- APPLIED: production
+-- TARGET:  Supabase project sluglines (project ref bwpguotjzczmieeepczf), applied
+--          2026-08-23 under the project owner's explicit authorisation of the same
+--          day. Applied as DML in four idempotent batches through execute_sql, so
+--          it is NOT in supabase_migrations.schema_migrations -- 0010, which is
+--          DDL, is. That asymmetry is stated rather than tidied: see D-61.
+--          Verified after applying by comparing an md5 over the five refreshed
+--          columns across all 50 rows against the same digest computed from this
+--          module. They matched: e4527efd7b99d980255beb5a399db8d1.
 --
 -- GENERATED FILE -- DO NOT EDIT BY HAND.
 --   Source:    src/lib/domain/locations.ts

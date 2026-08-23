@@ -148,7 +148,7 @@ Current state:
 | Target | Status |
 |---|---|
 | Preview branch `phase-3-4-staging` (`xqonrogwwytkmqfinszp`) | `0001`–`0003` applied 2026-08-14 (D-28, D-30); `0004`–`0008` applied 2026-08-22, each as the rehearsal for its production apply |
-| **Production `bwpguotjzczmieeepczf`** | **`0001`–`0008` applied** — `0001`–`0007` on 2026-08-22 under the owner's authorisation of 2026-08-21 (D-41); `0008` on 2026-08-22 (D-46). `tests/live-public-surface.test.mjs` verifies the anonymous surface against it |
+| **Production `bwpguotjzczmieeepczf`** | **`0001`–`0010` applied** — `0001`–`0007` on 2026-08-22 under the owner's authorisation of 2026-08-21 (D-41); `0008` on 2026-08-22 (D-46). `tests/live-public-surface.test.mjs` verifies the anonymous surface against it |
 
 `tests/sql-migration-harness.test.mjs` no longer refuses `APPLIED: production` — that tripwire was
 relaxed by the session that earned it, visibly, in the same diff as the apply. What it enforces now
