@@ -54,20 +54,31 @@ export async function getPublicLocation(slug: string): Promise<PublicLocation | 
   return directoryLocation ? publicLocationFromDirectory(directoryLocation) : null
 }
 
+/**
+ * Through `get_public_location`, not a select on `locations`.
+ *
+ * The table is RLS-on with a single read policy scoped `to authenticated`, so a
+ * select here returned nothing for anonymous visitors and every public spot page
+ * silently fell through to the committed directory (#72). Admitting `anon` in a
+ * policy is refused by sql-lint R5, so the read goes through the same
+ * `security definer` mechanism 0005 established for the M1 aggregates. `anon`
+ * touches no table directly.
+ *
+ * The function returns exactly `LOCATION_COLUMNS` and carries the policy's own
+ * `is_active` predicate, so an inactive spot still resolves from the directory.
+ */
 async function readLocationRow(slug: string): Promise<LocationRow | null> {
   try {
     const supabase = createClient()
     const { data, error } = await supabase
-      .from('locations')
-      .select(LOCATION_COLUMNS)
-      .eq('slug', canonicalSlug(slug))
+      .rpc('get_public_location', { p_slug: canonicalSlug(slug) })
       .maybeSingle()
 
     if (error || !data) return null
 
     return data as unknown as LocationRow
   } catch {
-    // No env, no network, or a table this environment does not have.
+    // No env, no network, or a database without 0010 applied.
     return null
   }
 }
