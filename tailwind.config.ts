@@ -24,6 +24,26 @@ const config: Config = {
       },
       fontFamily: {
         sans: ['Inter', 'system-ui', 'sans-serif'],
+        // The §10 redesign uses `font-mono` for every eyebrow, corridor label
+        // and numeral. Without this line those utilities resolved to the
+        // system monospace stack while the JetBrains Mono that
+        // `src/app/layout.tsx` loads and preloads was referenced by nothing —
+        // the font was being paid for and not used.
+        //
+        // The fallbacks are Tailwind's own default mono stack, kept explicitly
+        // because `display: 'optional'` means a slow connection legitimately
+        // renders the whole page in the fallback.
+        mono: [
+          'var(--font-mono)',
+          'ui-monospace',
+          'SFMono-Regular',
+          'Menlo',
+          'Monaco',
+          'Consolas',
+          'Liberation Mono',
+          'Courier New',
+          'monospace',
+        ],
       },
     },
   },
