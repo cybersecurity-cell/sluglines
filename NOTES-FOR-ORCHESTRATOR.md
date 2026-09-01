@@ -1,80 +1,115 @@
-# Notes for the orchestrator — `ui/public-redesign`
+# Notes for the orchestrator — `ui/public-surface-rest`
 
-Executor slice: finish the §10 public UI redesign, make the gates green, leave it ready for a PR.
-No push, no PR opened.
+Executor slice: finish the §10 palette migration across the rest of the PUBLIC surface, make the
+gates green, leave it ready for a PR. No push, no PR opened.
+
+This continues `ui/public-redesign` (#86, D-62), which did `/` and the chrome. Item 2 of that
+slice's notes — "the rest of the public surface still wears the sky-blue palette" — is what this
+branch closes. Recorded as **D-63**.
+
+## Done
+
+Eleven files plus three `globals.css` component classes onto §10. `tests/public-surface-tokens.test.mjs`
+now walks **20** files rather than 8, so the no-`sky-*`/no-`slate-950` scan covers the whole public
+surface. Contrast pairs 42 → 49. Baseline N 1,089 → 1,111 assertion call sites (38 files, unchanged).
+
+After this branch, **no public page carries the retired sky palette.** Every remaining `sky-*` in
+`src/` is on an authenticated surface or on `FastBoard` (below).
 
 ## Deliberately NOT done, and why
 
-### 1. §10's `:root` colour tokens and the public-footer dark-theme toggle
+### 1. `FastBoard` — named in the brief as public, but it is not
 
-§10 asks for the whole palette as custom properties on `:root`, redefined under
-`prefers-color-scheme`, plus an explicit dark-theme toggle reachable signed-out in the public
-footer. This slice does **not** implement either.
+The brief listed `FastBoard` under "public components used by those pages". It is not used by any of
+them: `src/components/FastBoard.tsx` renders **only** on `/dashboard`, which the same brief lists as
+a hard-stop authenticated surface. Its sibling on that page, `CheckInStatusPanel`, is in the
+exclusion list.
 
-The reason is blast radius, not difficulty. Today `globals.css` `:root` holds the *dark shell*
-(`--bg: #080d17`) that the footer and the app chrome paint from, and every public page pins itself
-light with a hard `bg-white text-slate-950` wrapper. Turning the §10 colours into
-`prefers-color-scheme`-responsive tokens flips the redesigned sections dark for dark-mode users
-while every page still wearing that wrapper — `/spots`, `/slug_pickup`, `/lostfound`,
-`/slugging-rules`, `/login`, `/verify`, `/onboarding`, `/dashboard`, `LegacyContentPage`,
-`PostIndexPage` — stays white. That is a worse state than what is here now, and fixing it properly
-means touching auth and dashboard surfaces this slice is scoped out of.
+Migrating it in isolation would have left `/dashboard` visibly half-done — a §10 green board under a
+`text-sky-700` eyebrow and a `slate-950` heading, beside a sky-blue `CheckInStatusPanel`. Finishing
+it properly means editing `src/app/dashboard/page.tsx` and `CheckInStatusPanel.tsx`, both explicit
+hard stops. The brief's own rule for that case is to stop and write it here, so that is what this
+is.
 
-What this slice does instead: pins the §10 colours as data in `scripts/contrast-check.mjs`, the same
-way the existing light palette is pinned, so the AA gate actually covers them. The dark shell token
-set is untouched and all 11 of its pairs still pass.
+`FastBoard` keeps its sky palette, including `--driver` as `sky-900`, which is the one §10 semantic
+mismatch knowingly left in the tree. **It should move with the authenticated surface, not before
+it.**
 
-**Recommended follow-up:** one issue covering tokenisation + the footer toggle across every page
-shell at once.
+Note that `tests/public-surface-tokens.test.mjs` already asserts FastBoard's peak-window copy (it is
+one of the three components that print `5:30–9:30`), and that assertion is untouched and still
+passing — so the file is partly governed by the public gate while not being on the public surface.
+Worth resolving when the dashboard is migrated.
 
-### 2. The rest of the public surface still wears the sky-blue palette
+### 2. §10's `:root` tokenisation and the public-footer dark toggle — still deferred
 
-The redesign's eight files are fully migrated and a test now enforces that. But
-`SpotDirectorySection` is shared with `/spots` and `/slug_pickup`, and those two pages still have a
-`text-sky-700` eyebrow and a `slate-950` heading above a §10-token directory. Same for
-`/lostfound`, `/slugging-rules`, `LegacyContentPage`, `PostIndexPage`, `SpotDetailLayout`,
-`CommunityLinksCard`, `SpotQuickFacts`, `SpotSearch`, and the `.btn-primary` / `.btn-secondary` /
-`.section-label` component classes in `globals.css` that `/how-it-works` uses.
+Unchanged from D-62, and this slice made it *easier* rather than harder: `/how-it-works` was the last
+public page painting onto the dark `:root` shell, and it is now light like the rest. Every public
+page is now uniformly light-pinned, which is the precondition for flipping the token set in one
+coordinated change.
 
-Migrating them is mechanical and low-risk, but it is a much larger diff across files this slice was
-told not to refactor. Flagging it because "the public surface is redesigned" is not yet true —
-**the homepage is.**
+The dark shell token set itself is untouched; all 11 of its contrast pairs still pass.
 
-### 3. Fonts are Syne / Outfit / JetBrains Mono, not Geist
+**Recommended follow-up (unchanged):** one issue covering tokenisation + the footer toggle across
+every page shell at once — now including `/how-it-works`.
 
-§10 names Geist Sans/Mono. The repo loads Syne (display), Outfit (body) and JetBrains Mono, and
-`src/app/layout.tsx` carries a long comment explaining that the `display: 'optional'` setup on those
-three faces is what brought homepage LCP from 2.6s under the 2.0s budget (issue #20). Swapping the
-font stack risks that measurement, and re-measuring needs the Lighthouse CI job, not this
-environment. Left alone as a deliberate call.
+### 3. The authenticated surfaces are untouched, as instructed
 
-What *was* fixed: `font-mono` did not resolve to the loaded JetBrains Mono at all — Tailwind's
-default mono stack won, so the redesign's mono eyebrows and numerals rendered in system monospace
-while a preloaded font went unused. `tailwind.config.ts` now maps it.
+`/login`, `/verify`, `/onboarding`, `/dashboard`, and `LoginForm`, `VerifyForm`, `OnboardingForm`,
+`CheckInStatusPanel` all keep their sky-blue exactly as it was.
 
-### 4. The legacy archive summaries are duplicated title text
+One thing to know before that slice starts: `.btn-primary`, `.btn-secondary` and `.section-label` in
+`globals.css` are now painted for the **light** §10 surface. They have exactly one consumer
+(`/how-it-works`), and the gate asserts that by name against the login/verify/onboarding/dashboard
+files. If an authenticated screen wants one of them, the class has to be **split**, not shared — the
+gate will fail rather than let a dark screen silently inherit a light-ground palette.
 
-`summarizeLegacyPost` returns the head of `bodyText`, and every migrated WordPress page's `bodyText`
-opens with its own H1, then the "Home" breadcrumb, then the H1 again. The real fix is stripping
-breadcrumb chrome at scrape time in the legacy content pipeline (`src/lib/legacy-content.ts` +
-`tests/legacy-content.test.mjs`), which is outside this slice. `RecentPostsSection` now shows title
-and date only, and `tests/public-surface-tokens.test.mjs` proves the duplication from the data — so
-that assertion starts failing (usefully) the day the pipeline is fixed and the summary column can
-come back.
+### 4. Lighthouse LCP still not measured here
 
-### 5. Lighthouse LCP was not measured here
+Unchanged from D-62. The JS half of the §10 budget is verified from the build (below); LCP needs the
+Lighthouse CI job.
 
-§10's `LCP < 2.0s throttled 4G` is a Lighthouse CI measurement (`lighthouserc.json`). It is not
-runnable in this environment. The JS half of the budget **is** verified: `/` builds to 101 kB first
-load against a 150 kB gzip budget.
+### 5. The legacy archive summaries are still duplicated title text
+
+Unchanged from D-62 item 4. `PostIndexPage` still calls `summarizeLegacyPost`, and on `/blog` and
+`/news` that summary still leads with the post title, because the fix belongs in the legacy scrape
+(`src/lib/legacy-content.ts`). Only `RecentPostsSection` on `/` dropped the column. Not touched here
+— it is a data-pipeline fix, not a palette one.
+
+## Copy/data honesty bugs fixed (all on `/how-it-works`)
+
+1. **Peak windows, both halves.** "6 AM to 9 AM" / "4 PM to 7 PM" → the canonical 5:30–9:30 and
+   3:00–7:00 (05:30–09:30 / 15:00–19:00 ET, §12). D-62 fixed the hero's morning window; this page
+   was still disagreeing with the four components that print it, and was the only source anywhere
+   for the afternoon numbers.
+2. **"...with an excellent safety record."** Nothing in this repo measures a safety record. The 1975
+   start date IS sourced (legacy About Slugging page, first I-395 HOV lanes) and was kept.
+3. **"check live wait times."** There are no wait times — live counts are `unavailable`, and even
+   switched on they are rider/driver counts, not waits.
+
+All three are pinned in the gate in the direction that fails if someone restores them.
+
+## Gate results (from the worktree root)
+
+| Gate | Result |
+|---|---|
+| `npm run test` | **PASS** — 38/38, 0 fail |
+| `npm run lint` | **PASS** — 0 errors, 0 warnings |
+| `npm run typecheck` | **PASS** — clean |
+| `npm run build` | **PASS** — 422 pages |
+| `npm run sql:check` | **PASS** — 10 migrations, 181 statements, 0 violations (no SQL changed) |
+| `npm run e2e` | **PASS** — 34/34, desktop + mobile Chromium |
+
+Known skips, all expected and reported `ok`: `live-rls.test.mjs` (no `.env.preview.local`),
+`live-public-surface.test.mjs` (no public credentials), `supabase-server-client.test.mjs`
+(`@supabase/ssr` not installed here).
+
+First-load JS, §10 budget < 150 kB: `/spots` and `/slug_pickup` 116 kB; `/spots/[slug]` 101 kB;
+`/how-it-works`, `/lostfound`, `/blog`, `/news`, `/about-us`, `/about-slugging`, `/app` and
+`/[...legacyPath]` 96.2 kB; `/slugging-rules` and `/slugging-rules-and-etiquette` 87.4 kB. `/` is
+unchanged at 101 kB.
 
 ## Environment notes
 
-- `package.json` has no `test:e2e` script. The Playwright script is **`npm run e2e`**.
-- Playwright's Chromium was not installed on this machine; `npx playwright install chromium` fetched
-  it, and the full 34-test suite then passed. CI already does this.
-- `live-rls.test.mjs` and `live-public-surface.test.mjs` both SKIP here (no `.env.preview.local`,
-  no public credentials). They report `ok`, not failure — the stale-seed FK failure described in the
-  brief did not occur, because the credentials that would trigger it are absent.
-- `.shots/` holds two throwaway screenshots used to eyeball the rendered page. Delete it before the
-  PR if it is not wanted; it is untracked.
+- The Playwright script is **`npm run e2e`** (there is no `test:e2e`).
+- Chromium was already present in this worktree; `npx playwright install chromium` was a no-op.
+- No `.shots/` directory was created by this slice.
