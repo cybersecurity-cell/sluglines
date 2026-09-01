@@ -73,6 +73,7 @@ const tw = {
   white: '#ffffff',
   'slate-50': '#f8fafc',
   'slate-100': '#f1f5f9',
+  'slate-500': '#64748b',
   'slate-600': '#475569',
   'slate-700': '#334155',
   'slate-800': '#1e293b',
@@ -80,6 +81,34 @@ const tw = {
   'sky-600': '#0284c7',
   'sky-700': '#0369a1',
   'sky-800': '#075985',
+}
+
+// -----------------------------------------------------------------------------
+// Palette 3: the §10 public design system — the redesigned marketing surface
+// -----------------------------------------------------------------------------
+// §10 names three colours (near-white ground, ink, highway-green accent) and two
+// semantic role tones (`--rider` amber, `--driver` blue). They are pinned here
+// by the same rule as palette 2: the public components write them as Tailwind
+// arbitrary values, Tailwind resolves them to fixed hex, so a palette change is
+// a visible diff in this table and a re-run of the gate.
+//
+// `slate-400` is deliberately ABSENT. The redesign reached for it four times as
+// a quiet metadata grey — post dates, county labels, the hero's line count — and
+// it is 2.56:1 on white. Anything that quiet on this surface is slate-500
+// (4.76:1 on white, 4.55:1 on the ground), which is the floor.
+const ui = {
+  ground: '#FAFAF8',
+  ink: '#17202A',
+  accent: '#2E7D46',
+  'accent-hover': '#245F37',
+  'accent-link-hover': '#1F5C33',
+  'accent-tint': '#EAF2ED',
+  'accent-on-ink': '#7BC994',
+  'stone-100': '#f5f5f4',
+  'amber-800': '#92400e',
+  'blue-800': '#1e40af',
+  'slate-300': '#cbd5e1',
+  'slate-400': '#94a3b8',
 }
 
 // -----------------------------------------------------------------------------
@@ -113,9 +142,45 @@ export const PAIRS = [
   // — a pair this table did not cover, which is exactly why the Lighthouse job
   // and this script are both worth having: a hand-written pair list can only
   // check the combinations someone thought of.
-  { theme: 'dark', fg: ['white', tw.white], bg: ['sky-700 (footer button)', tw['sky-700']] },
+  //
+  // It is now the §10 accent, not sky-700: the redesign retired the sky brand
+  // and a button in the retired colour is exactly the leftover that survives a
+  // palette migration.
+  { theme: 'dark', fg: ['white', tw.white], bg: ['accent (footer button)', ui.accent] },
+  { theme: 'dark', fg: ['white', tw.white], bg: ['accent-hover (footer button)', ui['accent-hover']] },
   { theme: 'light', fg: ['sky-800', tw['sky-800']], bg: ['white', tw.white] },
   { theme: 'light', fg: ['slate-800', tw['slate-800']], bg: ['white', tw.white] },
+
+  // §10 public design system — ground, ink, accent
+  { theme: 'light', fg: ['ink', ui.ink], bg: ['white', tw.white] },
+  { theme: 'light', fg: ['ink', ui.ink], bg: ['ground', ui.ground] },
+  { theme: 'light', fg: ['slate-700', tw['slate-700']], bg: ['ground', ui.ground] },
+  { theme: 'light', fg: ['slate-600', tw['slate-600']], bg: ['ground', ui.ground] },
+  // The quiet-metadata floor, on both grounds the public surface uses. This is
+  // the pair that fails the moment anyone reaches for slate-400 again.
+  { theme: 'light', fg: ['slate-500', tw['slate-500']], bg: ['white', tw.white] },
+  { theme: 'light', fg: ['slate-500', tw['slate-500']], bg: ['ground', ui.ground] },
+  // Accent as link text and as a button ground, in both directions.
+  { theme: 'light', fg: ['accent', ui.accent], bg: ['white', tw.white] },
+  { theme: 'light', fg: ['accent', ui.accent], bg: ['ground', ui.ground] },
+  { theme: 'light', fg: ['white', tw.white], bg: ['accent', ui.accent] },
+  { theme: 'light', fg: ['accent-link-hover', ui['accent-link-hover']], bg: ['white', tw.white] },
+  { theme: 'light', fg: ['accent-link-hover', ui['accent-link-hover']], bg: ['ground', ui.ground] },
+  // The navbar's active pill: green label on a green tint.
+  { theme: 'light', fg: ['accent-link-hover', ui['accent-link-hover']], bg: ['accent-tint', ui['accent-tint']] },
+  // Idle nav labels over the hover ground.
+  { theme: 'light', fg: ['slate-600', tw['slate-600']], bg: ['stone-100', ui['stone-100']] },
+  // §10's semantic role tones on the corridor strip. Both are read alongside a
+  // text label, so this checks legibility, not meaning.
+  { theme: 'light', fg: ['amber-800 (--rider)', ui['amber-800']], bg: ['white', tw.white] },
+  { theme: 'light', fg: ['blue-800 (--driver)', ui['blue-800']], bg: ['white', tw.white] },
+  // The InfoModuleGrid featured card inverts to ink. slate-400 is legible here
+  // (6.42:1) and only here — which is why it is pinned against ink and nothing
+  // else in this table.
+  { theme: 'light', fg: ['white', tw.white], bg: ['ink (featured card)', ui.ink] },
+  { theme: 'light', fg: ['slate-300', ui['slate-300']], bg: ['ink (featured card)', ui.ink] },
+  { theme: 'light', fg: ['slate-400', ui['slate-400']], bg: ['ink (featured card)', ui.ink] },
+  { theme: 'light', fg: ['accent-on-ink', ui['accent-on-ink']], bg: ['ink (featured card)', ui.ink] },
 ]
 
 export function checkContrast() {
