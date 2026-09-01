@@ -37,9 +37,13 @@ export const metadata = {
 export default async function DashboardPage({
   searchParams,
 }: {
-  searchParams?: { checkout?: string }
+  searchParams?: Promise<{ checkout?: string }>
 }) {
-  const [snapshot, presence] = await Promise.all([getPublicSpotCounts(), getMemberPresence()])
+  const [snapshot, presence, resolvedSearchParams] = await Promise.all([
+    getPublicSpotCounts(),
+    getMemberPresence(),
+    searchParams,
+  ])
 
   const board = buildFastBoard(snapshot, { checkedInSlug: presence.spotSlug ?? null })
 
@@ -59,7 +63,7 @@ export default async function DashboardPage({
       </section>
 
       <div className="mx-auto max-w-6xl space-y-6 px-4 py-8">
-        <CheckInStatusPanel presence={presence} checkoutFailed={searchParams?.checkout === 'failed'} />
+        <CheckInStatusPanel presence={presence} checkoutFailed={resolvedSearchParams?.checkout === 'failed'} />
         <FastBoard board={board} />
       </div>
     </div>

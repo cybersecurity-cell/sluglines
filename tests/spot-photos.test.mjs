@@ -172,7 +172,7 @@ assert.match(photo, /sizes=/, 'responsive sizes, so a 360px slot does not fetch 
 // The 4:3 box is reserved in BOTH branches. That is the asset register's rule,
 // and it is what stops the page reflowing the day a photograph is added.
 assert.equal(
-  (photo.match(/aspect-\[4\/3\]/g) ?? []).length,
+  (photo.match(/aspect-4\/3/g) ?? []).length,
   2,
   'both the photograph and the no-photograph state reserve the same 4:3 area'
 )

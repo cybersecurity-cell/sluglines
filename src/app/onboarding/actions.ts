@@ -28,7 +28,7 @@ export async function completeOnboarding(formData: FormData) {
   let failed = false
 
   try {
-    const supabase = createClient()
+    const supabase = await createClient()
 
     const { error: nameError } = await supabase.rpc('set_display_name', { p_display_name: displayName })
     failed = Boolean(nameError)

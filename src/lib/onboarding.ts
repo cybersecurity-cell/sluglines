@@ -20,7 +20,7 @@ export interface MemberProfile {
 /** `null` only when there is no session; every other failure degrades below, not here. */
 export async function getAuthenticatedUserId(): Promise<string | null> {
   try {
-    const { data, error } = await createClient().auth.getUser()
+    const { data, error } = await (await createClient()).auth.getUser()
     if (error || !data?.user) return null
     return data.user.id
   } catch {
@@ -30,7 +30,7 @@ export async function getAuthenticatedUserId(): Promise<string | null> {
 
 export async function getMemberProfile(memberId: string): Promise<MemberProfile | null> {
   try {
-    const { data, error } = await createClient()
+    const { data, error } = await (await createClient())
       .from('members')
       .select('display_name,location_id')
       .eq('id', memberId)
@@ -69,7 +69,7 @@ const HOME_SPOT_COLUMNS = 'id,slug,name,corridor,direction'
  */
 export async function getActiveHomeSpotOptions(): Promise<HomeSpotOption[]> {
   try {
-    const { data, error } = await createClient()
+    const { data, error } = await (await createClient())
       .from('locations')
       .select(HOME_SPOT_COLUMNS)
       .eq('is_active', true)

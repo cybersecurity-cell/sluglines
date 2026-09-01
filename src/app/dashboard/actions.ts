@@ -42,7 +42,7 @@ export async function clearPresence() {
   let failed = false
 
   try {
-    const { error } = await createClient().rpc(PRESENCE_CLEAR_FUNCTION)
+    const { error } = await (await createClient()).rpc(PRESENCE_CLEAR_FUNCTION)
     failed = Boolean(error)
   } catch {
     failed = true

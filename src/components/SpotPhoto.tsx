@@ -38,7 +38,7 @@ export default function SpotPhoto({ image, spotName }: SpotPhotoProps) {
   if (image) {
     return (
       <figure className="w-full">
-        <div className="relative aspect-[4/3] w-full overflow-hidden rounded-lg border border-slate-200 bg-white">
+        <div className="relative aspect-4/3 w-full overflow-hidden rounded-lg border border-slate-200 bg-white">
           <Image
             src={image.src}
             alt={image.alt}
@@ -57,7 +57,7 @@ export default function SpotPhoto({ image, spotName }: SpotPhotoProps) {
   }
 
   return (
-    <div className="flex aspect-[4/3] w-full flex-col items-center justify-center gap-3 rounded-lg border border-dashed border-slate-300 bg-slate-100 px-6 text-center">
+    <div className="flex aspect-4/3 w-full flex-col items-center justify-center gap-3 rounded-lg border border-dashed border-slate-300 bg-slate-100 px-6 text-center">
       <RouteGraphic />
       <p className="text-sm font-semibold text-slate-700">No diagram for this spot yet</p>
       <p className="max-w-xs text-xs leading-relaxed text-slate-600">
