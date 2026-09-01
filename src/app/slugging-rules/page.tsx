@@ -37,11 +37,11 @@ const GOLDEN_RULES = [
 
 export default function SluggingRulesPage() {
   return (
-    <div className="bg-white text-slate-950">
-      <section className="border-b border-slate-200 bg-slate-50">
+    <div className="bg-white text-[#17202A]">
+      <section className="border-b border-stone-200 bg-[#FAFAF8]">
         <div className="mx-auto max-w-6xl px-4 py-12">
-          <p className="mb-3 text-sm font-semibold uppercase tracking-wide text-sky-700">Rules and etiquette</p>
-          <h1 className="max-w-4xl text-4xl font-bold tracking-tight text-slate-950 md:text-5xl">
+          <p className="mb-3 font-mono text-xs font-semibold uppercase tracking-[0.2em] text-[#2E7D46]">Rules and etiquette</p>
+          <h1 className="h-display max-w-4xl text-4xl text-[#17202A] md:text-5xl">
             The customs that keep slugging fast, safe, and respectful.
           </h1>
           <p className="mt-4 max-w-3xl text-lg leading-8 text-slate-600">
@@ -54,11 +54,11 @@ export default function SluggingRulesPage() {
       <section className="mx-auto max-w-6xl px-4 py-10">
         <div className="mb-8 grid grid-cols-1 gap-5 md:grid-cols-3">
           {GOLDEN_RULES.map((item) => (
-            <article key={item.title} className="rounded-lg border border-slate-200 bg-slate-50 p-5">
-              <div className="mb-3 flex h-10 w-10 items-center justify-center rounded-lg bg-sky-50 text-sky-700">
+            <article key={item.title} className="rounded-lg border border-stone-200 bg-[#FAFAF8] p-5">
+              <div className="mb-3 flex h-10 w-10 items-center justify-center rounded-lg bg-[#EAF2ED] text-[#2E7D46]">
                 <ShieldCheck className="h-5 w-5" />
               </div>
-              <h2 className="text-lg font-bold text-slate-950">{item.title}</h2>
+              <h2 className="h-display text-lg text-[#17202A]">{item.title}</h2>
               <p className="mt-2 text-sm leading-6 text-slate-600">{item.desc}</p>
             </article>
           ))}
@@ -85,20 +85,25 @@ export default function SluggingRulesPage() {
 
 function RuleList({ title, icon, rules }: { title: string; icon: 'rider' | 'driver'; rules: string[] }) {
   const Icon = icon === 'rider' ? Users : Car
-  const color = icon === 'rider' ? 'text-emerald-700 bg-emerald-50' : 'text-sky-700 bg-sky-50'
+  // §10's semantic pair: `--rider` amber, `--driver` blue. These two lists were
+  // emerald and sky — sky being the retired brand chrome, and emerald being the
+  // colour §10 gives the accent rather than a role, so the driver list read as
+  // "brand" and the rider list read as "accent". Neither carries meaning alone:
+  // the heading beside each icon says which list it is (WCAG 1.4.1).
+  const color = icon === 'rider' ? 'text-amber-800 bg-amber-50' : 'text-blue-800 bg-blue-50'
 
   return (
-    <section className="rounded-lg border border-slate-200 bg-white p-6 shadow-sm">
+    <section className="rounded-lg border border-stone-200 bg-white p-6 shadow-sm">
       <div className="mb-6 flex items-center gap-3">
         <div className={`rounded-lg p-2 ${color}`}>
           <Icon className="h-6 w-6" />
         </div>
-        <h2 className="text-xl font-bold text-slate-950">{title}</h2>
+        <h2 className="h-display text-xl text-[#17202A]">{title}</h2>
       </div>
       <ul className="space-y-3">
         {rules.map((rule) => (
           <li key={rule} className="flex items-start gap-3">
-            <CheckCircle className="mt-0.5 h-5 w-5 shrink-0 text-emerald-600" />
+            <CheckCircle className="mt-0.5 h-5 w-5 shrink-0 text-[#2E7D46]" />
             <span className="text-sm leading-6 text-slate-700">{rule}</span>
           </li>
         ))}

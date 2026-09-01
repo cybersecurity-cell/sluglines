@@ -23,14 +23,14 @@ export default function SpotSearch({ spots }: SpotSearchProps) {
 
   return (
     <div>
-      <section className="border-b border-slate-200 bg-white">
+      <section className="border-b border-stone-200 bg-white">
         <div className="mx-auto max-w-6xl px-4 py-6">
           <div className="grid grid-cols-1 gap-3 lg:grid-cols-[minmax(0,1fr)_180px_160px_150px]">
             <label className="relative block">
               <span className="sr-only">Search pickup locations</span>
-              <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+              <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-500" />
               <input
-                className="h-11 w-full rounded-lg border border-slate-300 bg-white pl-9 pr-3 text-sm text-slate-950 outline-none focus:border-sky-600 focus:ring-2 focus:ring-sky-100"
+                className="h-11 w-full rounded-lg border border-stone-300 bg-white pl-9 pr-3 text-sm text-[#17202A] outline-none focus:border-[#2E7D46] focus:ring-2 focus:ring-[#EAF2ED]"
                 placeholder="Search spot, destination, or county"
                 value={filters.query}
                 onChange={(event) => setFilters((current) => ({ ...current, query: event.target.value }))}
@@ -86,7 +86,7 @@ function FilterSelect({
     <label className="block">
       <span className="sr-only">{label}</span>
       <select
-        className="h-11 w-full rounded-lg border border-slate-300 bg-white px-3 text-sm font-semibold text-slate-800 outline-none focus:border-sky-600 focus:ring-2 focus:ring-sky-100"
+        className="h-11 w-full rounded-lg border border-stone-300 bg-white px-3 text-sm font-semibold text-[#17202A] outline-none focus:border-[#2E7D46] focus:ring-2 focus:ring-[#EAF2ED]"
         value={value}
         onChange={(event) => onChange(event.target.value)}
       >

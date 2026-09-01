@@ -24,11 +24,11 @@ export const metadata = {
  */
 export default function LostFoundPage() {
   return (
-    <div className="bg-white text-slate-950">
-      <section className="border-b border-slate-200 bg-slate-50">
+    <div className="bg-white text-[#17202A]">
+      <section className="border-b border-stone-200 bg-[#FAFAF8]">
         <div className="mx-auto max-w-3xl px-4 py-12">
-          <p className="mb-2 text-sm font-semibold uppercase tracking-wide text-sky-700">Lost &amp; Found</p>
-          <h1 className="text-4xl font-bold tracking-tight text-slate-950 md:text-5xl">
+          <p className="mb-2 font-mono text-xs font-semibold uppercase tracking-[0.2em] text-[#2E7D46]">Lost &amp; Found</p>
+          <h1 className="h-display text-4xl text-[#17202A] md:text-5xl">
             Left something in a slug line carpool?
           </h1>
           <p className="mt-4 text-lg leading-8 text-slate-700">
@@ -37,9 +37,9 @@ export default function LostFoundPage() {
             will need one.
           </p>
 
-          <div className="mt-6 rounded-lg border border-slate-200 bg-white p-5">
-            <h2 className="flex items-center gap-2 text-lg font-bold text-slate-950">
-              <PackageSearch aria-hidden className="h-5 w-5 text-sky-700" />
+          <div className="mt-6 rounded-lg border border-stone-200 bg-white p-5">
+            <h2 className="h-display flex items-center gap-2 text-lg text-[#17202A]">
+              <PackageSearch aria-hidden className="h-5 w-5 text-[#2E7D46]" />
               What happened to the old board
             </h2>
             <p className="mt-2 text-slate-700">
@@ -51,13 +51,13 @@ export default function LostFoundPage() {
           <div className="mt-6 flex flex-col gap-3 sm:flex-row">
             <Link
               href="/spots"
-              className="inline-flex items-center justify-center gap-2 rounded-lg bg-sky-700 px-4 py-3 text-sm font-bold text-white hover:bg-sky-800"
+              className="inline-flex min-h-[44px] items-center justify-center gap-2 rounded-lg bg-[#2E7D46] px-4 py-3 text-sm font-bold text-white hover:bg-[#245F37]"
             >
               Browse slug pickup locations
             </Link>
             <Link
               href="/how-it-works"
-              className="inline-flex items-center justify-center gap-2 rounded-lg border border-slate-300 px-4 py-3 text-sm font-bold text-slate-800 hover:bg-slate-50"
+              className="inline-flex min-h-[44px] items-center justify-center gap-2 rounded-lg border border-stone-300 px-4 py-3 text-sm font-bold text-[#17202A] hover:bg-stone-100"
             >
               How slugging works
             </Link>
