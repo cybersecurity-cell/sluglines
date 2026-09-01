@@ -50,28 +50,30 @@ body::after {
 
 @layer components {
   /*
-   * sky-700, not sky-500.
+   * The §10 accent, not the retired sky brand.
    *
-   * White on sky-500 (#0ea5e9) is about 2.9:1 and white on the sky-400 hover is
-   * lower still — both well under WCAG AA's 4.5:1 for body-size text, on the
-   * primary call to action of the whole site. axe reported it as a `serious`
-   * color-contrast violation the first time tests/e2e/accessibility.spec.ts ran
-   * (#35).
+   * The rule these two classes were written under still holds and is why the
+   * hover goes DARKER rather than lighter: white on sky-500 was ~2.9:1 and axe
+   * reported it as a `serious` color-contrast violation the first time
+   * tests/e2e/accessibility.spec.ts ran (#35), on the primary call to action of
+   * the whole site. White on the §10 accent #2E7D46 is 5.07:1, and on the
+   * #245F37 hover it is 7.28:1 — both pinned in scripts/contrast-check.mjs,
+   * which is the table that did not cover this pair when #35 found it.
    *
-   * tests/theme-contrast.test.mjs did not catch it, and could not: it checks 22
-   * pairs from the CSS token sets, and this pair is a Tailwind utility written
-   * directly here, so it was never in the set it walks. That is the gap a
-   * rendered-tree a11y check closes.
+   * `.btn-secondary` mattered more than a recolour. It was `text-sky-400` on a
+   * transparent ground, which was legible only because `/how-it-works` was the
+   * dark page. On the §10 light ground that is 2.2:1 — so the colour had to
+   * change with the page, not after it.
    *
-   * sky-700 (#0369a1) is ~5.9:1 against white. The hover goes DARKER rather than
-   * lighter so the hovered state cannot be the one that fails.
+   * A dead `shadow: 0 0 24px rgba(99,179,237,0.35)` went with it: `shadow` is
+   * not a CSS property (`box-shadow` is), so the sky-blue glow it named had
+   * never rendered. `shadow-lg` below was doing the visible work all along.
    */
   .btn-primary {
-    @apply inline-flex items-center gap-2 bg-sky-700 hover:bg-sky-800 text-white font-semibold py-3 px-7 rounded-xl transition-all duration-200 shadow-lg;
-    shadow: 0 0 24px rgba(99,179,237,0.35);
+    @apply inline-flex items-center gap-2 min-h-[44px] bg-[#2E7D46] hover:bg-[#245F37] text-white font-semibold py-3 px-7 rounded-xl transition-all duration-200 shadow-lg;
   }
   .btn-secondary {
-    @apply inline-flex items-center gap-2 border border-sky-500/40 text-sky-400 hover:bg-sky-500/10 font-semibold py-3 px-7 rounded-xl transition-all duration-200;
+    @apply inline-flex items-center gap-2 min-h-[44px] border border-[#2E7D46]/40 text-[#2E7D46] hover:bg-[#EAF2ED] font-semibold py-3 px-7 rounded-xl transition-all duration-200;
   }
   .card {
     @apply rounded-2xl border p-6;
@@ -89,9 +91,15 @@ body::after {
     @apply w-2 h-2 rounded-full bg-green-400;
     animation: pulse-dot 2s ease-in-out infinite;
   }
+  /*
+   * `var(--accent)` is the DARK shell's #63b3ed, which is 2.27:1 on the §10
+   * ground. This label only ever renders on `/how-it-works`, which is now a
+   * light page, so it takes the §10 accent and the mono face every other
+   * eyebrow on the public surface uses.
+   */
   .section-label {
-    @apply text-xs font-semibold tracking-widest uppercase;
-    color: var(--accent);
+    @apply font-mono text-xs font-semibold tracking-widest uppercase;
+    color: #2E7D46;
   }
   .h-display {
     font-family: var(--font-syne), sans-serif;
@@ -130,7 +138,7 @@ body::after {
 .legacy-content h2,
 .legacy-content h3,
 .legacy-content h4 {
-  color: #0f172a;
+  color: #17202A;
   font-family: var(--font-syne), system-ui, sans-serif;
   line-height: 1.2;
   margin: 1.5rem 0 0.75rem;
@@ -156,8 +164,14 @@ body::after {
   margin-bottom: 0.35rem;
 }
 
+/*
+ * The migrated WordPress body renders inside LegacyContentPage, so its links and
+ * submit buttons were the last sky-700 (#0369a1) on `/about-us`, `/about-slugging`,
+ * `/app` and all 43 legacy spot pages — the retired brand surviving inside an
+ * article whose frame is already §10.
+ */
 .legacy-content a {
-  color: #0369a1;
+  color: #2E7D46;
   font-weight: 600;
   text-decoration: underline;
   text-underline-offset: 2px;
@@ -195,8 +209,8 @@ body::after {
 
 .legacy-content input[type='submit'],
 .legacy-content button {
-  background: #0369a1;
-  border-color: #0369a1;
+  background: #2E7D46;
+  border-color: #2E7D46;
   color: #fff;
   cursor: pointer;
   font-weight: 700;

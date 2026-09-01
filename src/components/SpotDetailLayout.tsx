@@ -36,17 +36,20 @@ export default function SpotDetailLayout({ location, counts, availability }: Spo
   const communityUrl = getPrimaryFacebookUrlForSpot(location.routeSlug) || location.communityUrl
 
   return (
-    <div className="bg-slate-50">
+    <div className="bg-[#FAFAF8]">
       <div className="mx-auto max-w-6xl px-4 py-8 lg:py-10">
-        <Link href="/spots" className="mb-6 inline-flex items-center gap-2 text-sm font-semibold text-slate-700 hover:text-sky-800">
+        <Link
+          href="/spots"
+          className="mb-6 inline-flex min-h-[44px] items-center gap-2 text-sm font-semibold text-slate-700 hover:text-[#2E7D46]"
+        >
           <ArrowLeft aria-hidden className="h-4 w-4" />
           Slug pickup locations
         </Link>
 
         <div className="grid grid-cols-1 gap-6 lg:grid-cols-[minmax(0,1fr)_360px]">
           <main className="space-y-5">
-            <section className="rounded-lg border border-slate-200 bg-white">
-              <div className="border-b border-slate-200 px-5 py-4">
+            <section className="rounded-lg border border-stone-200 bg-white">
+              <div className="border-b border-stone-200 px-5 py-4">
                 <div className="flex flex-wrap gap-2">
                   <Badge>{location.corridor}</Badge>
                   <Badge>{location.direction} line</Badge>
@@ -55,7 +58,7 @@ export default function SpotDetailLayout({ location, counts, availability }: Spo
               </div>
 
               <div className="p-5">
-                <h1 className="max-w-3xl text-4xl font-bold tracking-tight text-slate-950 md:text-5xl">{location.name}</h1>
+                <h1 className="h-display max-w-3xl text-4xl text-[#17202A] md:text-5xl">{location.name}</h1>
                 <p className="mt-4 max-w-3xl text-lg leading-relaxed text-slate-700">{location.description}</p>
 
                 <div className="mt-5 flex flex-wrap gap-3">
@@ -63,7 +66,7 @@ export default function SpotDetailLayout({ location, counts, availability }: Spo
                     href={mapsUrl}
                     target="_blank"
                     rel="noopener noreferrer"
-                    className="inline-flex items-center justify-center gap-2 rounded-lg bg-sky-700 px-4 py-3 text-sm font-bold text-white hover:bg-sky-800"
+                    className="inline-flex min-h-[44px] items-center justify-center gap-2 rounded-lg bg-[#2E7D46] px-4 py-3 text-sm font-bold text-white hover:bg-[#245F37]"
                   >
                     <Navigation aria-hidden className="h-4 w-4" />
                     Open in Maps
@@ -73,7 +76,7 @@ export default function SpotDetailLayout({ location, counts, availability }: Spo
                       href={communityUrl}
                       target="_blank"
                       rel="noopener noreferrer"
-                      className="inline-flex items-center justify-center gap-2 rounded-lg border border-slate-300 bg-white px-4 py-3 text-sm font-bold text-slate-800 hover:border-sky-300 hover:text-sky-800"
+                      className="inline-flex min-h-[44px] items-center justify-center gap-2 rounded-lg border border-stone-300 bg-white px-4 py-3 text-sm font-bold text-[#17202A] hover:border-[#2E7D46] hover:text-[#2E7D46]"
                     >
                       <Users aria-hidden className="h-4 w-4" />
                       Community Group
@@ -87,8 +90,8 @@ export default function SpotDetailLayout({ location, counts, availability }: Spo
 
             <CommunityLinksCard spotSlug={location.routeSlug} fallbackUrl={location.communityUrl} />
 
-            <section className="rounded-lg border border-slate-200 bg-white p-5">
-              <h2 className="text-xl font-bold text-slate-950">Location details</h2>
+            <section className="rounded-lg border border-stone-200 bg-white p-5">
+              <h2 className="h-display text-xl text-[#17202A]">Location details</h2>
               <div className="mt-4 grid grid-cols-1 gap-3 md:grid-cols-2">
                 <InfoBlock title="Line direction" value={`${location.direction} route`} />
                 <InfoBlock title="Corridor" value={location.corridor} />
@@ -105,10 +108,10 @@ export default function SpotDetailLayout({ location, counts, availability }: Spo
 
               {lines.length > 0 && (
                 <div className="mt-5">
-                  <h3 className="mb-3 text-sm font-bold uppercase tracking-wide text-slate-600">Known destinations</h3>
+                  <h3 className="mb-3 font-mono text-xs font-bold uppercase tracking-wide text-slate-600">Known destinations</h3>
                   <div className="flex flex-wrap gap-2">
                     {lines.map((line) => (
-                      <span key={line} className="rounded-full border border-slate-200 bg-slate-50 px-3 py-1 text-sm font-semibold text-slate-700">
+                      <span key={line} className="rounded-full border border-stone-200 bg-[#FAFAF8] px-3 py-1 text-sm font-semibold text-slate-700">
                         {line}
                       </span>
                     ))}
@@ -117,8 +120,8 @@ export default function SpotDetailLayout({ location, counts, availability }: Spo
               )}
 
               {location.notes && (
-                <div className="mt-5 rounded-lg border border-slate-200 bg-slate-50 p-4">
-                  <h3 className="mb-2 flex items-center gap-2 text-sm font-bold uppercase tracking-wide text-slate-600">
+                <div className="mt-5 rounded-lg border border-stone-200 bg-[#FAFAF8] p-4">
+                  <h3 className="mb-2 flex items-center gap-2 font-mono text-xs font-bold uppercase tracking-wide text-slate-600">
                     <MapPinned aria-hidden className="h-4 w-4" />
                     Notes
                   </h3>
@@ -146,7 +149,7 @@ export default function SpotDetailLayout({ location, counts, availability }: Spo
 
 function Badge({ children }: { children: ReactNode }) {
   return (
-    <span className="rounded-full border border-slate-200 bg-slate-50 px-3 py-1 text-xs font-bold uppercase tracking-wide text-slate-700">
+    <span className="rounded-full border border-stone-200 bg-[#FAFAF8] px-3 py-1 font-mono text-xs font-bold uppercase tracking-wide text-slate-700">
       {children}
     </span>
   )
@@ -154,9 +157,9 @@ function Badge({ children }: { children: ReactNode }) {
 
 function InfoBlock({ title, value }: { title: string; value: string }) {
   return (
-    <div className="rounded-lg border border-slate-200 bg-slate-50 p-4">
-      <div className="text-xs font-bold uppercase tracking-wide text-slate-600">{title}</div>
-      <div className="mt-1 font-semibold text-slate-900">{value}</div>
+    <div className="rounded-lg border border-stone-200 bg-[#FAFAF8] p-4">
+      <div className="font-mono text-xs font-bold uppercase tracking-wide text-slate-600">{title}</div>
+      <div className="mt-1 font-semibold text-[#17202A]">{value}</div>
     </div>
   )
 }

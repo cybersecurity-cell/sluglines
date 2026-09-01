@@ -9,8 +9,8 @@ interface SpotQuickFactsProps {
 
 export default function SpotQuickFacts({ location }: SpotQuickFactsProps) {
   return (
-    <section className="rounded-lg border border-slate-200 bg-white p-4">
-      <h2 className="mb-3 text-sm font-bold uppercase tracking-wide text-slate-600">Quick facts</h2>
+    <section className="rounded-lg border border-stone-200 bg-white p-4">
+      <h2 className="mb-3 font-mono text-xs font-bold uppercase tracking-[0.2em] text-[#2E7D46]">Quick facts</h2>
       <dl className="space-y-3 text-sm">
         <Fact icon={<MapPin aria-hidden className="h-4 w-4" />} label="Area" value={location.county} />
         <Fact icon={<Car aria-hidden className="h-4 w-4" />} label="Destination" value={location.destination} />
@@ -59,7 +59,7 @@ function FreshnessNote({ location }: { location: PublicLocation }) {
   if (state === 'verified') return null
 
   return (
-    <p className="mt-3 flex gap-2 border-t border-slate-200 pt-3 text-xs text-slate-600">
+    <p className="mt-3 flex gap-2 border-t border-stone-200 pt-3 text-xs text-slate-600">
       <Info aria-hidden className="mt-0.5 h-4 w-4 shrink-0" />
       <span>
         {FRESHNESS_COPY[state]}
@@ -79,11 +79,11 @@ function FreshnessNote({ location }: { location: PublicLocation }) {
 function Fact({ icon, label, value }: { icon: ReactNode; label: string; value: string }) {
   return (
     <div>
-      <dt className="flex items-center gap-2 text-xs font-bold uppercase tracking-wide text-slate-600">
-        <span className="text-sky-700">{icon}</span>
+      <dt className="flex items-center gap-2 font-mono text-xs font-bold uppercase tracking-wide text-slate-600">
+        <span className="text-[#2E7D46]">{icon}</span>
         {label}
       </dt>
-      <dd className="mt-0.5 pl-6 text-slate-800">{value}</dd>
+      <dd className="mt-0.5 pl-6 text-[#17202A]">{value}</dd>
     </div>
   )
 }

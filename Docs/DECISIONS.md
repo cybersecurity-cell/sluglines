@@ -3588,3 +3588,84 @@ properties redefined under `prefers-color-scheme`. That is a different change: i
 of every page including the authenticated ones, and it would have to answer what happens to the
 pages still pinned to `bg-white`. This slice is the public marketing surface, and the existing dark
 shell token set is untouched — all 11 of its contrast pairs still pass.
+
+---
+
+## D-63 — The §10 migration reaches the rest of the public surface, and takes three copy claims with it
+
+**Date:** 2026-09-01
+**Scope:** the remaining public pages — `/spots`, `/slug_pickup`, `/lostfound`, `/slugging-rules`
+(and its `/slugging-rules-and-etiquette` re-export), `/how-it-works`, `/spots/[slug]`, and the
+legacy archive frames behind `/about-us`, `/about-slugging`, `/app`, `/blog`, `/news` and the 43
+legacy spot URLs. Continues D-62, which did `/` and the chrome.
+
+### What moved
+
+Eleven more files onto §10's ground, ink and highway-green accent, plus the three component classes
+in `globals.css` (`.btn-primary`, `.btn-secondary`, `.section-label`). `tests/public-surface-tokens.test.mjs`
+now walks 20 files rather than 8, so the sky-* and slate-950 scans cover the whole public surface
+instead of the homepage.
+
+### `/how-it-works` was the last dark page, and that is why the shared classes could move
+
+Every other public page pins itself light with a wrapper. `/how-it-works` never did — it painted
+straight onto the dark `:root` shell — and it is the **only** consumer of those three classes.
+`.section-label` was `var(--accent)`, the dark shell's `#63b3ed`, which is 2.27:1 on the §10 ground;
+`.btn-secondary` was `text-sky-400`, 2.2:1 there. Both were legible only because the page was dark,
+so they could not be recoloured before the page moved or after it — only with it.
+
+That the class set has exactly one consumer is now an assertion rather than a thing someone checked
+once. The day a login screen reaches for `.btn-primary`, the gate says so, because the alternative
+is an authenticated surface silently inheriting a light-ground palette.
+
+This is still light-theme only. §10's `prefers-color-scheme` tokenisation and the public-footer dark
+toggle remain deferred for the reason D-62 gave: they touch every page shell including the
+authenticated ones.
+
+### `--driver` was still sky in three places
+
+§10's semantic pair is `--rider` amber and `--driver` blue. `SpotLiveCounts` and `/slugging-rules`
+were rendering the driver role in sky — the retired brand — which kept the palette alive under a new
+name, the same trap `CorridorStatusStrip` documented when it chose `blue-800`. `/slugging-rules` had
+additionally given riders emerald, which is §10's accent doing duty as a role. Both surfaces state
+the role in a label regardless, so nothing depended on colour (WCAG 1.4.1), and the gate now pins
+the labels alongside the tones.
+
+### Three claims the repo cannot support, all on `/how-it-works`
+
+**The peak windows, both halves.** "6 AM to 9 AM" and "4 PM to 7 PM" against canonical 05:30–09:30
+and 15:00–19:00 (§12) — the denominator every corridor count is bucketed into. D-62 fixed the hero
+for the morning window; this page was still disagreeing with the four components that print it, and
+was the only source anywhere for the afternoon numbers.
+
+**"...with an excellent safety record."** The 1975 start date is sourced — the legacy About Slugging
+page, first I-395 HOV lanes — and survives. The safety record is not measured anywhere in this repo.
+This is the page someone reads before getting into a stranger's car, which makes it the worst place
+to carry an unverifiable reassurance forward for tone. It now describes the arrangement, which is
+what `/slugging-rules` already says.
+
+**"check live wait times."** There are none. Live counts are `unavailable`, and switched on they are
+rider and driver counts — nothing here measures a wait. §10 forbids inventing a count; promising a
+measurement is the same claim one screen earlier.
+
+### The contrast gate found two of its own
+
+`#2E7D46` is 4.45:1 on its own `#EAF2ED` tint. That clears the 3:1 non-text bar for the icon plates
+and fails the 4.5:1 text bar — and the migration had put the community-group label and the archive
+card heading on that tint via `hover:`. Both moved to `#1F5C33` (6.99:1); `slate-500` on the same
+hover ground (4.17:1) moved to `slate-600`. A hover state that drops under AA is still a state, and
+this is the class of defect a pair table catches and a reviewer does not.
+
+42 pairs → 49, all passing.
+
+### Baseline N
+
+38 test files / 1,089 → 1,111 assertion call sites. No test was deleted or weakened.
+
+### Not done
+
+`FastBoard` was named in this slice's brief as a public component. It is not one — it renders only
+on `/dashboard`, an authenticated surface this slice is scoped out of. Migrating it would have left
+a §10 board under a sky-blue hero beside a sky-blue `CheckInStatusPanel`, and fixing that means
+editing `src/app/dashboard/page.tsx` and `CheckInStatusPanel`, both hard-stop out of scope. It keeps
+its sky palette and is recorded in `NOTES-FOR-ORCHESTRATOR.md` instead.

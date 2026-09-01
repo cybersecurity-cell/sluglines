@@ -19,13 +19,13 @@ export default function LegacyContentPage({ page }: LegacyContentPageProps) {
   const safeContentHtml = sanitizeLegacyHtml(page.contentHtml)
 
   return (
-    <div className="bg-white text-slate-950">
-      <section className="border-b border-slate-200 bg-slate-50">
+    <div className="bg-white text-[#17202A]">
+      <section className="border-b border-stone-200 bg-[#FAFAF8]">
         <div className="mx-auto max-w-6xl px-4 py-10">
-          <p className="mb-2 text-sm font-semibold uppercase tracking-wide text-sky-700">
+          <p className="mb-2 font-mono text-xs font-semibold uppercase tracking-[0.2em] text-[#2E7D46]">
             {page.kind === 'post' ? 'Sluglines News' : 'Sluglines'}
           </p>
-          <h1 className="max-w-4xl text-4xl font-bold tracking-tight text-slate-950 md:text-5xl">
+          <h1 className="h-display max-w-4xl text-4xl text-[#17202A] md:text-5xl">
             {page.title}
           </h1>
           {page.seo.description && (
@@ -39,7 +39,7 @@ export default function LegacyContentPage({ page }: LegacyContentPageProps) {
                 <Link
                   key={`${cta.text}-${cta.href}`}
                   href={cta.href}
-                  className="rounded-md border border-slate-300 bg-white px-4 py-2 text-sm font-bold text-slate-800 transition-colors hover:border-sky-600 hover:text-sky-800"
+                  className="inline-flex min-h-[44px] items-center rounded-md border border-stone-300 bg-white px-4 py-2 text-sm font-bold text-[#17202A] transition-colors hover:border-[#2E7D46] hover:text-[#2E7D46]"
                 >
                   {cta.text}
                 </Link>
@@ -51,7 +51,7 @@ export default function LegacyContentPage({ page }: LegacyContentPageProps) {
 
       <section className="mx-auto grid max-w-6xl grid-cols-1 gap-8 px-4 py-10 lg:grid-cols-[minmax(0,1fr)_18rem]">
         <article
-          className="legacy-content min-w-0 rounded-lg border border-slate-200 bg-white p-5 shadow-sm md:p-8"
+          className="legacy-content min-w-0 rounded-lg border border-stone-200 bg-white p-5 shadow-sm md:p-8"
           dangerouslySetInnerHTML={{ __html: safeContentHtml }}
         />
 
@@ -59,8 +59,8 @@ export default function LegacyContentPage({ page }: LegacyContentPageProps) {
           <CommunityLinksCard spotSlug={legacySpot?.slug} fallbackUrl={legacySpot?.fbUrl} />
 
           {page.headings.length > 0 && (
-            <nav className="rounded-lg border border-slate-200 bg-white p-4">
-              <h2 className="text-sm font-bold uppercase tracking-wide text-slate-500">On This Page</h2>
+            <nav className="rounded-lg border border-stone-200 bg-white p-4">
+              <h2 className="font-mono text-xs font-bold uppercase tracking-[0.2em] text-[#2E7D46]">On This Page</h2>
               <ul className="mt-3 space-y-2 text-sm text-slate-600">
                 {page.headings.slice(0, 12).map((heading, index) => (
                   <li key={`${heading.text}-${index}`} className={heading.level > 2 ? 'pl-3' : ''}>
