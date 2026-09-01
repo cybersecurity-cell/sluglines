@@ -1,51 +1,55 @@
 import Link from 'next/link'
-import { ArrowRight, CalendarDays } from 'lucide-react'
-import {
-  formatLegacyPostDate,
-  getLegacyPostHref,
-  getRecentLegacyPosts,
-  summarizeLegacyPost,
-} from '@/lib/legacy-posts'
+import { formatLegacyPostDate, getLegacyPostHref, getRecentLegacyPosts } from '@/lib/legacy-posts'
 
+/**
+ * The archive index: title and date, and deliberately no summary.
+ *
+ * `summarizeLegacyPost` takes the head of `bodyText`, and for every one of these
+ * migrated WordPress pages `bodyText` opens with the page's own H1, then the
+ * "Home" breadcrumb, then the H1 again. So the summary of the Rosslyn post is
+ * "New Slug Pickup Location at Rosslyn Starting Monday April 26, 2021 Home New
+ * Slug Pickup Location at Rosslyn Starting Monday April 26, 2021..." — the title
+ * printed twice, next to the title.
+ *
+ * The old card layout stacked it under the heading, where it read as clumsy. In
+ * a two-column row it reads as a bug, because it is one. The fix belongs in the
+ * legacy content pipeline (strip the breadcrumb chrome at scrape time, which is
+ * `src/lib/legacy-content.ts` and its own tests, not this slice); until then a
+ * row that shows a title once is better than a row that shows it three times.
+ */
 export default function RecentPostsSection() {
   const posts = getRecentLegacyPosts(3)
 
   return (
-    <section className="border-b border-slate-200 bg-white">
-      <div className="mx-auto max-w-6xl px-4 py-10">
-        <div className="mb-6 flex flex-col gap-3 md:flex-row md:items-end md:justify-between">
+    <section className="border-b border-stone-200 bg-[#FAFAF8]">
+      <div className="mx-auto max-w-6xl px-4 py-12">
+        <div className="mb-6 flex flex-col gap-2 md:flex-row md:items-end md:justify-between">
           <div>
-            <p className="mb-2 text-sm font-semibold uppercase tracking-wide text-sky-700">Latest archive updates</p>
-            <h2 className="text-3xl font-bold tracking-tight text-slate-950">Commuter news and notes</h2>
-            <p className="mt-2 max-w-2xl text-slate-600">
-              Browse migrated Sluglines posts in a cleaner format, including route changes, Metro work, and HOV updates.
+            <p className="mb-2 font-mono text-xs font-semibold uppercase tracking-[0.2em] text-slate-500">
+              Archive &middot; commuter notices
             </p>
+            <h2 className="h-display text-2xl text-[#17202A]">Route changes, Metro work, and HOV updates</h2>
           </div>
-          <Link href="/blog" className="text-sm font-bold text-sky-700 hover:text-sky-900">
-            View blog
+          <Link href="/blog" className="text-sm font-bold text-[#2E7D46] hover:text-[#1f5c33]">
+            View archive
           </Link>
         </div>
 
-        <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
+        <ul className="divide-y divide-stone-200 border-y border-stone-200 bg-white">
           {posts.map((post) => (
-            <Link
-              key={post.path}
-              href={getLegacyPostHref(post)}
-              className="group rounded-lg border border-slate-200 bg-slate-50 p-5 transition-colors hover:border-sky-300 hover:bg-sky-50"
-            >
-              <div className="mb-3 flex items-center gap-2 text-xs font-semibold uppercase tracking-wide text-slate-500">
-                <CalendarDays className="h-3.5 w-3.5" />
-                {formatLegacyPostDate(post)}
-              </div>
-              <h3 className="text-lg font-bold leading-snug text-slate-950 group-hover:text-sky-800">{post.title}</h3>
-              <p className="mt-3 text-sm leading-6 text-slate-600">{summarizeLegacyPost(post, 145)}</p>
-              <span className="mt-4 inline-flex items-center gap-1 text-sm font-bold text-sky-700">
-                Read more
-                <ArrowRight className="h-4 w-4" />
-              </span>
-            </Link>
+            <li key={post.path}>
+              <Link
+                href={getLegacyPostHref(post)}
+                className="group flex flex-col gap-1 px-5 py-4 transition-colors hover:bg-[#FAFAF8] sm:flex-row sm:items-center sm:justify-between sm:gap-6"
+              >
+                <span className="min-w-0 flex-1 text-sm font-semibold text-[#17202A] group-hover:text-[#2E7D46]">
+                  {post.title}
+                </span>
+                <span className="shrink-0 font-mono text-xs text-slate-500">{formatLegacyPostDate(post)}</span>
+              </Link>
+            </li>
           ))}
-        </div>
+        </ul>
       </div>
     </section>
   )

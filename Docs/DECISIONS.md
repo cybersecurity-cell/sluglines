@@ -3533,3 +3533,58 @@ function, not a table.
 Finally the live page, which is the check that would have caught a regression: production at
 `52d0e35` still serves the closure notice, the 685-space breakdown, both relocation instructions,
 the peak-hour window and the transit diagram. Nothing regressed.
+
+---
+
+## D-62 — The §10 palette migration is enforced by a source gate, not by review
+
+**Date:** 2026-09-01
+**Scope:** the public marketing surface only — `/`, its five components, the navbar and the footer.
+
+### What moved
+
+The public surface left the sky-blue brand chrome for §10's design system: near-white ground
+`#FAFAF8`, ink `#17202A`, highway-green accent `#2E7D46`, with §10's semantic role tones (`--rider`
+amber, `--driver` blue) on the corridor counts. Nothing about the data changed.
+
+### Why a test file rather than a careful reviewer
+
+A palette migration does not fail loudly. It fails by leaving one button in the retired colour, or
+by reaching for a grey that is 2.56:1 on white because it looks right on a bright monitor, or by
+computing "how many active lines" a second time in a second component and letting the two drift.
+None of that throws, and none of it shows up in a diff review of eight files at once.
+
+So `tests/public-surface-tokens.test.mjs` pins it: no `sky-*` or `slate-950` survives in a migrated
+file, `slate-400` is banned everywhere except the one card that inverts onto ink, tap targets are
+44px, and the §10 colours are present in `scripts/contrast-check.mjs`'s pair table — which is what
+makes the "AA in both themes" claim in §10 true of the new palette and not just the old one. The
+contrast table grew from 22 pairs to 42.
+
+The gate reads comment-stripped source, deliberately. A migration note that says "this used to be
+sky-700" is the opposite of a leftover, and a check that fails on the explanation trains people to
+delete the explanation.
+
+### Two honesty corrections, both §10
+
+The hero's preview panel claimed "Typical windows: 5:30–8:30 AM inbound, 3:30–6:30 PM outbound".
+The morning half contradicted the 5:30–9:30 that `CorridorStatusStrip`, `FastBoard` and
+`SpotLiveCounts` all print; the afternoon half had no source anywhere in the repo. Both were
+replaced by the one sourced window, and the test now requires the three components that state it to
+state the same thing.
+
+The same panel derived its corridor totals from `SPOT_LOCATIONS` while the strip six inches below
+derived them from `corridorStatus(snapshot)`. They agreed on today's directory by luck. `/` now
+computes the statuses once and hands the same array to both.
+
+### Baseline
+
+`N` rises to 38 files / 1,089 assertion call sites. It went up, so no reduction needs justifying
+here.
+
+### Not done in this slice, and why
+
+§10 also specifies a dark-theme toggle in the public footer and the whole palette as `:root` custom
+properties redefined under `prefers-color-scheme`. That is a different change: it touches the shell
+of every page including the authenticated ones, and it would have to answer what happens to the
+pages still pinned to `bg-white`. This slice is the public marketing surface, and the existing dark
+shell token set is untouched — all 11 of its contrast pairs still pass.

@@ -29,11 +29,14 @@ export const dynamic = 'force-dynamic'
 
 export default async function HomePage() {
   const snapshot = await getPublicSpotCounts()
+  // Computed once and handed to both: the hero panel and the strip print the
+  // same corridor totals, so they cannot drift apart.
+  const statuses = corridorStatus(snapshot)
 
   return (
-    <div className="bg-white text-slate-950">
-      <SiteHero />
-      <CorridorStatusStrip statuses={corridorStatus(snapshot)} availability={snapshot.availability} />
+    <div className="bg-white text-[#17202A]">
+      <SiteHero statuses={statuses} availability={snapshot.availability} />
+      <CorridorStatusStrip statuses={statuses} availability={snapshot.availability} />
       <SpotDirectorySection
         spots={getActiveSpotLocations()}
         title="Popular slug pickup and return locations"

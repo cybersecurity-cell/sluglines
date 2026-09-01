@@ -53,7 +53,6 @@ export default function RootLayout({
             <div className="grid grid-cols-1 md:grid-cols-4 gap-10">
               <div className="md:col-span-1">
                 <div className="flex items-center gap-2 mb-4">
-                  <div className="w-8 h-8 rounded-lg bg-sky-500 flex items-center justify-center text-white font-bold text-sm" style={{ fontFamily: 'var(--font-syne), sans-serif' }}>S</div>
                   <span className="font-bold text-lg text-white" style={{ fontFamily: 'var(--font-syne), sans-serif' }}>Sluglines</span>
                 </div>
                 <p className="text-sm leading-relaxed mb-4" style={{ color: 'var(--muted)' }}>Connecting drivers and riders for better commute</p>
@@ -79,15 +78,27 @@ export default function RootLayout({
               </div>
               <div>
                 <h2 className="text-white font-semibold text-sm mb-4" style={{ fontFamily: 'var(--font-syne), sans-serif' }}>Search</h2>
+                {/*
+                  The search control carries the §10 accent (`#2E7D46`, white on
+                  it is 5.07:1) rather than the retired sky brand, and both
+                  controls are 44px tall — this footer is the one place a
+                  signed-out commuter types on a phone. The field's border and
+                  ground come from the dark-shell tokens the footer already sits
+                  on, so it stays one surface rather than a slate patch on it.
+                */}
                 <form action="/" className="mb-6 flex gap-2">
                   <label className="sr-only" htmlFor="footer-search">Search for:</label>
                   <input
                     id="footer-search"
                     name="s"
                     type="search"
-                    className="min-w-0 flex-1 rounded-md border border-slate-700 bg-slate-950 px-3 py-2 text-sm text-white"
+                    className="min-h-[44px] min-w-0 flex-1 rounded-md border px-3 py-2 text-sm text-white"
+                    style={{ borderColor: 'var(--border)', background: 'var(--bg)' }}
                   />
-                  <button className="rounded-md bg-sky-700 px-3 py-2 text-sm font-bold text-white" type="submit">
+                  <button
+                    className="min-h-[44px] rounded-md bg-[#2E7D46] px-4 py-2 text-sm font-bold text-white transition-colors hover:bg-[#245F37]"
+                    type="submit"
+                  >
                     Search
                   </button>
                 </form>
