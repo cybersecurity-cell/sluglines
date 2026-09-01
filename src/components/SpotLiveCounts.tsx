@@ -40,13 +40,13 @@ export default function SpotLiveCounts({
   return (
     <section
       aria-labelledby="spot-live-heading"
-      className="rounded-lg border border-slate-200 bg-white p-5"
+      className="rounded-lg border border-stone-200 bg-white p-5"
     >
       <div className="flex flex-wrap items-baseline justify-between gap-2">
-        <h2 id="spot-live-heading" className="text-lg font-bold text-slate-950">
+        <h2 id="spot-live-heading" className="h-display text-lg text-[#17202A]">
           Right now
         </h2>
-        <span className="rounded-full border border-slate-200 bg-slate-50 px-2.5 py-0.5 text-xs font-bold uppercase tracking-wide text-slate-700">
+        <span className="rounded-full border border-stone-200 bg-[#FAFAF8] px-2.5 py-0.5 font-mono text-xs font-bold uppercase tracking-wide text-slate-700">
           {isLive ? 'Live counts' : 'Counts pending'}
         </span>
       </div>
@@ -75,7 +75,7 @@ export default function SpotLiveCounts({
           )}
         </>
       ) : (
-        <p className="mt-4 rounded-lg border border-slate-200 bg-slate-50 p-3 text-sm leading-relaxed text-slate-700">
+        <p className="mt-4 rounded-lg border border-stone-200 bg-[#FAFAF8] p-3 text-sm leading-relaxed text-slate-700">
           {isActive
             ? `${spotName} is a running line, but live rider and driver counts are not switched on yet. Everything below is the directory record for this spot.`
             : `No line is believed to be running at ${spotName} today. The directory record below is kept so the spot, and the reason it is listed, stay findable.`}
@@ -88,7 +88,7 @@ export default function SpotLiveCounts({
 
       <Link
         href="/how-it-works"
-        className="mt-3 inline-block text-sm font-bold text-sky-700 underline-offset-2 hover:text-sky-900 hover:underline"
+        className="mt-3 inline-flex min-h-[44px] items-center text-sm font-bold text-[#2E7D46] underline-offset-2 hover:text-[#1F5C33] hover:underline"
       >
         New to slugging? Read the etiquette first
       </Link>
@@ -107,18 +107,22 @@ function CountPanel({
   icon: ReactNode
   tone: 'rider' | 'driver'
 }) {
+  // §10's semantic pair: `--rider` amber, `--driver` blue. The driver panel was
+  // sky — the retired brand chrome — which made the one role tone on this card
+  // indistinguishable from the old accent. Colour carries nothing on its own:
+  // the label inside each panel names the count (WCAG 1.4.1).
   const toneClass =
     tone === 'rider'
       ? 'border-amber-200 bg-amber-50 text-amber-900'
-      : 'border-sky-200 bg-sky-50 text-sky-900'
+      : 'border-blue-200 bg-blue-50 text-blue-900'
 
   return (
     <div className={`rounded-lg border p-4 text-center ${toneClass}`}>
-      <dt className="flex items-center justify-center gap-1.5 text-xs font-bold uppercase tracking-wide">
+      <dt className="flex items-center justify-center gap-1.5 font-mono text-xs font-bold uppercase tracking-wide">
         {icon}
         <span>{label}</span>
       </dt>
-      <dd className="mt-1 text-4xl font-extrabold leading-none">{value}</dd>
+      <dd className="mt-1 font-mono text-4xl font-extrabold leading-none">{value}</dd>
     </div>
   )
 }
