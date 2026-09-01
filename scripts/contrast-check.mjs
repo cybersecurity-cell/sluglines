@@ -109,6 +109,14 @@ const ui = {
   'blue-800': '#1e40af',
   'slate-300': '#cbd5e1',
   'slate-400': '#94a3b8',
+  // The role-tone PANELS, as opposed to the role-tone text on white that the
+  // corridor strip renders. SpotLiveCounts and /slugging-rules tint a card in
+  // the role colour and put the label inside it, so the pair that has to hold is
+  // the -800/-900 ink on its own -50 ground, not on white.
+  'amber-50': '#fffbeb',
+  'amber-900': '#78350f',
+  'blue-50': '#eff6ff',
+  'blue-900': '#1e3a8a',
 }
 
 // -----------------------------------------------------------------------------
@@ -174,6 +182,32 @@ export const PAIRS = [
   // text label, so this checks legibility, not meaning.
   { theme: 'light', fg: ['amber-800 (--rider)', ui['amber-800']], bg: ['white', tw.white] },
   { theme: 'light', fg: ['blue-800 (--driver)', ui['blue-800']], bg: ['white', tw.white] },
+  // The accent tint is a ground in its own right once the migration reaches the
+  // rest of the public surface: it is the icon plate on /slugging-rules and
+  // /how-it-works, and the hover ground on the community-group and archive
+  // cards. Everything those cards print on hover is checked against it, because
+  // a hover state that drops under AA is still a state.
+  { theme: 'light', fg: ['ink', ui.ink], bg: ['accent-tint', ui['accent-tint']] },
+  { theme: 'light', fg: ['slate-600', tw['slate-600']], bg: ['accent-tint', ui['accent-tint']] },
+  // #2E7D46 is 4.45:1 on its own tint, which is the 3:1 non-text bar and NOT the
+  // 4.5:1 text bar. So it is allowed on the icon plates and nowhere else: this
+  // gate failed on first run for the "Facebook group" label and the archive card
+  // heading, both of which land on the tint on hover, and both now use the
+  // darker #1F5C33 (6.99:1). A hover state that drops under AA is still a state.
+  {
+    theme: 'light',
+    fg: ['accent', ui.accent],
+    bg: ['accent-tint', ui['accent-tint']],
+    large: true,
+    why: 'icon plates only — WCAG 1.4.11 non-text contrast; text on this ground uses accent-link-hover',
+  },
+  // §10's role tones as tinted panels. SpotLiveCounts uses the -900 ink, the
+  // /slugging-rules icon plates use -800. The driver side of both was sky before
+  // this migration, which is why they are pinned now and were not before.
+  { theme: 'light', fg: ['amber-900 (--rider panel)', ui['amber-900']], bg: ['amber-50', ui['amber-50']] },
+  { theme: 'light', fg: ['blue-900 (--driver panel)', ui['blue-900']], bg: ['blue-50', ui['blue-50']] },
+  { theme: 'light', fg: ['amber-800 (--rider plate)', ui['amber-800']], bg: ['amber-50', ui['amber-50']] },
+  { theme: 'light', fg: ['blue-800 (--driver plate)', ui['blue-800']], bg: ['blue-50', ui['blue-50']] },
   // The InfoModuleGrid featured card inverts to ink. slate-400 is legible here
   // (6.42:1) and only here — which is why it is pinned against ink and nothing
   // else in this table.

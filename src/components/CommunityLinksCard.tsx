@@ -43,7 +43,9 @@ export default function CommunityLinksCard({ spotSlug, fallbackUrl }: CommunityL
             className="block rounded-lg border border-stone-200 bg-[#FAFAF8] p-4 transition-colors hover:border-[#2E7D46] hover:bg-[#EAF2ED]"
           >
             <div className="text-sm font-bold text-[#17202A]">{channel.name}</div>
-            <div className="mt-1 font-mono text-xs font-semibold uppercase tracking-wide text-[#2E7D46]">Facebook group</div>
+            {/* The darker accent, not #2E7D46: this label sits on the accent
+                tint once the card is hovered, where #2E7D46 is 4.45:1. */}
+            <div className="mt-1 font-mono text-xs font-semibold uppercase tracking-wide text-[#1F5C33]">Facebook group</div>
           </a>
         ))}
       </div>

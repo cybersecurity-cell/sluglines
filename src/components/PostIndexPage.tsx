@@ -65,11 +65,14 @@ export default function PostIndexPage({ title, eyebrow, description, topic }: Po
               href={getLegacyPostHref(post)}
               className="group rounded-lg border border-stone-200 bg-white p-5 shadow-sm transition-colors hover:border-[#2E7D46] hover:bg-[#EAF2ED]"
             >
-              <div className="mb-3 flex items-center gap-2 font-mono text-xs font-semibold uppercase tracking-wide text-slate-500">
+              {/* slate-600 and #1F5C33 rather than slate-500 and #2E7D46: both
+                  land on the accent tint when this card is hovered, where the
+                  lighter pair drops to 4.17:1 and 4.45:1. */}
+              <div className="mb-3 flex items-center gap-2 font-mono text-xs font-semibold uppercase tracking-wide text-slate-600">
                 <CalendarDays className="h-3.5 w-3.5" />
                 {formatLegacyPostDate(post)}
               </div>
-              <h2 className="h-display text-lg leading-snug text-[#17202A] group-hover:text-[#2E7D46]">{post.title}</h2>
+              <h2 className="h-display text-lg leading-snug text-[#17202A] group-hover:text-[#1F5C33]">{post.title}</h2>
               <p className="mt-3 text-sm leading-6 text-slate-600">{summarizeLegacyPost(post)}</p>
               <span className="mt-4 inline-flex items-center gap-1 text-sm font-bold text-[#2E7D46]">
                 Read more
