@@ -3669,3 +3669,65 @@ on `/dashboard`, an authenticated surface this slice is scoped out of. Migrating
 a §10 board under a sky-blue hero beside a sky-blue `CheckInStatusPanel`, and fixing that means
 editing `src/app/dashboard/page.tsx` and `CheckInStatusPanel`, both hard-stop out of scope. It keeps
 its sky palette and is recorded in `NOTES-FOR-ORCHESTRATOR.md` instead.
+
+---
+
+## D-64 — Lighthouse script-size budget raised for the Next 16 / React 19 runtime cost
+
+**Date:** 2026-09-02
+**Scope:** `lighthouserc.json`'s `resource-summary:script:size` assertion only. Issue #67, PR #89.
+
+### What broke and why it is not a code regression
+
+`52a651e` ("chore: migrate framework stack to Next 16") bumped `next` 14.2.35 → 16.3.4, `react`/
+`react-dom` 18.3 → 19.2.8, and `tailwindcss` 3 → 4, and pushed `/` and `/spots/Horner-Rd` over the
+150 KiB (153600-byte) script-transfer budget the #20 Lighthouse job asserts.
+
+Before raising the budget, the commit and the built output were checked for an accidental
+regression rather than assumed innocent:
+
+- **The upgrade diff (`git show 52a651e --stat`) touches no component boundaries.** Every source
+  change is an API adaptation to Next 16 / React 19 (async `params`/`cookies`, etc.); nothing adds a
+  new `"use client"` directive or a new dependency.
+- **`lucide-react` imports are already per-icon**, not a barrel import — every one of the 17
+  call sites across `src/` imports named icons directly (`import { MapPin } from 'lucide-react'`),
+  which is already tree-shakeable.
+- **The largest shipped chunks carry no `lucide` or `date-fns` markers.** Grepping the three biggest
+  `.next/static/chunks/*.js` files (228 KB, 160 KB, 57 KB pre-compression — these are the
+  React/React-DOM and Next runtime chunks) for `lucide` and `date-fns` found nothing; the one
+  `lucide` hit anywhere in the shipped chunks is a single match in a 27 KB chunk, not a wholesale
+  import.
+
+There was no clean, low-risk reduction available. The overage is the React 19 + Next 16 runtime
+baseline itself, not something this slice introduced carelessly.
+
+### Measured, not assumed
+
+Built with `npm run build` (`next build`, Turbopack), served with `npm run start`, and measured with
+the same instrument `lighthouserc.json` specifies — Lighthouse mobile, regular-4G throttling
+(170 ms RTT / 9000 Kbps / 4x CPU) — via `npx lighthouse` directly, reading the `resource-summary`
+audit's `script` entry:
+
+| URL | Script transfer size (measured) |
+|---|---|
+| `/` | **167,080 bytes** (163.2 KiB) — 8 requests |
+| `/spots/Horner-Rd` | **167,080 bytes** (163.2 KiB) — 8 requests, identical shared chunk set |
+
+Both pages ship the same 8 chunks (React/React-DOM, the Next runtime, and shared layout
+components); there is no page-specific script weight worth splitting differently between them.
+
+### The new budget
+
+| | Bytes | KiB |
+|---|---|---|
+| Old budget | 153,600 | 150 |
+| Measured (both URLs) | 167,080 | 163.2 |
+| **New budget** | **180,224** | **176** |
+
+176 KiB is the smallest round-KiB number that clears the measured 163.2 KiB with a real margin
+(~12.9 KiB / ~7.3%) rather than passing by a handful of bytes — enough headroom to absorb normal
+per-run/per-page chunk-splitting variance without inviting the next few kilobytes of drift to slip
+through unnoticed. Set in `lighthouserc.json`'s `resource-summary:script:size` assertion.
+
+**Status:** DONE. The other three budgets in the same assertion block (LCP, FCP, TBT) were not
+touched — they were not the failing gate and were not re-measured here.
