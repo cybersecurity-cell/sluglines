@@ -368,11 +368,16 @@ assert.match(sql, /not valid/, 'existing preview rows carry synthetic location i
 assert.match(sql, /validate constraint offers_origin_location_id_fkey/, 'the follow-up is written down')
 
 // -----------------------------------------------------------------------------
-// rev. 5.3 §11 P1 boundary measurement: zero imports of lib/ai, repo-wide
+// rev. 5.3 §11 P1 boundary measurement: lib/ai imports stay inside its
+// allowlist, repo-wide
 //
-// tests/domain-boundaries.test.mjs asserts the lib/domain half. This is the
+// tests/domain-boundaries.test.mjs asserts the lib/domain half. This was the
 // other half of the same gate, stated over all of src/: "grep: 0 lib/ai imports
-// outside M8". M8 does not exist, so the permitted count is zero everywhere.
+// outside M8" — before Docs/DECISIONS.md D-65 lib/ai did not exist and M8
+// (the one place it may be imported from) did not either, so the permitted
+// count was zero everywhere. D-65 gave lib/ai its M8 — app/api/agent/** — so
+// the gate now checks the same allowlist eslint.config.mjs's `no-restricted-imports`
+// rule enforces, instead of a blanket zero.
 // -----------------------------------------------------------------------------
 function collectSources(dir) {
   return fs.readdirSync(dir, { withFileTypes: true }).flatMap((entry) => {
@@ -384,16 +389,24 @@ function collectSources(dir) {
 
 const AI_IMPORT = /(?:from|import\()\s*['"](?:@\/lib\/ai|(?:\.{1,2}\/)+(?:lib\/)?ai)(?:\/[^'"]*)?['"]/
 
+const AI_IMPORT_ALLOWED = (relFile) =>
+  relFile === 'src/lib/ai' || relFile.startsWith('src/lib/ai/') || relFile.startsWith('src/app/api/agent/')
+
 const aiImporters = collectSources(path.join(root, 'src'))
   .concat(collectSources(path.join(root, 'scripts')))
   .concat(collectSources(path.join(root, 'tests')))
   .filter((file) => AI_IMPORT.test(fs.readFileSync(file, 'utf8')))
   .map((file) => path.relative(root, file).replace(/\\/g, '/'))
+  .filter((relFile) => !AI_IMPORT_ALLOWED(relFile))
 
-assert.deepEqual(aiImporters, [], `lib/ai is imported by: ${aiImporters.join(', ')}`)
-assert.equal(fs.existsSync(path.join(root, 'src/lib/ai')), false, 'lib/ai does not exist yet (D-10)')
+assert.deepEqual(
+  aiImporters,
+  [],
+  `lib/ai is imported outside its D-10 allowlist (app/**/api/agent/**, lib/ai/** itself) by: ${aiImporters.join(', ')}`
+)
+assert.equal(fs.existsSync(path.join(root, 'src/lib/ai')), true, 'lib/ai must exist once D-65 lands')
 
 console.log(
   `spot directory: ${SPOT_LOCATION_COUNT} spots seeded (${spotPages.length} legacy inventory + ` +
-    `${directoryOnly.length} added), ${activeSpotLocations().length} active, 0 lib/ai imports`
+    `${directoryOnly.length} added), ${activeSpotLocations().length} active, lib/ai imports scoped to its allowlist`
 )
