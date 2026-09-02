@@ -40,19 +40,27 @@
 --   * two columns are new: agent_traces.capacity_denied and .cost_capped, and
 --     one more: agent_traces.estimated_cost_usd -- all three for issue #56.
 --
--- SCOPE (Docs/DECISIONS.md D-65, "Option A") -- WHICH TOOLS THIS SEEDS A SWITCH FOR
+-- SCOPE (Docs/DECISIONS.md D-65, "Option A"; amended by D-68, "Option B slice 1")
 -- -----------------------------------------------------------------------------
--- src/lib/ai/tools.ts ships eight tool definitions. Three of them --
--- incidents.get_active, lostfound.search, transit.explain_alternatives -- read
--- tables (incidents, lostfound_items, stops) that do not exist anywhere in this
--- repo's migrations, so tools.ts marks them `implemented: false` and the gate
--- denies them on that ground before a kill-switch lookup is ever reached. This
--- file therefore seeds a switch for exactly the five tools that are both
+-- src/lib/ai/tools.ts ships eight tool definitions. Two of them --
+-- lostfound.search, transit.explain_alternatives -- read tables
+-- (lostfound_items, stops) that do not exist anywhere in this repo's
+-- migrations, so tools.ts marks them `implemented: false` and the gate denies
+-- them on that ground before a kill-switch lookup is ever reached. A third,
+-- incidents.get_active, was in that same set at D-65 but is not anymore: D-68
+-- (issue #90) ships the `incidents` schema (0014/0015) and flips it live. This
+-- file therefore seeds a switch for exactly the six tools that are both
 -- `implemented: true` and tier R0/R1 -- i.e. every tool CALLABLE_TOOLS in
 -- tools.ts actually advertises to the model -- plus `global`. Seeding a switch
 -- for a tool the gate can never reach for a different reason first would be a
--- row nothing reads; tests/ai-kill-switch-seed.test.mjs asserts the seed and
--- the catalog agree on this set exactly, in both directions.
+-- row nothing reads; tests/ai-agent-runtime.test.mjs asserts the seed and the
+-- catalog agree on this set exactly, in both directions.
+--
+-- This file is still `APPLIED: no` (see the header above) -- it has not reached
+-- any database -- so adding this row here, rather than as a fresh INSERT in
+-- 0014/0015, is not the supabase/migrations/README.md "never edit an applied
+-- migration" case. That rule protects a file that is a record of what a real
+-- database ran; this one is not that yet.
 --
 -- THE #3 FIX
 -- -----------------------------------------------------------------------------
@@ -379,11 +387,11 @@ grant execute on function public.ai_global_turn_count_today() to authenticated;
 
 
 -- =============================================================================
--- SEED -- 'global' plus exactly the five tools tools.ts marks `implemented: true`
+-- SEED -- 'global' plus exactly the six tools tools.ts marks `implemented: true`
 -- at tier R0/R1 (CALLABLE_TOOLS). See the file header, "THE #3 FIX", for why
 -- every key is `'skills.' || <exact tool name>` and nothing else.
 --
--- tests/ai-kill-switch-seed.test.mjs parses this VALUES list and requires it to
+-- tests/ai-agent-runtime.test.mjs parses this VALUES list and requires it to
 -- equal `['global', ...CALLABLE_TOOLS.map(t => 'skills.' + t.name)]` exactly, in
 -- both directions -- a seeded key with no matching tool is caught, and a
 -- callable tool with no seeded key is caught.
@@ -394,5 +402,6 @@ insert into public.ai_kill_switches (key, enabled) values
   ('skills.ride.list_offers', true),
   ('skills.ride.get_offer', true),
   ('skills.ride.explain_match', true),
+  ('skills.incidents.get_active', true),
   ('skills.community.draft_response', true)
 on conflict (key) do nothing;
