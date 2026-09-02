@@ -63,6 +63,25 @@ export const CONTENT_MIGRATION_PATH = 'supabase/migrations/0009_spot_content_ref
  */
 const CONTENT_COLUMNS = ['description', 'peak_hours', 'parking', 'lines_from', 'lines_to']
 
+/**
+ * The two sections D-59 found on the legacy pages and could not carry, because
+ * `locations` had no column for either (issue #77): `public_transportation`
+ * (bus routes, rail lines, shuttles -- free text, same shape as `lines_from`/
+ * `lines_to`, because the source never cleanly separates a route from an
+ * operator) and `external_links` (the legacy page's own outbound links, each
+ * an absolute `http(s)` URL -- see `isSafeExternalLinkUrl` in
+ * `lib/domain/locations.ts`).
+ *
+ * Unlike `CONTENT_COLUMNS`, these do not exist on the table yet, so the
+ * migration that seeds them also has to add them -- DDL and DML in the same
+ * ordinal, the way 0004 originally did, rather than an UPDATE-only file like
+ * 0009 assuming the column is already there.
+ */
+const TRANSIT_EXTERNAL_COLUMNS = ['public_transportation', 'external_links']
+
+/** The transit/external-links backfill: issue #77, Docs/DECISIONS.md D-59/D-67. */
+export const TRANSIT_EXTERNAL_MIGRATION_PATH = 'supabase/migrations/0013_location_transit_external.sql'
+
 // Column list, in the order the table declares it. Used for the INSERT, the
 // VALUES rows, the DO UPDATE SET clause and the change-detection tuple, so those
 // four can never fall out of step with each other.
@@ -103,6 +122,17 @@ const textArray = (value) =>
   value === undefined || value === null || value.length === 0
     ? 'null::text[]'
     : `array[${value.map(quote).join(', ')}]::text[]`
+
+/**
+ * `external_links` as a jsonb literal. `quote()` doubles embedded single
+ * quotes, which is what keeps a label containing an apostrophe from closing
+ * the SQL string early -- the same escaping every other text literal here
+ * gets, just applied to the whole JSON blob rather than one string.
+ */
+const jsonbArray = (value) =>
+  value === undefined || value === null || value.length === 0
+    ? 'null::jsonb'
+    : `${quote(JSON.stringify(value.map((link) => ({ label: link.label, url: link.url }))))}::jsonb`
 
 /**
  * One VALUES row. Every literal is cast explicitly, including the nulls: in a
@@ -480,6 +510,119 @@ where l.slug = seed.slug;
 `
 }
 
+/**
+ * 0013 -- the two legacy sections D-59 dropped for lack of a column: "Public
+ * Transportation" and "External links" (issue #77).
+ *
+ * DDL and DML together, unlike 0009: `public_transportation` and
+ * `external_links` do not exist on `locations` yet, so this migration adds
+ * them before it can set them. That makes it closer in shape to 0004 than to
+ * 0009 -- but it is its own ordinal rather than a reopened 0004, for the same
+ * reason 0009 is: 0004 is `APPLIED: production` and the README forbids editing
+ * an applied migration, full stop.
+ *
+ * `SEED_COLUMNS`/`MIGRATION_PATH`/`SNAPSHOT_PATH` (0004's frozen mechanism) are
+ * deliberately untouched by this feature. Folding these two columns into that
+ * projection would change what `renderLocationsMigration(snapshot)` emits and
+ * break the byte-for-byte guard on a file this session has no authority to
+ * rewrite. `TRANSIT_EXTERNAL_COLUMNS` is a parallel, independent column set for
+ * exactly that reason.
+ *
+ * No table, policy or function is created, so sql-lint's R3-R11 have nothing to
+ * say about it -- `locations`'s existing RLS, revokes and `select`-to-
+ * `authenticated` grant from 0004 already cover any column added to the table,
+ * without a further grant. What it does NOT do: extend `get_public_location`
+ * (0010) to return these two columns to anonymous visitors. That function is
+ * also `APPLIED: production`; widening its anonymous surface is a deliberate,
+ * separately-reviewed act of its own, preserving the exact signature the
+ * README's correction rule requires. Until it ships, `publicLocationFromRow` in
+ * `lib/domain/public-location.ts` cannot see these fields even after this
+ * migration runs -- only `publicLocationFromDirectory` can. Tracked as
+ * TODO(#77), not silently assumed.
+ */
+export function renderTransitExternalMigration(locations = SPOT_LOCATIONS) {
+  const rows = locations
+    .map((l) => `      (${text(l.slug)}, ${textArray(l.publicTransportation)}, ${jsonbArray(l.externalLinks)})`)
+    .join(',\n')
+
+  const setClause = TRANSIT_EXTERNAL_COLUMNS.map((c) => `  ${c} = seed.${c}`).join(',\n')
+
+  return `-- =============================================================================
+-- ${path.basename(TRANSIT_EXTERNAL_MIGRATION_PATH)}
+--
+-- APPLIED: no
+--
+-- GENERATED FILE -- DO NOT EDIT BY HAND.
+--   Source:    src/lib/domain/locations.ts
+--   Generator: scripts/seed-locations.mjs   (\`npm run seed:locations\`)
+--   Guard:     tests/spot-locations-directory.test.mjs re-runs the generator and
+--              compares the result with this file byte-for-byte.
+--
+-- Two legacy sections D-59 found and could not carry, for lack of a column:
+-- "Public Transportation" (40 of the 42 legacy spot pages) and "External
+-- links" (35). Docs/DECISIONS.md D-59 named this owed content; this migration
+-- pays it. Issue #77.
+--
+-- COLUMN SHAPES, AND WHY
+-- -----------------------------------------------------------------------------
+-- public_transportation text[] -- one entry per bus route, rail line or
+-- shuttle, as free text. The legacy pages describe these in prose or short
+-- list items and never cleanly separate a route from its operator (some name
+-- a route number with no operator, some an operator with no route number), so
+-- a {route, operator} column pair would mean guessing a structure the source
+-- does not have. This is the same shape lines_from/lines_to already use for
+-- the same reason.
+--
+-- external_links jsonb -- an array of {label, url} objects: the legacy page's
+-- own "External links" section, which is link text plus a destination and
+-- nothing else structured. jsonb rather than a second pair of arrays because
+-- label and url are not independently meaningful -- an external_link_labels[]
+-- and a parallel external_link_urls[] would rely on index alignment to mean
+-- anything, which is a foot-gun jsonb does not have. Every url is an absolute
+-- http(s) URL (lib/domain/locations.ts's isSafeExternalLinkUrl); these render
+-- as outbound links on a spot page, so a javascript:, data:, or relative-path
+-- entry is refused at the application boundary rather than trusted through.
+--
+-- WHAT THIS MIGRATION DOES NOT DO
+-- -----------------------------------------------------------------------------
+-- It does not extend get_public_location (0010) to return either column to
+-- anonymous visitors. That is a second, separately-reviewed act -- see the
+-- generator's own comment on this function. Until it ships, these two fields
+-- render only where the committed directory answers (an inactive spot, or any
+-- environment without 0010 applied), not for an active spot's database-backed
+-- page in production.
+--
+-- SECURITY POSTURE
+-- -----------------------------------------------------------------------------
+-- No table, policy or function is created here. locations already has RLS on,
+-- is revoked from anon, and grants SELECT to authenticated only (0004); a
+-- column added to an already-governed table inherits that posture without a
+-- further grant. sql-lint's R3-R11 have nothing to say about this file, the
+-- same reason 0009 states for itself.
+-- =============================================================================
+
+alter table public.locations
+  add column if not exists public_transportation text[],
+  add column if not exists external_links jsonb;
+
+comment on column public.locations.public_transportation is
+  'Bus routes, rail lines and shuttles serving the spot, as free text -- see lib/domain/locations.ts. '
+  'Null where the legacy page published no such section. Issue #77, Docs/DECISIONS.md D-59.';
+
+comment on column public.locations.external_links is
+  'Array of {label, url} objects from the legacy page''s own "External links" section. Every url is '
+  'an absolute http(s) URL; see isSafeExternalLinkUrl. Issue #77, Docs/DECISIONS.md D-59.';
+
+update public.locations as l set
+${setClause}
+from (
+  values
+${rows}
+) as seed(slug, public_transportation, external_links)
+where l.slug = seed.slug;
+`
+}
+
 function main(argv) {
   const mode = argv.includes('--write') ? 'write' : 'check'
   const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..')
@@ -487,14 +630,18 @@ function main(argv) {
   const snapshotFile = path.join(root, SNAPSHOT_PATH)
   const seedFile = path.join(root, MIGRATION_PATH)
   const contentFile = path.join(root, CONTENT_MIGRATION_PATH)
+  const transitExternalFile = path.join(root, TRANSIT_EXTERNAL_MIGRATION_PATH)
 
-  // 0009 is the only generated file that moves. 0004 is applied to production and
-  // is checked against its frozen inputs, never rewritten -- see SNAPSHOT_PATH.
+  // 0009 and 0013 are the generated files that move. 0004 is applied to
+  // production and is checked against its frozen inputs, never rewritten --
+  // see SNAPSHOT_PATH.
   if (mode === 'write') {
     fs.mkdirSync(path.dirname(contentFile), { recursive: true })
     fs.writeFileSync(contentFile, renderContentRefresh())
+    fs.writeFileSync(transitExternalFile, renderTransitExternalMigration())
     console.log(
-      `seed-locations: wrote ${CONTENT_MIGRATION_PATH} (${SPOT_LOCATIONS.length} spots)`
+      `seed-locations: wrote ${CONTENT_MIGRATION_PATH} and ${TRANSIT_EXTERNAL_MIGRATION_PATH} ` +
+        `(${SPOT_LOCATIONS.length} spots)`
     )
     return 0
   }
@@ -503,6 +650,7 @@ function main(argv) {
     [SNAPSHOT_PATH, snapshotFile],
     [MIGRATION_PATH, seedFile],
     [CONTENT_MIGRATION_PATH, contentFile],
+    [TRANSIT_EXTERNAL_MIGRATION_PATH, transitExternalFile],
   ]) {
     if (!fs.existsSync(file)) {
       console.error(`seed-locations: ${label} does not exist`)
@@ -533,9 +681,21 @@ function main(argv) {
     return 1
   }
 
+  if (fs.readFileSync(transitExternalFile, 'utf8') !== renderTransitExternalMigration()) {
+    console.error(
+      [
+        `seed-locations: ${TRANSIT_EXTERNAL_MIGRATION_PATH} is stale.`,
+        '  src/lib/domain/locations.ts has changed since it was generated.',
+        '  Re-run `npm run seed:locations -- --write` and review the diff.',
+      ].join('\n')
+    )
+    return 1
+  }
+
   console.log(
     `seed-locations: ${MIGRATION_PATH} matches its frozen snapshot; ` +
-      `${CONTENT_MIGRATION_PATH} is up to date (${SPOT_LOCATIONS.length} spots)`
+      `${CONTENT_MIGRATION_PATH} and ${TRANSIT_EXTERNAL_MIGRATION_PATH} are up to date ` +
+      `(${SPOT_LOCATIONS.length} spots)`
   )
   return 0
 }

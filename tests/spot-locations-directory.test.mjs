@@ -25,6 +25,7 @@ import {
   groupSpotLocations,
   hasSpotLocation,
   inactiveSpotLocations,
+  isSafeExternalLinkUrl,
   nearestSpotLocations,
   spotLocationDistance,
 } from '../src/lib/domain/locations.ts'
@@ -32,9 +33,11 @@ import { SPOT_DIRECTORY, findSpotBySlug, getSpotDetailHref } from '../src/lib/sp
 import {
   renderLocationsMigration,
   renderContentRefresh,
+  renderTransitExternalMigration,
   MIGRATION_PATH,
   SNAPSHOT_PATH,
   CONTENT_MIGRATION_PATH,
+  TRANSIT_EXTERNAL_MIGRATION_PATH,
 } from '../scripts/seed-locations.mjs'
 
 const root = process.cwd()
@@ -148,6 +151,49 @@ for (const location of SPOT_LOCATIONS) {
     assert.ok(location.latitude > 38 && location.latitude < 39.5, `${where} latitude out of region`)
     assert.ok(location.longitude > -78 && location.longitude < -76.5, `${where} longitude out of region`)
   }
+
+  // publicTransportation/externalLinks (issue #77): absent, never an empty
+  // array or a fabricated entry, where the legacy page had no such section.
+  if ('publicTransportation' in location) {
+    assert.ok(Array.isArray(location.publicTransportation), `${where} publicTransportation must be an array`)
+    assert.ok(location.publicTransportation.length > 0, `${where} publicTransportation must not be an empty array`)
+    for (const item of location.publicTransportation) {
+      assert.equal(typeof item, 'string', `${where} publicTransportation entries must be strings`)
+      assert.ok(item.trim().length > 0, `${where} publicTransportation entries must not be blank`)
+    }
+  }
+
+  if ('externalLinks' in location) {
+    assert.ok(Array.isArray(location.externalLinks), `${where} externalLinks must be an array`)
+    assert.ok(location.externalLinks.length > 0, `${where} externalLinks must not be an empty array`)
+    for (const link of location.externalLinks) {
+      assert.ok(link.label.trim().length > 0, `${where} externalLinks label must not be blank`)
+      assert.ok(
+        isSafeExternalLinkUrl(link.url),
+        `${where} externalLinks url must be an absolute http(s) URL: ${link.url}`
+      )
+    }
+  }
+}
+
+// The legacy inventory's own count, restated as a gate: lose or gain a section
+// and this fails, rather than a silent drift between the directory and D-59's
+// own tally.
+const TRANSIT_COUNT = SPOT_LOCATIONS.filter((l) => l.publicTransportation).length
+const LINKS_COUNT = SPOT_LOCATIONS.filter((l) => l.externalLinks).length
+
+assert.equal(TRANSIT_COUNT, 40, 'exactly the legacy spot pages with a "Public Transportation" section')
+assert.equal(LINKS_COUNT, 35, 'exactly the legacy spot pages with a non-empty "External links" section')
+
+// Every spot without the field is a spot the legacy page genuinely omitted the
+// section for, never a stand-in for "not checked yet" (D-31/D-33 posture).
+const NO_TRANSIT = ['route-610-mine-rd', 'springfield-town-center']
+for (const slug of NO_TRANSIT) {
+  assert.equal(
+    'publicTransportation' in findSpotLocation(slug),
+    false,
+    `${slug} must not carry a fabricated publicTransportation`
+  )
 }
 
 assert.equal(
@@ -271,6 +317,24 @@ assert.equal(
   false,
   '0009 creates nothing, which is why sql-lint R3-R11 have nothing to say about it'
 )
+
+// 0013 -- the transit/external-links backfill (issue #77). Generated and
+// guarded the same way 0009 is, plus the DDL 0009 did not need because these
+// two columns did not exist before this migration.
+const transitExternalSql = fs.readFileSync(path.join(root, TRANSIT_EXTERNAL_MIGRATION_PATH), 'utf8')
+
+assert.equal(
+  transitExternalSql,
+  renderTransitExternalMigration(),
+  `${TRANSIT_EXTERNAL_MIGRATION_PATH} is stale — run \`npm run seed:locations -- --write\``
+)
+assert.match(transitExternalSql, /--\s*APPLIED:\s*no\b/, '0013 is not applied')
+assert.match(
+  transitExternalSql,
+  /alter table public\.locations\s+add column if not exists public_transportation text\[\],\s+add column if not exists external_links jsonb;/,
+  '0013 adds both columns, guarded so the file re-runs'
+)
+assert.match(transitExternalSql, /^update public\.locations as l set$/m, 'seeded by an UPDATE, like 0009')
 
 assert.match(sql, /^-- =+\n-- 0004_spot_locations_directory\.sql/, 'names itself in its header')
 // Was `APPLIED: no`. Issue #19 applied 0001-0007 to production on 2026-08-22
@@ -408,5 +472,6 @@ assert.equal(fs.existsSync(path.join(root, 'src/lib/ai')), true, 'lib/ai must ex
 
 console.log(
   `spot directory: ${SPOT_LOCATION_COUNT} spots seeded (${spotPages.length} legacy inventory + ` +
-    `${directoryOnly.length} added), ${activeSpotLocations().length} active, lib/ai imports scoped to its allowlist`
+    `${directoryOnly.length} added), ${activeSpotLocations().length} active, lib/ai imports scoped to its allowlist, ` +
+    `${TRANSIT_COUNT} with publicTransportation, ${LINKS_COUNT} with externalLinks`
 )

@@ -112,10 +112,54 @@ export interface SpotLocation {
   parking?: string
   linesFrom?: string[]
   linesTo?: string[]
+  /**
+   * Bus routes, rail lines and shuttles serving the spot, as free text. The
+   * legacy pages describe these in prose or short list items, never as a clean
+   * `{route, operator}` pair (a route is sometimes named without an operator,
+   * an operator sometimes named without a route number), so splitting them
+   * would mean guessing a structure the source does not have. Modeled as
+   * `string[]` for the same reason `linesFrom`/`linesTo` are: one line item per
+   * entry. Absent, not empty, on the 2 of 42 legacy spot pages that published
+   * no "Public Transportation" section -- owed content from D-59, issue #77.
+   */
+  publicTransportation?: string[]
+  /**
+   * Links the legacy page published under "External links" -- operator and
+   * county pages, and press coverage of the spot. Every `url` is an absolute
+   * `http(s)` link (see `isSafeExternalLinkUrl`): these render as outbound
+   * links, so a relative path or another scheme is refused rather than passed
+   * through. Absent where the legacy page had no such section -- owed content
+   * from D-59, issue #77.
+   */
+  externalLinks?: SpotExternalLink[]
   fbUrl?: string
   notes?: string
   /** Absent where the legacy page published no diagram. Never a stand-in. */
   image?: SpotImage
+}
+
+/** One entry under a spot's legacy "External links" section. */
+export interface SpotExternalLink {
+  /** Link text as it rendered on the legacy page. */
+  label: string
+  /** Absolute `http(s)` URL. See `isSafeExternalLinkUrl`. */
+  url: string
+}
+
+const SAFE_EXTERNAL_LINK_PROTOCOLS = new Set(['http:', 'https:'])
+
+/**
+ * Guards a `SpotExternalLink.url` before it is used as an `href`. `externalLinks`
+ * is legacy-sourced free-form data rendered as outbound links, so this is the
+ * boundary that refuses `javascript:`, `data:`, a bare relative path, or
+ * anything else that is not a navigable `http(s)` URL.
+ */
+export function isSafeExternalLinkUrl(url: string): boolean {
+  try {
+    return SAFE_EXTERNAL_LINK_PROTOCOLS.has(new URL(url).protocol)
+  } catch {
+    return false
+  }
 }
 
 /**
@@ -221,6 +265,8 @@ export const SPOT_LOCATIONS: readonly SpotLocation[] = [
       sourceUrl: 'https://sluglines.com/images/slugging_locations/Bobs.jpg',
       fetchedAt: '2026-08-22',
     },
+    publicTransportation: ['Fairfax Connector Route 306', 'Fairfax Connector Route 18G'],
+    externalLinks: [{ label: 'SpringField Slug Lines Facebook Group', url: 'https://www.facebook.com/groups/springfieldsluglines/' }, { label: 'Springfield Town Center Facebook Group', url: 'https://www.facebook.com/groups/stcsluglines' }, { label: 'Facebook Page', url: 'https://www.facebook.com/pages/Bobs-Slug-line/141795922523615' }, { label: 'Foursquare', url: 'https://foursquare.com/v/slug-line-bobs-to-dc/5236da68498eb85f2687e0de' }, { label: 'Old Keene Mill', url: 'http://www.fairfaxcounty.gov/connector/parkandrides/oldkeenemill.htm' }, { label: 'Ribbon-cutting Ceremony Marks Completion of Old Keene Mill Park and Ride Dec 3, 2010', url: 'http://www.fairfaxcounty.gov/connector/news/2010/10_026.htm' }, { label: 'Bob’s Slug Line Temporarily Moved, But Still Operational Nov 8, 2010', url: 'http://www.fairfaxcounty.gov/connector/news/2010/10_024.htm' }, { label: 'Fairfax County to Demolish Former Circuit City Building to Prepare for Future Park and Ride Lot, Jun 28, 2010', url: 'http://www.fairfaxcounty.gov/connector/news/2010/10_014.htm' }, { label: 'I-95/I-395 HOV Restriction Study, 1998', url: 'http://www.virginiadot.org/projects/studynova-hov395over.asp' }],
   },
   {
     slug: 'cardinal-forest-plaza',
@@ -242,6 +288,7 @@ export const SPOT_LOCATIONS: readonly SpotLocation[] = [
     },
     peakHours: '6:30 AM – 8:00 AM',
     linesFrom: ['The Pentagon'],
+    publicTransportation: ['Metrobus 18P', 'Fairfax Connector'],
   },
   {
     slug: 'franconia-springfield',
@@ -261,6 +308,8 @@ export const SPOT_LOCATIONS: readonly SpotLocation[] = [
       state: 'needs-review',
       source: 'sluglines.com WordPress export (legacy site; its own content predates 2020)',
     },
+    publicTransportation: ['OmniRide', 'Washington Metro', 'Metro Bus', 'Free Shuttle Service', 'VRE', 'Greyhound'],
+    externalLinks: [{ label: 'Parking facility', url: 'https://www.wmata.com/service/parking/parking-details.cfm?stationid=95' }, { label: 'Fairfax Connector', url: 'https://www.fairfaxcounty.gov/connector/riders/franconia-springfield' }],
   },
   {
     slug: 'lorton',
@@ -290,6 +339,8 @@ export const SPOT_LOCATIONS: readonly SpotLocation[] = [
       sourceUrl: 'https://sluglines.com/images/slugging_locations/Lorton.jpg',
       fetchedAt: '2026-08-22',
     },
+    publicTransportation: ['Lorton VRE commuter rail', 'Fairfax Connector Routes 171 & 307'],
+    externalLinks: [{ label: 'Lorton Station', url: 'http://www.vtrans.org/resources/reports/Lorton_Summary_FINAL_042513.pdf' }, { label: 'Lorton Location', url: 'http://www.fairfaxcounty.gov/connector/parkandrides/lortonvre.htm' }, { label: 'Lorton Lot', url: 'http://www.fairfaxcounty.gov/connector/pdf/parkandrides/lortonvre.pdf' }, { label: 'Lorton Parking Information', url: 'http://www.vre.org/service/stations/lorton/lorton-parking-information/' }],
   },
   {
     slug: 'rolling-valley',
@@ -319,6 +370,8 @@ export const SPOT_LOCATIONS: readonly SpotLocation[] = [
       sourceUrl: 'https://sluglines.com/images/slugging_locations/Rolling_Valley.jpg',
       fetchedAt: '2026-08-22',
     },
+    publicTransportation: ['Fairfax Connector Route 310 to the Pentagon', 'WMATA Metro Bus to the Springfield / Franconia Metro Station'],
+    externalLinks: [{ label: 'RollingValley Info', url: 'http://www.fairfaxcounty.gov/connector/parkandrides/rollingvalley.htm' }, { label: 'RollingValley Parking', url: 'http://www.fairfaxcounty.gov/connector/pdf/parkandrides/rollingvalley.pdf' }],
   },
   {
     slug: 'saratoga',
@@ -348,6 +401,7 @@ export const SPOT_LOCATIONS: readonly SpotLocation[] = [
       sourceUrl: 'https://sluglines.com/images/slugging_locations/Saratoga.jpg',
       fetchedAt: '2026-08-22',
     },
+    publicTransportation: ['Fairfax Connector routes 333, 393, 394 and 494'],
   },
   {
     slug: 'sydenstricker-rd',
@@ -377,6 +431,8 @@ export const SPOT_LOCATIONS: readonly SpotLocation[] = [
       sourceUrl: 'https://sluglines.com/images/slugging_locations/Sydenstricker.jpg',
       fetchedAt: '2026-08-22',
     },
+    publicTransportation: ['Bus service by Fairfax connector'],
+    externalLinks: [{ label: 'Parking Location', url: 'http://www.fairfaxcounty.gov/connector/parkandrides/sydenstricker.htm' }, { label: 'Lot Map', url: 'http://www.fairfaxcounty.gov/connector/pdf/parkandrides/sydenstricker.pdf' }, { label: 'Facebook Post', url: 'https://www.facebook.com/pages/Sydenstricker-Park-and-Ride/158475297565572' }],
   },
   {
     slug: 'springfield-town-center',
@@ -399,6 +455,7 @@ export const SPOT_LOCATIONS: readonly SpotLocation[] = [
     linesTo: ['L’Enfant Plaza', '14th at Commerce Dept.', '14th & Madison Dr', '19th & F Street'],
     fbUrl: 'https://www.facebook.com/groups/STCSluglines/',
     notes: 'Legacy-only: present in the /slug_pickup/ inventory, absent from the curated live directory. No coordinates on the legacy page.',
+    externalLinks: [{ label: 'Springfield Town Center Slug Lines Facebook Group', url: 'https://www.facebook.com/groups/STCSluglines/' }, { label: 'Springfield Garage Construction – Public Information Meeting', url: 'https://www.facebook.com/events/989694638084133/' }, { label: 'Fairfax County Department of Transportation (FCDOT)', url: 'https://www.fairfaxcounty.gov/transportation/projects/springfield-garage' }],
   },
   {
     slug: 'van-dorn-st',
@@ -421,6 +478,8 @@ export const SPOT_LOCATIONS: readonly SpotLocation[] = [
     linesFrom: ['L\'Enfant Plaza', '14th Street', '18th Street'],
     linesTo: ['L\'Enfant Plaza', '14th & Madison Ave', '19th & F Street'],
     notes: 'Legacy-only: present in the /slug_pickup/ inventory, absent from the curated live directory. Marked [Inactive] on the legacy page. No coordinates on the legacy page.',
+    publicTransportation: ['OmniRide', 'Washington Metro', 'Metro Bus', 'Free Shuttle Service'],
+    externalLinks: [{ label: 'Parking facility', url: 'https://www.wmata.com/service/parking/parking-details.cfm?stationid=94' }],
   },
   {
     slug: 'landmark-mall',
@@ -443,6 +502,7 @@ export const SPOT_LOCATIONS: readonly SpotLocation[] = [
     linesFrom: ['L\'Enfant Plaza', '14th Street', '18th Street'],
     fbUrl: 'https://www.facebook.com/groups/dcsluglines/',
     notes: 'Legacy-only: present in the /slug_pickup/ inventory, absent from the curated live directory. Marked [Inactive] on the legacy page. No coordinates on the legacy page.',
+    publicTransportation: ['Washington Metro', 'Free Shuttle Service'],
   },
   {
     slug: 'route-3-gordon-rd',
@@ -464,6 +524,8 @@ export const SPOT_LOCATIONS: readonly SpotLocation[] = [
       source: 'sluglines.com WordPress export (legacy site; its own content predates 2020)',
     },
     peakHours: '5:30 AM – 6:30 AM',
+    publicTransportation: ['Martz Virginia', 'VRE Station'],
+    externalLinks: [{ label: 'Gordon road Commuter lot changes', url: 'http://www.fredericksburg.com/news/transportation/gordon-road-commuters-face-parking-lot-changes/article_9c2fb6f3-0122-5cd6-b45b-38fff887aed0.html' }, { label: 'Gordon Rd Parking expansion', url: 'http://fredericksburg.today/commuter-parking-expanded-in-spotsylvanias-route-3-corridor' }],
   },
   {
     slug: 'route-17',
@@ -485,6 +547,8 @@ export const SPOT_LOCATIONS: readonly SpotLocation[] = [
       source: 'sluglines.com WordPress export (legacy site; its own content predates 2020)',
     },
     peakHours: '5:30 A.M – 8:30 A.M',
+    publicTransportation: ['Bus service- National coach, Lee and Quick bus lines'],
+    externalLinks: [{ label: 'Route 17 Widening', url: 'http://www.virginiadot.org/projects/fredericksburg/route_17_widening,_stafford_county.asp' }, { label: '95 Express Lanes open', url: 'http://potomaclocal.com/2015/04/30/95-express-lanes-open-stafford-county-has-a-new-traffic-headache/' }, { label: 'Fredricksburg Commuting', url: 'http://themoyersteam.com/fredericksburg-commuting-and-transportation/' }],
   },
   {
     slug: 'route-208',
@@ -505,6 +569,8 @@ export const SPOT_LOCATIONS: readonly SpotLocation[] = [
       state: 'needs-review',
       source: 'sluglines.com WordPress export (legacy site; its own content predates 2020)',
     },
+    publicTransportation: ['Bus-National coach, Lee and quick’s bus lines service this area.', 'Private Transpo provider by Martz Trailways ( http://www.martzgroupva.com )'],
+    externalLinks: [{ label: 'Park and Ride Commuter Lots', url: 'https://www.gwrideconnect.org/commuter-lots/' }],
   },
   {
     slug: 'dale-city',
@@ -525,6 +591,7 @@ export const SPOT_LOCATIONS: readonly SpotLocation[] = [
       state: 'needs-review',
       source: 'sluglines.com WordPress export (legacy site; its own content predates 2020)',
     },
+    publicTransportation: ['PRTC OmniRide'],
   },
   {
     slug: 'horner-rd',
@@ -546,6 +613,8 @@ export const SPOT_LOCATIONS: readonly SpotLocation[] = [
     },
     peakHours: '5:30 A.M – 7:00 A.M',
     linesFrom: ['14th Street', '18th Street', 'Crystal City', 'L’Enfant Plaza and Navy Yard', 'Mark Center', 'Rosslyn', 'The Pentagon'],
+    publicTransportation: ['OmniRide – Commuter Bus', 'OmniLink – Local', 'Slugline from Horner Road to Mark Center'],
+    externalLinks: [{ label: 'Park And Ride Lots', url: 'http://76.227.210.32/commuters/transit/park-ride-locations' }, { label: 'New Slug Lines, Shuttle Bus Start Monday April 30, 2011', url: 'http://potomaclocal.com/2011/04/30/new-slug-lines-shuttle-bus-start-monday' }, { label: 'Horner Road Parking Lot – Church Shuttle Announced April 14, 2011', url: 'http://potomaclocal.com/2011/04/14/horner-%E2%80%93-church-shuttle-announced/' }, { label: 'Push for security cameras at theft-ridden Woodbridge commuter lot Apr 8th, 2016', url: 'http://wjla.com/news/crime/woodbridge-car-thieves' }, { label: 'Workers return to commuter lot in Woodbridge to find all four ties missing from car Mar 31, 2016', url: 'http://wjla.com/news/crime/workers-return-to-commuter-lotin-woodbridge-to-find-all-four-ties-missing-from-car' }, { label: 'Tire thieves targeting Horner Road lot in Woodbridge Jan 18, 2016', url: 'http://wtop.com/prince-william-county/2016/01/tire-thieves-targeting-horner-road-lot-inwoodbridge/' }, { label: 'Wheel thefts reported at park-and-ride lot in Prince William County Oct 20, 2015', url: 'https://www.washingtonpost.com/local/public-safety/wheel-thefts-reported-atpark-and-ride-lot-in-prince-william-county/2015/10/20/17c4dd00-772e-11e5-b9c1-f03c48c96ac2_story.html' }, { label: 'Commuters Find Cars Stripped of Tires at Va. Park-and-Ride Lot Sept. 11, 2015', url: 'http://www.nbcwashington.com/news/local/Commuters-Find-Cars-Stripped-ofTires-at-Va-Park-and-Ride-Lot-326853841.html' }, { label: 'Police: Woman assaulted after pick up in Prince William Co. commuter lot Nov 12, 2014', url: 'http://www.wusa9.com/story/news/local/prince-williamcounty/2014/11/12/woodbridge-prince-william-county-commuter-lot-sex-assault/18907669/' }, { label: 'Ticketed at Horner Road Lot, Slug Vows to Fight the Law Feb 13, 2013', url: 'http://potomaclocal.com/2013/02/13/ticketed-at-horner-road-lot-slug-vows-to-fight-thelaw/' }, { label: 'On Blocks: Missing Wheels at Commuter Lots Mar 15, 2012', url: 'http://potomaclocal.com/2012/03/15/on-blocks-missing-wheels-at-woodbridge-commuter-lots/' }],
   },
   {
     slug: 'montclair-fire-station',
@@ -568,6 +637,8 @@ export const SPOT_LOCATIONS: readonly SpotLocation[] = [
     },
     peakHours: '6:00 AM – 6:30 AM',
     fbUrl: 'https://www.facebook.com/groups/montclairslugs/',
+    publicTransportation: ['Bus service by OmniRide'],
+    externalLinks: [{ label: 'Options for Montclair Commuters', url: 'http://potomaclocal.com/2014/09/02/options-coming-montclair-commuters/' }],
   },
   {
     slug: 'montclair-northgate',
@@ -590,6 +661,8 @@ export const SPOT_LOCATIONS: readonly SpotLocation[] = [
     },
     peakHours: '5:30 A.M – 6:30 A.M',
     fbUrl: 'https://www.facebook.com/groups/montclairslugs/',
+    publicTransportation: ['Bus service by OmniRide'],
+    externalLinks: [{ label: 'Options for Montclair Commuters', url: 'http://potomaclocal.com/2014/09/02/options-coming-montclair-commuters/' }],
   },
   {
     slug: 'old-hechingers',
@@ -611,6 +684,8 @@ export const SPOT_LOCATIONS: readonly SpotLocation[] = [
       source: 'sluglines.com WordPress export (legacy site; its own content predates 2020)',
     },
     peakHours: '7:00 -8:00 A.M',
+    publicTransportation: ['Bus service by Omniride'],
+    externalLinks: [{ label: 'Expansion of Prince William County Commuter Lots', url: 'https://www.washingtonpost.com/archive/local/1999/07/14/fast-expansion-of-commuter-*lotssought/1753af93-d9c3-4b99-ae59-585c16cc41ca/' }],
   },
   {
     slug: 'potomac-mills',
@@ -633,6 +708,8 @@ export const SPOT_LOCATIONS: readonly SpotLocation[] = [
     parking: '275 Parking Spaces around Potomac Mills Circle, commuters are allowed to park only in the parking spots that are marked in yellow.',
     linesTo: ['The Pentagon', '15th Street & New York Ave', 'Rosslyn'],
     fbUrl: 'https://www.facebook.com/groups/potomacmillssluglines/',
+    publicTransportation: ['Bus service: OmniRide'],
+    externalLinks: [{ label: 'Parking Expansion', url: 'http://potomaclocal.com/2011/01/13/potomac-mills-to-reduce-commuter-parking/' }, { label: 'Potomac Mills slashes commuter parking January 16, 2011', url: 'http://www.washingtonpost.com/wp-dyn/content/article/2011/01/14/AR2011011407206.html' }],
   },
   {
     slug: 'route-123',
@@ -653,6 +730,8 @@ export const SPOT_LOCATIONS: readonly SpotLocation[] = [
       source: 'sluglines.com WordPress export (legacy site; its own content predates 2020)',
     },
     peakHours: 'Peak rides: 6:20 AM – 8:15 AM',
+    publicTransportation: ['PRTC OmniRide'],
+    externalLinks: [{ label: 'Commuter Lots', url: 'http://www.prtctransit.org/ridesharing/commuterlots.html' }, { label: 'Offsetting slugging shortcomings', url: 'http://potomaclocal.com/columns-blogs/slug-tales/' }],
   },
   {
     slug: 'route-234',
@@ -673,6 +752,8 @@ export const SPOT_LOCATIONS: readonly SpotLocation[] = [
       source: 'sluglines.com WordPress export (legacy site; its own content predates 2020)',
     },
     peakHours: '6:00 AM – 7:00 AM',
+    publicTransportation: ['OmniRide'],
+    externalLinks: [{ label: 'Route 234 Commuter Lot', url: 'http://www.prtctransit.org/ridesharing/commuterlots.html' }, { label: 'Slug Parking Along Route 234', url: 'http://potomaclocal.com/2012/05/23/slug-tales-parking-habit-leads-to-fine/' }],
   },
   {
     slug: 'tacketts-mill',
@@ -694,6 +775,8 @@ export const SPOT_LOCATIONS: readonly SpotLocation[] = [
       source: 'sluglines.com WordPress export (legacy site; its own content predates 2020)',
     },
     peakHours: '7:00 AM – 8:30 AM',
+    publicTransportation: ['OmniRide'],
+    externalLinks: [{ label: 'Tackett’s Mill', url: 'http://potomaclocal.com/2011/10/07/slugging-options-announced-for-mark-center/' }],
   },
   {
     slug: 'telegraph-rd',
@@ -715,6 +798,8 @@ export const SPOT_LOCATIONS: readonly SpotLocation[] = [
       source: 'sluglines.com WordPress export (legacy site; its own content predates 2020)',
     },
     peakHours: '7:00 AM – 8:15 AM',
+    publicTransportation: ['OmniRide – Commuter Bus'],
+    externalLinks: [{ label: 'Park and Ride', url: 'http://www.prtctransit.org/ridesharing/commuterlots.html' }, { label: 'New commuter lot to ease transportation Aug 13, 2014', url: 'http://patch.com/virginia/woodbridge-va/commuter-lot-ready-traffic-telegraph-road' }],
   },
   {
     slug: 'route-610-mine-rd',
@@ -736,6 +821,7 @@ export const SPOT_LOCATIONS: readonly SpotLocation[] = [
       source: 'sluglines.com WordPress export (legacy site; its own content predates 2020)',
     },
     peakHours: '5:30 AM – 6:30 AM (Slugs line up as early as 4:30 AM)',
+    externalLinks: [{ label: 'Route 610 Intersection Improvement', url: 'http://www.virginiadot.org/projects/fredericksburg/route_610_garrisonville_road_and_route_641_onville_road_intersection_improvement.asp' }],
   },
   {
     slug: 'route-610-staffordboro-blvd',
@@ -757,6 +843,8 @@ export const SPOT_LOCATIONS: readonly SpotLocation[] = [
       source: 'sluglines.com WordPress export (legacy site; its own content predates 2020)',
     },
     peakHours: '5:00 AM – 7:30 AM',
+    publicTransportation: ['Martz Commuter Bus', 'Virginia Railway Express'],
+    externalLinks: [{ label: 'Commuter Parking Expansion', url: 'http://www.virginiadot.org/newsroom/fredericksburg/2013/commuter_parking_expansion_begins65855.asp' }, { label: 'VDoT Staffordboro Boulevard Park & Ride', url: 'http://www.virginiadot.org/projects/resources/Fredericksburg/Staffordboro_Boulevard_Park_Ride_ Temporary_Traffic_Pattern_Map.pdf' }, { label: 'Garrisonville park & ride lot', url: 'http://www.fredericksburg.com/news/transportation/slug-line-backups-clogging-up-morning-commute-atpopular-garrisonville/article_1c5f3c5d-582e-51cc-a4f6-eae48be350e7.html' }, { label: 'Stafford Posting New Slug Line Signs', url: 'http://www.gostaffordva.com/2017/11/03/stafford-posting-new-slug-line-signs/' }],
   },
   {
     slug: 'route-630',
@@ -778,6 +866,8 @@ export const SPOT_LOCATIONS: readonly SpotLocation[] = [
       source: 'sluglines.com WordPress export (legacy site; its own content predates 2020)',
     },
     peakHours: '5:30 AM – 6:30 AM',
+    publicTransportation: ['National coach', 'Lee', 'Quick bus lines'],
+    externalLinks: [{ label: 'Interstate 95/Route 630 (Courthouse Road) Interchange Relocation Nov. 18, 2015', url: 'http://www.virginiadot.org/projects/fredericksburg/interstate_95-route_630_courthouse_road_interchange_relocation.asp' }, { label: 'Reduced Lot Space', url: 'http://potomaclocal.com/2012/04/04/parking-spaces-reduced-at-stafford-lot/' }],
   },
   {
     slug: 'mark-center',
@@ -798,6 +888,8 @@ export const SPOT_LOCATIONS: readonly SpotLocation[] = [
     },
     peakHours: '4:00 PM – 5:00 PM',
     fbUrl: 'https://www.facebook.com/groups/markcenterslugs/',
+    publicTransportation: ['Metro bus: 7M', 'OmniRide', 'Slugline from Horner Road to Mark Center'],
+    externalLinks: [{ label: 'New Commuter Bus Service from Woodbridge to Mark Center', url: 'http://blog.sluglines.com/2015/11/new-commuter-bus-serviceform.html#sthash.5mJB4XfI.dpuf' }, { label: 'Commuting to the Mark Center Just Got A Whole Lot Easier Jan 27, 2016', url: 'http://activepw.org/commuting-to-the-mark-center-just-got-a-whole-lot-easier/' }, { label: 'Mark Center Commuter Bus Service, Jan 07, 2016', url: 'http://www.prtctransit.org/myprtc/service-updates/service_updates.php?docid=353' }, { label: 'I-395 HOV Ramp and Auxiliary Lane', url: 'http://www.virginiadot.org/projects/northernvirginia/i-395_hov-transit_ramp.asp' }, { label: 'PRTC Mark Center Commuter Bus Service', url: 'http://www.prtctransit.org/commuter-bus/mark-center.html' }, { label: 'Help Offered for Mark Center Slugs', url: 'http://potomaclocal.com/2012/03/19/help-offered-for-mark-center-slugs/' }, { label: 'Traffic relief comes for Mark Center commuters', url: 'http://wtop.com/news/2013/07/traffic-relief-comes-for-mark-center-commuters/' }],
   },
   {
     slug: 'tysons-corner',
@@ -817,6 +909,7 @@ export const SPOT_LOCATIONS: readonly SpotLocation[] = [
       source: 'sluglines.com WordPress export (legacy site; its own content predates 2020)',
     },
     peakHours: '3:30 PM - 6:30 PM',
+    publicTransportation: ['OmniRide', 'Fairfax Connector – 494 Express – Lorton – Springfield –Tysons ( Bus Tracker )'],
   },
   {
     slug: 'crystal-city-12th-st',
@@ -845,6 +938,8 @@ export const SPOT_LOCATIONS: readonly SpotLocation[] = [
       sourceUrl: 'https://sluglines.com/images/slugging_locations/Crystal_City_12th_St.jpg',
       fetchedAt: '2026-08-22',
     },
+    publicTransportation: ['OmniRide', 'Metro Way (Blue and Yellow Lines) replacing Metrobus', 'WMATA'],
+    externalLinks: [{ label: 'Capital Share', url: 'http://crystalcitycivic.org/' }, { label: 'Buslanes in crystal city potomac Yard Area February 21, 2014', url: 'https://www.washingtonpost.com/local/regions-first-dedicated-bus-lanes-planned-in-crystal-citypotomac-yard-area/2014/02/21/10172118-9b15-11e3-ad71-e03637a299c0_story.html' }, { label: 'New bus only Lanes', url: 'http://newsroom.arlingtonva.us/release/rules-set-for-new-bus-only-lanes-in-crystal-city-potomac-yard/' }],
   },
   {
     slug: 'crystal-city-23rd-st',
@@ -873,6 +968,8 @@ export const SPOT_LOCATIONS: readonly SpotLocation[] = [
       sourceUrl: 'https://sluglines.com/images/slugging_locations/Crystal_City_12th_St.jpg',
       fetchedAt: '2026-08-22',
     },
+    publicTransportation: ['OmniRide', 'Metro Way (Blue and Yellow Lines) replacing Metrobus', 'WMATA'],
+    externalLinks: [{ label: 'Buslanes in crystal city potomac Yard Area February 21, 2014', url: 'https://www.washingtonpost.com/local/regions-first-dedicated-bus-lanes-planned-in-crystal-citypotomac-yard-area/2014/02/21/10172118-9b15-11e3-ad71-e03637a299c0_story.html' }, { label: 'New bus only Lanes', url: 'http://newsroom.arlingtonva.us/release/rules-set-for-new-bus-only-lanes-in-crystal-city-potomac-yard/' }],
   },
   {
     slug: 'rosslyn',
@@ -893,6 +990,8 @@ export const SPOT_LOCATIONS: readonly SpotLocation[] = [
     },
     peakHours: '3:15 PM – 6:00 PM',
     fbUrl: 'https://www.facebook.com/groups/rosslynsluglines/',
+    publicTransportation: ['GW Shuttle', 'State Department Shuttle', 'Pentagon Shuttle', 'Metrobus'],
+    externalLinks: [{ label: 'Rosslyn Slug Yahoo Group', url: 'https://groups.yahoo.com/neo/groups/RosslynSlugs/info' }, { label: 'Rosslyn Slug lines FaceBook Group', url: 'https://www.facebook.com/groups/RosslynSlugLines/' }, { label: 'Getting Around Rosslyn', url: 'http://www.carfreediet.com/pages/arlingtons-urban-villages/rosslyn/getting-around/' }, { label: 'https://police.arlingtonva.us/traffic-enforcement-request/', url: 'https://police.arlingtonva.us/traffic-enforcement-request/?fbclid=IwAR1NDEIkamrPIVfWxGdIEgw2j5Zs5DCRIJi2BBMnVbWjWzktWwXEtNiw8VI' }],
   },
   {
     slug: 'the-pentagon',
@@ -912,6 +1011,8 @@ export const SPOT_LOCATIONS: readonly SpotLocation[] = [
     },
     peakHours: '3:00 PM – 6:00 PM',
     fbUrl: 'https://www.facebook.com/groups/pentagonsluglines/',
+    publicTransportation: ['OmniRide', 'Fairfax Connector', 'Metrobus', 'Metro Rail', 'Alexandria’s DASH Bus'],
+    externalLinks: [{ label: 'PENTAGON ATTACKING ‘SLUG LINES’ RIDERS SAY Jan 22, 1999', url: 'https://www.washingtonpost.com/archive/local/1999/01/22/pentagon-attacking-slug-lines-riders-say/14ed0c17-f142-41f3-868b-53a78a6f9648/' }, { label: 'Getting to the Pentagon', url: 'http://www.whs.mil/our-services/transportation/getting-pentagon' }, { label: 'To commute to capital, Early birds gets slugs', url: 'http://www.nytimes.com/2003/04/29/us/to-commute-to-capital-early-bird-gets-slugs.html?pagewanted=all' }],
   },
   {
     slug: '14th-st-and-constitution-ave',
@@ -931,6 +1032,8 @@ export const SPOT_LOCATIONS: readonly SpotLocation[] = [
       state: 'needs-review',
       source: 'sluglines.com WordPress export (legacy site; its own content predates 2020)',
     },
+    publicTransportation: ['PRTC buses at 14th & Constitution Avenue', 'Metro rail at Smithsonian station'],
+    externalLinks: [{ label: 'Twitter', url: 'https://twitter.com/311DCgov' }, { label: 'DC’s Police Chief: City Should Re-Evaluate Slug Lines, June 18, 2010', url: 'http://wamu.org/news/10/06/18/dcs_police_chief_city_should_re_evaluate_slug_lines' }, { label: 'Va. Rep. to DC: Leave slugs alone, July 29, 2010', url: 'http://voices.washingtonpost.com/dr-gridlock/2010/07/va_rep_to_dc_leave_slugs_alone.html' }],
   },
   {
     slug: '14th-st-and-g-st',
@@ -950,6 +1053,7 @@ export const SPOT_LOCATIONS: readonly SpotLocation[] = [
       state: 'needs-review',
       source: 'sluglines.com WordPress export (legacy site; its own content predates 2020)',
     },
+    publicTransportation: ['Metrobus'],
   },
   {
     slug: '14th-st-and-independence',
@@ -969,6 +1073,8 @@ export const SPOT_LOCATIONS: readonly SpotLocation[] = [
       state: 'needs-review',
       source: 'sluglines.com WordPress export (legacy site; its own content predates 2020)',
     },
+    publicTransportation: ['OmniRide', 'Smithsonian Metro Station (Blue and orange Lines)'],
+    externalLinks: [{ label: 'New Slug pickup sites of DC area', url: 'http://www.washingtonpost.com/wp-dyn/content/article/2010/08/26/AR2010082606229.html' }],
   },
   {
     slug: '14th-st-at-commerce-dept',
@@ -996,6 +1102,8 @@ export const SPOT_LOCATIONS: readonly SpotLocation[] = [
       sourceUrl: 'https://sluglines.com/images/slugging_locations/14th_St_at_Commerce_Dept.jpg',
       fetchedAt: '2026-08-22',
     },
+    publicTransportation: ['OmniRide', 'Metrobus', 'Federal Triangle (Blue and Orange Lines) on the west of 12th street'],
+    externalLinks: [{ label: 'Survey on Sluglines', url: 'http://wamu.org/news/10/08/27/survey_to_be_done_on_slug_lines' }],
   },
   {
     slug: '15th-st-and-new-york-ave',
@@ -1015,6 +1123,8 @@ export const SPOT_LOCATIONS: readonly SpotLocation[] = [
       state: 'needs-review',
       source: 'sluglines.com WordPress export (legacy site; its own content predates 2020)',
     },
+    publicTransportation: ['Metro at Mcpherson Square Station', 'Bus service by Omniride and MetroBus'],
+    externalLinks: [{ label: 'Slugline Changes', url: 'http://potomaclocal.com/2011/01/10/slug-line-changes-on-hold/' }, { label: 'Slug sharing for newyork Avenue', url: 'http://www.washingtonpost.com/wp-dyn/content/article/2011/02/26/AR2011022603190.html' }],
   },
   {
     slug: '19th-st-and-f-st',
@@ -1034,6 +1144,8 @@ export const SPOT_LOCATIONS: readonly SpotLocation[] = [
       state: 'needs-review',
       source: 'sluglines.com WordPress export (legacy site; its own content predates 2020)',
     },
+    publicTransportation: ['Metro Rail- Farragut West', 'Foggy Bottom Station'],
+    externalLinks: [{ label: 'New Sites For Sluglines July 23, 1998', url: 'http://www.washingtonpost.com/wp-srv/local/daily/july98/commuters23.htm' }],
   },
   {
     slug: '19th-st-and-i-st',
@@ -1053,6 +1165,8 @@ export const SPOT_LOCATIONS: readonly SpotLocation[] = [
       state: 'needs-review',
       source: 'sluglines.com WordPress export (legacy site; its own content predates 2020)',
     },
+    publicTransportation: ['Ominiride in the corner of 18th and F street', 'Metro Rail- Foggy bottom Station at the corner of 23rd and I streets.', 'Farragut West(Blue and Orange Lines)'],
+    externalLinks: [{ label: 'New Sites For Sluglines July 23, 1998', url: 'http://www.washingtonpost.com/wp-srv/local/daily/july98/commuters23.htm' }],
   },
   {
     slug: 'lenfant-plaza',
@@ -1073,6 +1187,7 @@ export const SPOT_LOCATIONS: readonly SpotLocation[] = [
     },
     peakHours: '3:30 PM – 5:30 PM',
     fbUrl: 'https://www.facebook.com/groups/lenfantslugs/',
+    publicTransportation: ['Metro rail( Blue, Orange, Yellow and Green lines)', 'Omniride'],
   },
   {
     slug: 'navy-yard',
@@ -1093,6 +1208,8 @@ export const SPOT_LOCATIONS: readonly SpotLocation[] = [
       state: 'needs-review',
       source: 'sluglines.com WordPress export (legacy site; its own content predates 2020)',
     },
+    publicTransportation: ['Shuttle – Commuters with DoD CAC can take shuttle from Navy Yard to L’Enfant Sluglines', 'Omniride', 'WMATA – Navy Yard (Green line) and Eastern Market (Blue and Orange lines) Metro Stations', 'DC Circulator schedules .'],
+    externalLinks: [{ label: 'Changes to Slug Pickup Location at the Navy Yard', url: 'https://sluglines.com/a/wp-content/uploads/2016/08/Navy-Yard1.pdf' }, { label: 'Electronic Washington Navy Yard Electronic SlugLine email group', url: 'https://groups.yahoo.com/neo/groups/eslug/info' }, { label: 'Directions', url: 'http://www.ssp.navy.mil/onboarding/about_area.html' }, { label: 'Navy Yard Establishes Slug Lines for Commuters Mar 5, 2015', url: 'http://www.dcmilitary.com/waterline/news/local/navy-yard-establishes-slug-lines-for-commuters/article_cdd444ca-06b0-5f11-9c6c-6d5469ae3062.html' }],
   },
   {
     slug: 'state-department',
@@ -1114,6 +1231,8 @@ export const SPOT_LOCATIONS: readonly SpotLocation[] = [
     linesTo: ['Horner Rd', 'Telegraph Rd'],
     fbUrl: 'https://www.facebook.com/groups/dcsluglines/',
     notes: 'Legacy-only: present in the /slug_pickup/ inventory, absent from the curated live directory. Never operated. No coordinates on the legacy page.',
+    publicTransportation: ['OmniRide'],
+    externalLinks: [{ label: 'https://www.facebook.com/groups/dcsluglines/', url: 'https://www.facebook.com/groups/dcsluglines/' }, { label: 'https://www.facebook.com/groups/woodbridgesluglines/', url: 'https://www.facebook.com/groups/woodbridgesluglines/' }],
   },
   {
     slug: 'vienna-metro-south-knr',

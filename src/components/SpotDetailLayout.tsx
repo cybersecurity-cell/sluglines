@@ -1,11 +1,12 @@
 import Link from 'next/link'
 import type { ReactNode } from 'react'
-import { ArrowLeft, MapPinned, Navigation, Users } from 'lucide-react'
+import { ArrowLeft, ExternalLink, MapPinned, Navigation, Users } from 'lucide-react'
 import CommunityLinksCard from '@/components/CommunityLinksCard'
 import SpotLiveCounts from '@/components/SpotLiveCounts'
 import SpotPhoto from '@/components/SpotPhoto'
 import SpotQuickFacts from '@/components/SpotQuickFacts'
 import { getPrimaryFacebookUrlForSpot } from '@/lib/community-channels'
+import { isSafeExternalLinkUrl } from '@/lib/domain/locations'
 import type { PublicCountsAvailability, PublicSpotCounts } from '@/lib/domain/public-counts'
 import type { PublicLocation } from '@/lib/public-directory'
 
@@ -116,6 +117,31 @@ export default function SpotDetailLayout({ location, counts, availability }: Spo
                       </span>
                     ))}
                   </div>
+                </div>
+              )}
+
+              {location.externalLinks && location.externalLinks.length > 0 && (
+                <div className="mt-5 rounded-lg border border-stone-200 bg-[#FAFAF8] p-4">
+                  <h3 className="mb-2 flex items-center gap-2 font-mono text-xs font-bold uppercase tracking-wide text-slate-600">
+                    <ExternalLink aria-hidden className="h-4 w-4" />
+                    External links
+                  </h3>
+                  <ul className="space-y-1 text-sm">
+                    {location.externalLinks
+                      .filter((link) => isSafeExternalLinkUrl(link.url))
+                      .map((link) => (
+                        <li key={link.url}>
+                          <a
+                            href={link.url}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="text-[#2E7D46] underline hover:text-[#245F37]"
+                          >
+                            {link.label}
+                          </a>
+                        </li>
+                      ))}
+                  </ul>
                 </div>
               )}
 
