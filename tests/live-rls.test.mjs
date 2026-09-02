@@ -163,6 +163,7 @@ async function deleteUser(id) {
 
 const clientOpts = { auth: { persistSession: false, autoRefreshToken: false } }
 const anon = createClient(SUPABASE_URL, ANON_KEY, clientOpts)
+const admin = createClient(SUPABASE_URL, SERVICE_KEY, clientOpts)
 
 async function signIn(user) {
   const c = createClient(SUPABASE_URL, ANON_KEY, clientOpts)
@@ -283,12 +284,37 @@ try {
   const windowStart = new Date(Date.now() + 3600e3).toISOString()
   const windowEnd = new Date(Date.now() + 7200e3).toISOString()
 
+  // offer_create's origin/destination carry a real FK to `locations` (0004), so
+  // the positive path needs two distinct rows that actually exist in this
+  // branch, not synthetic uuids. Fetched via service_role rather than a member
+  // client so this fixture lookup does not depend on locations_select_active
+  // behaving correctly — that policy is not what this section is testing.
+  const { data: seededLocations, error: seededLocationsError } = await admin
+    .from('locations')
+    .select('id')
+    .eq('is_active', true)
+    .order('slug')
+    .limit(2)
+  assert.equal(
+    seededLocationsError,
+    null,
+    `fetching seeded locations failed: ${seededLocationsError && describeError(seededLocationsError)}`
+  )
+  assert.ok(
+    seededLocations.length >= 2,
+    `live-rls needs at least 2 active seeded locations in ${targetRef} to exercise offer_create, found ` +
+      `${seededLocations.length}. Apply migration 0004 (the locations directory, see ` +
+      'supabase/migrations/README.md) to this preview branch — regenerate it first with ' +
+      '`npm run seed:locations` if it is stale.'
+  )
+  const [originLocation, destinationLocation] = seededLocations
+
   const offerId = await expectOk(
     'poster offer_create succeeds',
     poster.rpc('offer_create', {
       p_poster_role: 'driver',
-      p_origin_location_id: crypto.randomUUID(),
-      p_destination_location_id: crypto.randomUUID(),
+      p_origin_location_id: originLocation.id,
+      p_destination_location_id: destinationLocation.id,
       p_window_start: windowStart,
       p_window_end: windowEnd,
       p_seats_total: 1,
