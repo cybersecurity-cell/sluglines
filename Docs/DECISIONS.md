@@ -4158,3 +4158,143 @@ already states for every other migration. Lost & found, recurring offers, waitli
 dashboard remain fully deferred — this slice touches none of them, per the task's explicit scope.
 
 **Status:** DONE — Option B slice 1, `incidents.get_active` live, all gates green.
+
+## D-69 — Option B slice 2: the lost & found schema is transplanted and `lostfound.search` goes live. `0016`/`0017`, issue #90
+
+**Date:** 2026-09-02
+**Scope:** `supabase/migrations/0016_lostfound_schema.sql`, `0017_lostfound_functions.sql`, an amendment
+to `0011_agent_traces_and_kill_switches.sql`'s kill-switch seed, `src/lib/ai/tools.ts`,
+`tests/ai-agent-runtime.test.mjs`, `tests/lostfound-schema.test.mjs` (new), and the baseline-N header
+in `Docs/consolidated-architecture.md`.
+
+### What this closes
+
+D-68 (Option B slice 1) named the remaining Option-A deferrals explicitly and scoped issue #90 to one
+slice at a time: incidents first, "lost & found, recurring offers, waitlist, leaderboard and dashboard
+remain fully deferred." This is that second slice: bring in the lost & found schema (and only that
+schema) and flip the one tool that was waiting on it.
+
+### The dropped stop columns
+
+Sluglines-AI's `0020_lostfound_schema.sql` gives `lostfound_items` two columns —
+`origin_stop_id`/`dest_stop_id` — both referencing a `stops` table. `stops` does not exist anywhere in
+this repo's migrations: it is the transit-stops table `transit.explain_alternatives` is waiting on, and
+that tool is still `implemented: false` in `tools.ts` with its own `TODO(Option B)`. `lostfound.search`
+(the only consumer this slice ships) filters by `kind`/`category`/`rideDate` only and never names a
+stop id, so `0016` **drops both columns and their FKs entirely**, along with the check constraint that
+referenced them and the `origin_name`/`dest_name` join Sluglines-AI's `lostfound_items_board` view
+carries. Inventing a `stops` table here — the one move that would have let the columns stay — is
+exactly the "schema no task asked for" this harness declines elsewhere; it is a separate future slice.
+The plain `ride_date` column the tool actually filters on is kept, unchanged from the source.
+
+### `0016_lostfound_schema.sql` — tables, adapted from Sluglines-AI's `0020`
+
+Three tables (`lostfound_items`, `lostfound_claims`, `lostfound_messages`), four enums
+(`lostfound_kind`, `lostfound_category`, `lostfound_item_state`, `lostfound_claim_state`), three
+recursion-breaking `SECURITY DEFINER` visibility helpers (`lostfound_is_item_reporter`,
+`lostfound_is_item_claimant`, `lostfound_is_claim_participant` — Sluglines-AI's own header documents
+hitting live "infinite recursion detected in policy for relation lostfound_items" without them, the
+same class of cycle `caller_is_moderator()` already breaks for `members`), and a `security_invoker`
+view (`lostfound_items_board`) deriving `pending_claim_count`/`my_claim_state` rather than storing
+them — the same "compute, don't store" choice `offers_board` and `0014`'s `incidents_board` already
+make. Adaptations from Sluglines-AI's `0020_lostfound_schema.sql` (reference/documentation only, per
+D-5/D-13 — nothing copied byte-for-byte):
+
+- Every RLS policy and every helper calls **`caller_is_moderator()`** (0002), not Sluglines-AI's
+  `is_moderator()`, same swap as D-68.
+- "Same location" is `members.location_id` (0001/0006), the identical predicate `0014`'s incidents
+  policies already use.
+- `lostfound_items.location_id` carries a **real foreign key** to `public.locations`, same as `0014`'s
+  `incidents.location_id` — the directory already exists (0004) by this ordinal.
+- **The stop columns are gone entirely** — see above.
+- **Every write is a `SECURITY DEFINER` function, including the report itself.** Sluglines-AI's `0020`
+  gives `lostfound_items` a `for insert` policy (`lostfound_items_insert_own`) and
+  `lostfound_messages` a `for insert` policy (`lostfound_messages_insert_participant`). Neither would
+  pass this repo's R4 ("no insert/update/delete/all policy on any new table, for any role — client
+  writes must go through a SECURITY DEFINER function") — R4 has no carve-out for a "plain" insert, and
+  `0014`/`0015` already established the pattern of a `report_*()` function even for the simple case.
+  `0017` therefore ships `report_lostfound_item()` and `send_lostfound_message()` in addition to the
+  four functions Sluglines-AI's own `0021` already wrote as functions.
+
+Posture: default-deny, matching every prior file in this harness — RLS on, zero insert/update/delete
+policies for any role, revoked from `anon`, granted `SELECT` to `authenticated` only. The three
+visibility helpers are the one place this slice grants `EXECUTE` to `authenticated` from *within* the
+schema migration rather than the functions migration: they run inside another table's RLS `USING`
+clause, evaluated as the querying member's own role, not called from inside another `SECURITY DEFINER`
+function — so, exactly like `caller_is_moderator()`, the querying role needs `EXECUTE` on them
+directly. Verified by `npm run sql:check` (17 migrations, 345 statements, 0 violations) and by the new
+`tests/lostfound-schema.test.mjs`, which states the lostfound-specific shape directly rather than
+relying only on the general-purpose lint rules.
+
+### `0017_lostfound_functions.sql` — the write path, adapted from Sluglines-AI's `0021`
+
+`report_lostfound_item`, `create_lostfound_claim`, `respond_to_lostfound_claim`,
+`withdraw_lostfound_claim`, `send_lostfound_message`, `reunite_lostfound_item`, `cancel_lostfound_item`
+(all `SECURITY DEFINER`, granted to `authenticated`), plus one internal function never granted to any
+client role: `expire_stale_lostfound_items` (the sweep, `REPORTED`/`MATCHED` only — `CLAIMED` is
+deliberately excluded, same reasoning as `0014`'s `incident_state`: an active handoff in progress
+shouldn't vanish out from under two members just because the original post aged out). Adaptations,
+beyond the moderator-helper swap and the two new client entry points named above:
+
+- Writers call **`record_audit_event()`** (0001), not Sluglines-AI's `log_audit_event()`.
+- **Every `notification_outbox` insert from Sluglines-AI's `0021` is dropped.** That table does not
+  exist anywhere in this repo's migrations, and no push/notification infrastructure has been
+  transplanted. Adding one to satisfy a write nothing here reads would be the same "schema no task
+  asked for" the stop columns were declined for.
+- **The `cron.schedule` call at the end of Sluglines-AI's `0021` is not present here**, for the same
+  reason `0015`'s header states for `incidents`: a migration carrying `cron.schedule` fails on any
+  branch without `pg_cron` and would schedule production's sweep onto every preview branch. `0017`
+  ships only the sweep function itself — scheduling it is a `supabase/operations/` action for whichever
+  session is authorised to apply this migration, and is **not done by this slice**.
+
+### `0011`'s kill-switch seed is amended again, not superseded
+
+`lostfound.search` moving to `implemented: true` puts it in `CALLABLE_TOOLS`, and `0011`'s own
+documented invariant is that its seed equals `CALLABLE_TOOLS` exactly. So `0011` now seeds
+`skills.lostfound.search` alongside its existing six rows — seven tools plus `global`. Same "not the
+README's applied-migration rule" reasoning as D-68: `0011` still carries `APPLIED: no`.
+
+### `lostfound.search`, live
+
+`src/lib/ai/tools.ts` now queries `lostfound_items_board`, scoped to `ctx.locationId`, filtered to the
+two "open" states (`REPORTED`, `MATCHED`) and the caller's optional `kind`/`category`/`rideDate`
+args — the same "real table/view through the caller's own RLS-scoped session" pattern `ride.list_offers`
+and `incidents.get_active` already established, and the reason no second TypeScript-side view was
+needed: `0016` already ships one. The tool's description drops "Not available yet."; its Zod schema is
+unchanged from Option A, since the task scope never called for changing it.
+
+### Tests
+
+`tests/ai-agent-runtime.test.mjs`: `lostfound.search` removed from the `UNIMPLEMENTED_NO_SCHEMA` list
+(only `transit.explain_alternatives` remains); `CALLABLE_TOOLS` assertion updated to the seven-tool
+set; two new end-to-end blocks run the tool against a mocked `lostfound_items_board` query builder —
+one proving all three optional args each layer their own `.eq()` onto the query, one proving the
+no-args case applies only the base location/state filters — plus a `callThroughGate()` pass proving the
+gate actually allows it (tier R0, implemented, its own kill-switch row enabled by default).
+`tests/lostfound-schema.test.mjs` (new) statically asserts `0016`/`0017`'s RLS posture, grants, the
+three visibility helpers' grant-to-authenticated shape, the absent stop columns, and the moderator/
+audit-function/notification_outbox adaptations directly — the same discipline
+`tests/incidents-schema.test.mjs` already applies to `0014`/`0015`.
+
+No new live-database assertions were added: this repo's live suites are already guarded to skip
+without preview credentials, and `0016`/`0017` carry `APPLIED: no` — there is no branch to run a live
+lost & found RLS pass against yet. That pass is owed the same way D-23 already states for every other
+migration in this harness.
+
+### Baseline N
+
+Adding `tests/lostfound-schema.test.mjs` and the new assertions in `tests/ai-agent-runtime.test.mjs`
+moves `N` from 42 files / 1,257 assertions (D-68) to **43 files / 1,302 assertions**. The
+`Docs/consolidated-architecture.md` header is updated in this same change; `tests/baseline-n.test.mjs`
+enforces the two stay in agreement.
+
+### What this entry does not claim
+
+No live database was touched — both migrations carry `APPLIED: no` and are files only. No RLS
+behaviour is verified beyond the static `sql-lint`/`sql-migration-harness`/`lostfound-schema` proofs
+every migration in this directory gets; a live-RLS pass for `0016`/`0017` is owed the same way D-23
+already states for every other migration. Recurring offers, waitlist, leaderboard, dashboard and the
+transit `stops` table remain fully deferred — this slice touches none of them, per the task's explicit
+scope.
+
+**Status:** DONE — Option B slice 2, `lostfound.search` live, all gates green.

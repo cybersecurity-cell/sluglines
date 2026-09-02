@@ -421,7 +421,7 @@ for (const key of seededKeys) {
 // Tool catalog / Option A scope, stated directly.
 // -----------------------------------------------------------------------------
 
-const UNIMPLEMENTED_NO_SCHEMA = ['lostfound.search', 'transit.explain_alternatives']
+const UNIMPLEMENTED_NO_SCHEMA = ['transit.explain_alternatives']
 for (const name of UNIMPLEMENTED_NO_SCHEMA) {
   const tool = TOOLS_BY_NAME.get(name)
   assert.ok(tool, `${name} must still be declared`)
@@ -438,12 +438,13 @@ assert.deepEqual(
   [
     'community.draft_response',
     'incidents.get_active',
+    'lostfound.search',
     'presence.get_counts',
     'ride.explain_match',
     'ride.get_offer',
     'ride.list_offers',
   ],
-  'CALLABLE_TOOLS is exactly the six tools implemented after Option B slice 1 (issue #90)'
+  'CALLABLE_TOOLS is exactly the seven tools implemented after Option B slice 2 (issue #90)'
 )
 
 assert.equal(TOOLS.filter((t) => t.riskTier === 'R2' || t.riskTier === 'R3').every((t) => !t.implemented), true)
@@ -555,6 +556,126 @@ assert.equal(TOOLS.filter((t) => t.riskTier === 'R2' || t.riskTier === 'R3').eve
   const outcome = await callThroughGate('incidents.get_active', {}, ENVELOPE, BUDGET(), supabase, audit)
   assert.equal(outcome.decision, 'ALLOW')
   assert.deepEqual(outcome.payload, { incidents: [] })
+}
+
+// -----------------------------------------------------------------------------
+// Option B slice 2 (issue #90, Docs/DECISIONS.md D-69) — lostfound.search is
+// live: 0016/0017 ship the lost & found schema this tool was waiting on.
+// -----------------------------------------------------------------------------
+
+// lostfound.search, executed end to end against a fake client — proves it
+// reads lostfound_items_board (0016) scoped to the caller's own home spot,
+// filtered to the two open states, with the optional kind/category/rideDate
+// args each layered on as their own .eq() before the terminal order/limit.
+{
+  const rows = [
+    {
+      id: 'item-1',
+      kind: 'lost',
+      category: 'keys',
+      description: 'Set of keys with a blue carabiner',
+      ride_date: '2026-09-01',
+      state: 'REPORTED',
+      pending_claim_count: 0,
+      my_claim_state: null,
+      created_at: '2026-09-01T12:00:00Z',
+      expires_at: '2026-10-01T12:00:00Z',
+    },
+  ]
+
+  const ctx = {
+    memberId: 'member-1',
+    locationId: 'loc-1',
+    supabase: {
+      from(table) {
+        assert.equal(table, 'lostfound_items_board')
+        const eqCalls = []
+        const builder = {
+          select: () => builder,
+          eq: (col, value) => {
+            eqCalls.push([col, value])
+            return builder
+          },
+          in: (col, states) => {
+            assert.equal(col, 'state')
+            assert.deepEqual(states, ['REPORTED', 'MATCHED'])
+            return builder
+          },
+          order: () => builder,
+          limit: async () => {
+            assert.deepEqual(eqCalls, [
+              ['location_id', 'loc-1'],
+              ['kind', 'lost'],
+              ['category', 'keys'],
+              ['ride_date', '2026-09-01'],
+            ])
+            return { data: rows, error: null }
+          },
+        }
+        return builder
+      },
+    },
+  }
+
+  const result = await TOOLS_BY_NAME.get('lostfound.search').run(
+    { kind: 'lost', category: 'keys', rideDate: '2026-09-01' },
+    ctx
+  )
+  assert.deepEqual(result, { items: rows })
+}
+
+// No optional args: only the base location/state filters are applied.
+{
+  const ctx = {
+    memberId: 'member-1',
+    locationId: 'loc-1',
+    supabase: {
+      from(table) {
+        assert.equal(table, 'lostfound_items_board')
+        const eqCalls = []
+        const builder = {
+          select: () => builder,
+          eq: (col, value) => {
+            eqCalls.push([col, value])
+            return builder
+          },
+          in: () => builder,
+          order: () => builder,
+          limit: async () => {
+            assert.deepEqual(eqCalls, [['location_id', 'loc-1']])
+            return { data: [], error: null }
+          },
+        }
+        return builder
+      },
+    },
+  }
+
+  const result = await TOOLS_BY_NAME.get('lostfound.search').run({}, ctx)
+  assert.deepEqual(result, { items: [] })
+}
+
+// Behavioural half: the gate actually allows it end to end — tier R0,
+// implemented, and (per 0011's amended seed) a kill-switch row of its own that
+// defaults enabled.
+{
+  const boardBuilder = {
+    select: () => boardBuilder,
+    eq: () => boardBuilder,
+    in: () => boardBuilder,
+    order: () => boardBuilder,
+    limit: async () => ({ data: [], error: null }),
+  }
+  const supabase = makeSupabaseMock({
+    rpc: { ai_skill_enabled: OK_KILL_SWITCH_RPC },
+    killSwitchRows: {},
+    tables: { lostfound_items_board: boardBuilder },
+  })
+  const { client: audit } = makeAuditMock()
+
+  const outcome = await callThroughGate('lostfound.search', {}, ENVELOPE, BUDGET(), supabase, audit)
+  assert.equal(outcome.decision, 'ALLOW')
+  assert.deepEqual(outcome.payload, { items: [] })
 }
 
 // -----------------------------------------------------------------------------
