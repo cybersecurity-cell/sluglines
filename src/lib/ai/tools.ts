@@ -15,7 +15,7 @@
  * Sluglines-AI's seven implemented tools query objects that mostly do not exist
  * in this repo — `offers_board` (a view), `get_presence_counts()`, `incidents`,
  * `lostfound_items`, `stops`. Rather than invent that schema here (which the
- * task scope explicitly rules out), each tool below is either:
+ * D-65 task scope explicitly ruled out), each tool below is either:
  *
  *   (a) re-pointed at what sluglines actually has — `presence.get_counts` at
  *       the real `get_public_spot_counts`/`get_public_open_offer_counts`
@@ -25,11 +25,18 @@
  *       new view, because a two-query join in TypeScript is smaller and no
  *       less safe than a migration that adds one; or
  *   (b) marked `implemented: false` with a TODO naming what is missing, when
- *       the backing table genuinely does not exist (`incidents`,
- *       `lostfound_items`, `stops`). `CALLABLE_TOOLS` below excludes these, and
- *       `0011`'s kill-switch seed does not carry a row for them — see that
- *       migration's header for why seeding an unreachable switch would be a
- *       row nothing reads.
+ *       the backing table genuinely does not exist (`lostfound_items`,
+ *       `stops`). `CALLABLE_TOOLS` below excludes these, and `0011`'s
+ *       kill-switch seed does not carry a row for them — see that migration's
+ *       header for why seeding an unreachable switch would be a row nothing
+ *       reads.
+ *
+ * `incidents.get_active` is no longer in that deferred set: Option B slice 1
+ * (issue #90, Docs/DECISIONS.md D-68) ships `incidents`/`incident_confirmations`
+ * (0014/0015) and points this tool at the `incidents_board` view, the same
+ * "real table, caller's own RLS session" pattern as `ride.*` — no new view was
+ * needed on the TypeScript side because 0014 already ships one for the same
+ * reason `offers_board` was judged unnecessary there.
  */
 
 import { z } from 'zod'
@@ -193,13 +200,26 @@ export const TOOLS: ToolDefinition[] = [
   {
     name: 'incidents.get_active',
     riskTier: 'R0',
-    // TODO(Option B — https://github.com/cybersecurity-cell/sluglines/issues/new,
-    // "AI: transplant incidents schema"): sluglines has no `incidents` table.
-    // Sluglines-AI's 0018/0019 own that schema; porting it is its own reviewed
-    // migration, not part of this slice (Docs/DECISIONS.md D-65).
-    description: 'Get active community incident reports (traffic, HOV backups, lot conditions). Not available yet.',
+    // Option B slice 1 (issue #90, Docs/DECISIONS.md D-68): `incidents_board`
+    // now exists (0014/0015). Reads through the caller's own RLS-scoped
+    // session, same as ride.list_offers — same-location incidents only.
+    description:
+      "Get active community incident reports (traffic, HOV backups, lot conditions) at the member's home spot. Call this when the user asks about traffic, delays, or lot conditions.",
     schema: noArgs,
-    implemented: false,
+    implemented: true,
+    run: async (_args, ctx) => {
+      const { data, error } = await ctx.supabase
+        .from('incidents_board')
+        .select(
+          'id, type, description, state, confirmation_count, confirmed_by_me, created_at, expires_at'
+        )
+        .eq('location_id', ctx.locationId)
+        .in('state', ['UNCONFIRMED', 'CONFIRMED'])
+        .order('created_at', { ascending: false })
+        .limit(25)
+      if (error) throw error
+      return { incidents: data ?? [] }
+    },
   },
   {
     name: 'lostfound.search',

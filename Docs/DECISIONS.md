@@ -4048,3 +4048,113 @@ production will not show either field until the follow-up lands. Tracked as `TOD
 
 `0013` carries `APPLIED: no`. Applying it, and separately extending `get_public_location`, are each
 a distinct, separately authorised act.
+
+---
+
+## D-68 — Option B slice 1: the incidents schema is transplanted and `incidents.get_active` goes live. `0014`/`0015`, issue #90
+
+**Date:** 2026-09-02
+**Scope:** `supabase/migrations/0014_incidents_schema.sql`, `0015_incidents_functions.sql`, an amendment
+to `0011_agent_traces_and_kill_switches.sql`'s kill-switch seed, `src/lib/ai/tools.ts`,
+`tests/ai-agent-runtime.test.mjs`, `tests/incidents-schema.test.mjs` (new), and the baseline-N header
+in `Docs/consolidated-architecture.md`.
+
+### What this closes
+
+D-65 (Option A) shipped the AI runtime with `incidents.get_active` declared `implemented: false` for
+one reason only: `sluglines` had no `incidents` table. D-65 named that gap explicitly and deferred it
+to "Option B — full consolidation", without opening the tracking issue itself. Issue #90 is that
+issue, and this is its first slice: bring in the `incidents` schema (and only that schema — lost &
+found, recurring offers, waitlist, leaderboard and dashboard are explicitly later slices, per the
+task scope) and flip the one tool that was waiting on it.
+
+### `0014_incidents_schema.sql` — tables, adapted from Sluglines-AI's `0018`
+
+Two tables (`incidents`, `incident_confirmations`), two enums (`incident_type`, `incident_state`), and
+a `security_invoker` view (`incidents_board`) deriving the confirmation count rather than storing it —
+the same "compute, don't store" choice this repo already makes elsewhere. Adaptations from
+Sluglines-AI's `0018_incident_reports_schema.sql` (reference/documentation only, per D-5/D-13 — nothing
+copied byte-for-byte):
+
+- Every RLS policy calls **`caller_is_moderator()`** (0002), not Sluglines-AI's `is_moderator()`,
+  which does not exist under that name in this repo.
+- "Same location" is `members.location_id` (0001/0006) — the identical predicate
+  `offers_visible_for_caller` and `audit_events_select_moderator` already use. Sluglines-AI's
+  `corridor_id` has no equivalent here.
+- `incidents.location_id` carries a **real foreign key** to `public.locations`. 0002 could not do this
+  for `offers` because the locations directory did not exist yet when it was written (D-22); by `0014`
+  it does (0004), so there is nothing left to defer.
+
+Posture: default-deny, matching every prior file in this harness — RLS on, zero insert/update/delete
+policies for any role, revoked from `anon`, granted `SELECT` to `authenticated` only. Verified by
+`npm run sql:check` (15 migrations, 276 statements, 0 violations) and by the new
+`tests/incidents-schema.test.mjs`, which states the incidents-specific shape directly rather than
+relying only on the general-purpose lint rules.
+
+### `0015_incidents_functions.sql` — the write path, adapted from Sluglines-AI's `0019`
+
+`report_incident`, `confirm_incident`, `resolve_incident`, `cancel_incident` (all SECURITY DEFINER,
+granted to `authenticated`), plus two internal functions never granted to any client role:
+`incident_ttl_for_type` (TTL by type: 2h police / 3h accident+other / 4h HOV closure / 6h road closure
+/ 8h weather) and `expire_stale_incidents` (the sweep). Adaptations, beyond the moderator-helper swap:
+
+- Writers call **`record_audit_event()`** (0001), not Sluglines-AI's `log_audit_event()`.
+- **The `cron.schedule` call at the end of Sluglines-AI's `0019` is not present here.** `0008`'s own
+  header already states why: a migration carrying `cron.schedule` fails on any branch without
+  `pg_cron` and would schedule production's sweep onto every preview branch that ever runs this
+  sequence. `0015` ships only the sweep function itself, the same split `sweep_expired_presence`
+  (0001) and `offer_expire_sweep` (0002) already use — scheduling `expire_stale_incidents` is a
+  `supabase/operations/` action for whichever session is authorised to apply this migration, and is
+  **not done by this slice**.
+
+### `0011`'s kill-switch seed is amended, not superseded
+
+`incidents.get_active` moving to `implemented: true` puts it in `CALLABLE_TOOLS`, and `0011`'s own
+documented invariant is that its seed equals `CALLABLE_TOOLS` exactly (issue #3's fix). So `0011` now
+seeds `skills.incidents.get_active` alongside its existing five rows — six tools plus `global`. This is
+**not** the `supabase/migrations/README.md` "never edit an applied migration" case: `0011` still
+carries `APPLIED: no` and has reached no database, preview or production. That rule protects a file
+that is a record of what a real database ran; editing an unapplied file to keep its own stated
+invariant true is normal, continuing development, not a correction to history.
+
+### `incidents.get_active`, live
+
+`src/lib/ai/tools.ts` now queries `incidents_board`, scoped to `ctx.locationId`, filtered to the two
+"active" states (`UNCONFIRMED`, `CONFIRMED`) — the same "real table/view through the caller's own
+RLS-scoped session" pattern `ride.list_offers` already established, and the reason no second
+TypeScript-side view was needed: `0014` already ships one, for the same reason Option A judged
+`offers_board` unnecessary. The `TODO(Option B ...)` comment is removed for this tool only; the two
+remaining Option-A deferrals (`lostfound.search`, `transit.explain_alternatives`) are untouched and
+still carry theirs.
+
+### Tests
+
+`tests/ai-agent-runtime.test.mjs`: `incidents.get_active` removed from the `UNIMPLEMENTED_NO_SCHEMA`
+list; `CALLABLE_TOOLS` assertion updated to the six-tool set; a new end-to-end block runs the tool
+against a mocked `incidents_board` query builder and asserts the returned shape, plus a
+`callThroughGate()` pass proving the gate actually allows it (tier R0, implemented, its own
+kill-switch row enabled by default). `tests/incidents-schema.test.mjs` (new) statically asserts
+`0014`/`0015`'s RLS posture, grants, and moderator/audit-function adaptations directly, the same
+discipline `tests/sql-migration-harness.test.mjs`'s M3-specific block already applies to `0002`.
+
+No new live-database assertions were added: this repo's live suites (`tests/live-rls.test.mjs` etc.)
+are already guarded to skip without preview credentials, and `0014`/`0015` carry `APPLIED: no` — there
+is no branch to run a live incidents RLS pass against yet. That pass is owed the same way D-23 already
+states for every other migration in this harness.
+
+### Baseline N
+
+Adding `tests/incidents-schema.test.mjs` and the new assertions in `tests/ai-agent-runtime.test.mjs`
+moves `N` from 41 files / 1,224 assertions (D-67) to **42 files / 1,257 assertions**. The
+`Docs/consolidated-architecture.md` header is updated in this same change; `tests/baseline-n.test.mjs`
+enforces the two stay in agreement.
+
+### What this entry does not claim
+
+No live database was touched — both migrations carry `APPLIED: no` and are files only. No RLS
+behaviour is verified beyond the static `sql-lint`/`sql-migration-harness`/`incidents-schema` proofs
+every migration in this directory gets; a live-RLS pass for `0014`/`0015` is owed the same way D-23
+already states for every other migration. Lost & found, recurring offers, waitlist, leaderboard and
+dashboard remain fully deferred — this slice touches none of them, per the task's explicit scope.
+
+**Status:** DONE — Option B slice 1, `incidents.get_active` live, all gates green.

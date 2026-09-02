@@ -421,7 +421,7 @@ for (const key of seededKeys) {
 // Tool catalog / Option A scope, stated directly.
 // -----------------------------------------------------------------------------
 
-const UNIMPLEMENTED_NO_SCHEMA = ['incidents.get_active', 'lostfound.search', 'transit.explain_alternatives']
+const UNIMPLEMENTED_NO_SCHEMA = ['lostfound.search', 'transit.explain_alternatives']
 for (const name of UNIMPLEMENTED_NO_SCHEMA) {
   const tool = TOOLS_BY_NAME.get(name)
   assert.ok(tool, `${name} must still be declared`)
@@ -435,8 +435,15 @@ for (const name of UNIMPLEMENTED_NO_SCHEMA) {
 
 assert.deepEqual(
   CALLABLE_TOOLS.map((t) => t.name).sort(),
-  ['community.draft_response', 'presence.get_counts', 'ride.explain_match', 'ride.get_offer', 'ride.list_offers'],
-  'CALLABLE_TOOLS is exactly the five tools Option A actually implements'
+  [
+    'community.draft_response',
+    'incidents.get_active',
+    'presence.get_counts',
+    'ride.explain_match',
+    'ride.get_offer',
+    'ride.list_offers',
+  ],
+  'CALLABLE_TOOLS is exactly the six tools implemented after Option B slice 1 (issue #90)'
 )
 
 assert.equal(TOOLS.filter((t) => t.riskTier === 'R2' || t.riskTier === 'R3').every((t) => !t.implemented), true)
@@ -473,6 +480,81 @@ assert.equal(TOOLS.filter((t) => t.riskTier === 'R2' || t.riskTier === 'R3').eve
 
   const result = await TOOLS_BY_NAME.get('presence.get_counts').run({}, ctx)
   assert.deepEqual(result, { spot: 'Horner Rd', waiting: 3, driverOffers: 2, riderRequests: 1 })
+}
+
+// -----------------------------------------------------------------------------
+// Option B slice 1 (issue #90, Docs/DECISIONS.md D-68) — incidents.get_active
+// is live: 0014/0015 ship the incidents schema this tool was waiting on.
+// -----------------------------------------------------------------------------
+
+// incidents.get_active, executed end to end against a fake client — proves it
+// reads incidents_board (0014) scoped to the caller's own home spot, the same
+// "real table/view, caller's own RLS session" pattern as ride.list_offers.
+{
+  const rows = [
+    {
+      id: 'incident-1',
+      type: 'accident',
+      description: 'Fender bender blocking the right lane',
+      state: 'UNCONFIRMED',
+      confirmation_count: 1,
+      confirmed_by_me: false,
+      created_at: '2026-09-02T12:00:00Z',
+      expires_at: '2026-09-02T15:00:00Z',
+    },
+  ]
+
+  const ctx = {
+    memberId: 'member-1',
+    locationId: 'loc-1',
+    supabase: {
+      from(table) {
+        assert.equal(table, 'incidents_board')
+        const builder = {
+          select: () => builder,
+          eq: (col, value) => {
+            assert.equal(col, 'location_id')
+            assert.equal(value, 'loc-1')
+            return builder
+          },
+          in: (col, states) => {
+            assert.equal(col, 'state')
+            assert.deepEqual(states, ['UNCONFIRMED', 'CONFIRMED'])
+            return builder
+          },
+          order: () => builder,
+          limit: async () => ({ data: rows, error: null }),
+        }
+        return builder
+      },
+    },
+  }
+
+  const result = await TOOLS_BY_NAME.get('incidents.get_active').run({}, ctx)
+  assert.deepEqual(result, { incidents: rows })
+}
+
+// Behavioural half: the gate actually allows it end to end — tier R0,
+// implemented, and (per 0011's amended seed) a kill-switch row of its own that
+// defaults enabled.
+{
+  const boardBuilder = {
+    select: () => boardBuilder,
+    eq: () => boardBuilder,
+    in: () => boardBuilder,
+    order: () => boardBuilder,
+    limit: async () => ({ data: [], error: null }),
+  }
+  const supabase = makeSupabaseMock({
+    rpc: { ai_skill_enabled: OK_KILL_SWITCH_RPC },
+    killSwitchRows: {},
+    tables: { incidents_board: boardBuilder },
+  })
+  const { client: audit } = makeAuditMock()
+
+  const outcome = await callThroughGate('incidents.get_active', {}, ENVELOPE, BUDGET(), supabase, audit)
+  assert.equal(outcome.decision, 'ALLOW')
+  assert.deepEqual(outcome.payload, { incidents: [] })
 }
 
 // -----------------------------------------------------------------------------
