@@ -421,7 +421,11 @@ for (const key of seededKeys) {
 // Tool catalog / Option A scope, stated directly.
 // -----------------------------------------------------------------------------
 
-const UNIMPLEMENTED_NO_SCHEMA = ['transit.explain_alternatives']
+// Option B slice 3 (issue #90, Docs/DECISIONS.md D-70) closed the last
+// deferral: every tool in tools.ts is now implemented, so this list is
+// deliberately empty rather than deleted — a future R2/R3 tool moving to
+// `implemented: true` belongs in CALLABLE_TOOLS, not back into this list.
+const UNIMPLEMENTED_NO_SCHEMA = []
 for (const name of UNIMPLEMENTED_NO_SCHEMA) {
   const tool = TOOLS_BY_NAME.get(name)
   assert.ok(tool, `${name} must still be declared`)
@@ -443,8 +447,9 @@ assert.deepEqual(
     'ride.explain_match',
     'ride.get_offer',
     'ride.list_offers',
+    'transit.explain_alternatives',
   ],
-  'CALLABLE_TOOLS is exactly the seven tools implemented after Option B slice 2 (issue #90)'
+  'CALLABLE_TOOLS is exactly the eight tools implemented after Option B slice 3 (issue #90)'
 )
 
 assert.equal(TOOLS.filter((t) => t.riskTier === 'R2' || t.riskTier === 'R3').every((t) => !t.implemented), true)
@@ -676,6 +681,100 @@ assert.equal(TOOLS.filter((t) => t.riskTier === 'R2' || t.riskTier === 'R3').eve
   const outcome = await callThroughGate('lostfound.search', {}, ENVELOPE, BUDGET(), supabase, audit)
   assert.equal(outcome.decision, 'ALLOW')
   assert.deepEqual(outcome.payload, { items: [] })
+}
+
+// -----------------------------------------------------------------------------
+// Option B slice 3 (issue #90, Docs/DECISIONS.md D-70) — transit.explain_
+// alternatives is live: 0018 ships the `stops` table this tool was waiting on.
+// -----------------------------------------------------------------------------
+
+// transit.explain_alternatives, executed end to end against a fake client —
+// proves it reads stops (0018) scoped to the caller's own home spot and
+// returns the honest no-live-feed marker, never a live schedule.
+{
+  const rows = [
+    { name: 'Horner Road', is_lot: true },
+    { name: "L'Enfant Plaza", is_lot: false },
+  ]
+
+  const ctx = {
+    memberId: 'member-1',
+    locationId: 'loc-1',
+    supabase: {
+      from(table) {
+        assert.equal(table, 'stops')
+        const builder = {
+          select: () => builder,
+          eq: (col, value) => {
+            assert.equal(col, 'location_id')
+            assert.equal(value, 'loc-1')
+            return builder
+          },
+          order: async () => ({ data: rows, error: null }),
+        }
+        return builder
+      },
+    },
+  }
+
+  const result = await TOOLS_BY_NAME.get('transit.explain_alternatives').run({}, ctx)
+  assert.deepEqual(result, {
+    stops: rows,
+    liveTransitData: false,
+    note: 'No live transit feed is connected. Describe alternatives only in general terms and say that times are not live.',
+  })
+}
+
+// No stops on file for this location: an honestly empty list, not a
+// fabricated one.
+{
+  const ctx = {
+    memberId: 'member-1',
+    locationId: 'loc-1',
+    supabase: {
+      from(table) {
+        assert.equal(table, 'stops')
+        const builder = {
+          select: () => builder,
+          eq: () => builder,
+          order: async () => ({ data: [], error: null }),
+        }
+        return builder
+      },
+    },
+  }
+
+  const result = await TOOLS_BY_NAME.get('transit.explain_alternatives').run({}, ctx)
+  assert.deepEqual(result, {
+    stops: [],
+    liveTransitData: false,
+    note: 'No live transit feed is connected. Describe alternatives only in general terms and say that times are not live.',
+  })
+}
+
+// Behavioural half: the gate actually allows it end to end — tier R1,
+// implemented, and (per 0011's amended seed) a kill-switch row of its own that
+// defaults enabled.
+{
+  const stopsBuilder = {
+    select: () => stopsBuilder,
+    eq: () => stopsBuilder,
+    order: async () => ({ data: [], error: null }),
+  }
+  const supabase = makeSupabaseMock({
+    rpc: { ai_skill_enabled: OK_KILL_SWITCH_RPC },
+    killSwitchRows: {},
+    tables: { stops: stopsBuilder },
+  })
+  const { client: audit } = makeAuditMock()
+
+  const outcome = await callThroughGate('transit.explain_alternatives', {}, ENVELOPE, BUDGET(), supabase, audit)
+  assert.equal(outcome.decision, 'ALLOW')
+  assert.deepEqual(outcome.payload, {
+    stops: [],
+    liveTransitData: false,
+    note: 'No live transit feed is connected. Describe alternatives only in general terms and say that times are not live.',
+  })
 }
 
 // -----------------------------------------------------------------------------

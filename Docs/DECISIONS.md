@@ -4298,3 +4298,132 @@ transit `stops` table remain fully deferred — this slice touches none of them,
 scope.
 
 **Status:** DONE — Option B slice 2, `lostfound.search` live, all gates green.
+
+## D-70 — Option B slice 3: a standalone `stops` lookup is transplanted and `transit.explain_alternatives` goes live, closing issue #90. `0018`
+
+**Date:** 2026-09-02
+**Scope:** `supabase/migrations/0018_transit_stops.sql` (new), an amendment to
+`0011_agent_traces_and_kill_switches.sql`'s kill-switch seed and header comment, `src/lib/ai/tools.ts`,
+`tests/ai-agent-runtime.test.mjs`, `tests/transit-stops-schema.test.mjs` (new), and the baseline-N
+header in `Docs/consolidated-architecture.md`.
+
+### What this closes
+
+D-68 and D-69 named `transit.explain_alternatives` as the one Option-A deferral neither slice touched.
+This is that third and last slice: bring in the `stops` table it was waiting on and flip it live.
+`CALLABLE_TOOLS` now names all eight tools `src/lib/ai/tools.ts` declares — nothing in the AI tool
+catalog is deferred any longer.
+
+### The architectural divergence: `stops` is standalone here, not fundamental
+
+In Sluglines-AI, `stops` is load-bearing: its `0001_schema.sql` defines it before `offers`, and
+`offers.origin_stop_id`/`dest_stop_id` reference it directly — every ride offer names its endpoints as
+stops. **This repo's `offers` table has never worked that way.** `0001`/`0004` give it
+`origin_location_id`/`destination_location_id` referencing `public.locations` directly; there has never
+been a `stops` table for carpool matching to go through. So `0018`'s `stops` is a **standalone
+per-location lookup table**, read only by `transit.explain_alternatives`, wired into nothing else.
+`0018` does not touch `public.offers` in any way — `tests/transit-stops-schema.test.mjs` asserts this
+directly (`alter table public.offers` and any `stop_id` column, anywhere in the file, both fail the
+test if present).
+
+### `0018_transit_stops.sql` — one table, no functions
+
+`public.stops` (`id`, `location_id` — a real FK to `public.locations`, same as `0014`'s
+`incidents.location_id` and `0016`'s `lostfound_items.location_id` — `name`, `is_lot`, timestamps,
+`unique (location_id, name)`). Column shape follows the reference minus `aliases`: nothing in
+`transit.explain_alternatives` reads it, and adding it would be schema the task never asked for. Unlike
+every other Option B slice, **this file defines no `SECURITY DEFINER` function and no write path of any
+kind** — there is nothing to write in this slice; stops are reference data, not member-generated
+content, and a client write policy is exactly what R4 forbids regardless.
+
+The RLS policy (`stops_select_authenticated`) is also the one deliberate posture difference from
+`incidents`/`lostfound`: those scope `select` to the caller's own `members.location_id`, because their
+rows carry member-supplied content with a real per-location privacy boundary. Stops carry neither — a
+stop name is not sensitive, and `transit.explain_alternatives` itself already scopes its query to
+`ctx.locationId`, so an unscoped-by-RLS read of another location's stops is not a privacy leak, just
+unnecessary rows for the caller's own tool call to filter past. The policy is `to authenticated using
+(auth.uid() is not null)`, the same non-`true` predicate shape `0011`'s
+`ai_kill_switches_select_authenticated` already uses and for the same reason (R6 forbids the literal
+unconditional predicate).
+
+Posture: default-deny, matching every prior file in this harness — RLS on, zero insert/update/delete
+policies for any role, revoked from `anon`, granted `SELECT` to `authenticated` only. Verified by
+`npm run sql:check` (18 migrations, 352 statements, 0 violations) and by the new
+`tests/transit-stops-schema.test.mjs`.
+
+### Shipped empty, not seeded — stated so a later session does not assume otherwise
+
+Sluglines-AI's own stop data (`0001_schema.sql`'s seed, extended by `0011_stop_lot_flag.sql`) is a
+single pilot corridor: one location named "Horner Road," paired with three named drop points
+(L'Enfant Plaza, Navy Yard, 14th Street), `is_lot=true` on the lot stop only. **None of that
+corresponds to anything in this repo's real directory.** `0004`'s seed is ~50 real I-395/I-95 and I-66
+slug-line locations (Bob's - Old Keene Mill Rd, Cardinal Forest Plaza, Potomac Mills, and so on) — no
+"Horner Road" among them, and no per-location transit-stop curation. `0004`'s `lines_from`/`lines_to`
+columns name corridor bus-line destinations for the site's own directory copy, not curated stop
+records, and treating them as `stops` rows would be this session inventing a mapping no source states.
+There is no authoritative per-location stop data anywhere in this repo or in Sluglines-AI that actually
+maps onto sluglines' real locations, so `0018` ships its table and constraints with **zero seed rows**.
+`transit.explain_alternatives` already handles this honestly (see below) — an empty `stops` result is
+exactly what the tool is built to report, not a bug to work around by fabricating names. Real stop data
+for the pilot corridor's actual locations is a follow-up migration once someone curates it, the same
+way `0004` itself was curated before it shipped.
+
+### `0011`'s kill-switch seed is amended a third time, and its header updated
+
+`transit.explain_alternatives` moving to `implemented: true` puts it in `CALLABLE_TOOLS`, and `0011`'s
+own documented invariant is that its seed equals `CALLABLE_TOOLS` exactly. So `0011` now seeds
+`skills.transit.explain_alternatives` alongside its existing seven rows — eight tools plus `global`,
+which is every tool `tools.ts` declares at tier R0/R1. `0011`'s header comment, which said "seven
+tools" and named `transit.explain_alternatives` as the one still deferred, is corrected to say eight
+and record all three slices as closed — the bounded exception `supabase/migrations/README.md` allows
+for a stale comment in an unapplied file, same as D-68 and D-69's own edits to this same file. `0011`
+still carries `APPLIED: no`.
+
+### `transit.explain_alternatives`, live
+
+`src/lib/ai/tools.ts` now queries `stops` directly — no view, since the tool needs only `name`/`is_lot`
+behind a single `eq('location_id', ctx.locationId)` — through the caller's own RLS-scoped session, the
+same pattern the other three formerly-deferred tools established. The `run` function is otherwise
+carried over unchanged from Sluglines-AI's own (already-implemented) version of this tool: it returns
+`{ stops, liveTransitData: false, note: '...times are not live.' }` regardless of whether any rows come
+back, so an empty `stops` array (today, always, until real data is seeded) renders as an honest "no
+alternatives on file," never a fabricated schedule. The description drops "Not available yet."; the
+`TODO(Option B)` comment is removed.
+
+### Tests
+
+`tests/ai-agent-runtime.test.mjs`: `UNIMPLEMENTED_NO_SCHEMA` is now an empty array (kept, not deleted,
+so a future R2/R3 tool moving to `implemented: true` has a place to be asserted rather than silently
+passing); `CALLABLE_TOOLS` assertion updated to the eight-tool set. Three new blocks: one running the
+tool against a mocked `stops` query builder with rows, one with an empty result (proving the "honest
+empty list" path explicitly), and a `callThroughGate()` pass proving the gate allows it end to end
+(tier R1, implemented, its own kill-switch row enabled by default per the amended `0011` seed).
+`tests/transit-stops-schema.test.mjs` (new) statically asserts `0018`'s RLS posture, grants, the single
+non-location-scoped SELECT policy, the FK to `locations`, the absence of any function or seed `insert`,
+and — directly, not just by omission — that `public.offers` is never altered and no `stop_id` column is
+added anywhere in the file.
+
+No new live-database assertions were added: this repo's live suites are already guarded to skip
+without preview credentials, and `0018` carries `APPLIED: no` — there is no branch to run a live stops
+RLS pass against yet. That pass is owed the same way D-23 already states for every other migration in
+this harness.
+
+### Baseline N
+
+Adding `tests/transit-stops-schema.test.mjs` and the new assertions in `tests/ai-agent-runtime.test.mjs`
+moves `N` from 43 files / 1,302 assertions (D-69) to **44 files / 1,331 assertions**. The
+`Docs/consolidated-architecture.md` header is updated in this same change; `tests/baseline-n.test.mjs`
+enforces the two stay in agreement.
+
+### What this entry does not claim
+
+No live database was touched — `0018` carries `APPLIED: no` and is a file only. No RLS behaviour is
+verified beyond the static `sql-lint`/`sql-migration-harness`/`transit-stops-schema` proofs every
+migration in this directory gets; a live-RLS pass for `0018` is owed the same way D-23 already states
+for every other migration. No stop data was seeded — see above; that is a deliberate, stated gap, not
+an oversight. Recurring offers, waitlist, leaderboard and dashboard remain fully deferred — this slice
+touches none of them, per the task's explicit scope. `public.offers` is untouched.
+
+**Status:** DONE — Option B slice 3, `transit.explain_alternatives` live, all eight `CALLABLE_TOOLS`
+tools now backed by real schema, all gates green. Issue #90 remains OPEN: recurring offers, waitlist,
+leaderboard and dashboard slices are still to come.

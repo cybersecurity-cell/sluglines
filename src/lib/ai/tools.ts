@@ -41,9 +41,13 @@
  * `lostfound.search` is no longer in that deferred set either: Option B slice 2
  * (issue #90, Docs/DECISIONS.md D-69) ships `lostfound_items`/`lostfound_claims`/
  * `lostfound_messages` (0016/0017) and points this tool at the
- * `lostfound_items_board` view — same pattern again. `stops` remains the one
- * genuinely missing table; `transit.explain_alternatives` still carries its
- * `TODO(Option B)` deferral.
+ * `lostfound_items_board` view — same pattern again.
+ *
+ * `transit.explain_alternatives` was the last tool in that deferred set:
+ * Option B slice 3 (issue #90, Docs/DECISIONS.md D-70) ships `stops` (0018)
+ * and points this tool at it directly — no view was needed, since the tool
+ * reads only `name`/`is_lot` with a single equality filter. Every tool
+ * `CALLABLE_TOOLS` advertises is now backed by real schema.
  */
 
 import { z } from 'zod'
@@ -283,11 +287,31 @@ export const TOOLS: ToolDefinition[] = [
   {
     name: 'transit.explain_alternatives',
     riskTier: 'R1',
-    // TODO(Option B): sluglines has no `stops` table (non-carpool transit
-    // alternatives). Sluglines-AI's tool reads one; nothing here does yet.
-    description: 'Get known non-carpool alternatives for this corridor. Not available yet.',
+    // Option B slice 3 (issue #90, Docs/DECISIONS.md D-70): `stops` now exists
+    // (0018). Reads through the caller's own RLS-scoped session, same pattern
+    // as the other read tools — but stops carry no per-location privacy
+    // boundary, so every member's stops are readable, not just their own.
+    description:
+      'Get the known non-carpool alternatives for this corridor so they can be explained to the user. Advisory only.',
     schema: noArgs,
-    implemented: false,
+    implemented: true,
+    run: async (_args, ctx) => {
+      const { data, error } = await ctx.supabase
+        .from('stops')
+        .select('name, is_lot')
+        .eq('location_id', ctx.locationId)
+        .order('name')
+      if (error) throw error
+
+      // Deliberately static: this repo has no transit feed. Returning the
+      // corridor's own stops plus an explicit no-live-data marker keeps the
+      // agent from inventing schedules it cannot know.
+      return {
+        stops: data ?? [],
+        liveTransitData: false,
+        note: 'No live transit feed is connected. Describe alternatives only in general terms and say that times are not live.',
+      }
+    },
   },
   {
     name: 'community.draft_response',
