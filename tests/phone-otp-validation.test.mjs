@@ -123,9 +123,11 @@ assert.equal(classifyVerifyError(null), 'unavailable')
     'the per-IP limiter must not be back on an hourly window'
   )
 
-  // The in-memory limiter is explicitly not the durable edge cap #52 requires;
+  // The in-memory limiter is explicitly not the durable, cross-instance cap;
   // the comment saying so is load-bearing, because the next reader deciding
-  // whether phone auth can be switched on depends on it.
-  assert.match(source, /durable cap/, 'the file states that this is not the durable cap')
-  assert.match(source, /#52/, 'and names the issue tracking the real one')
+  // whether phone auth can be switched on depends on it. issue #55 gave the
+  // durable form a real backing store (a Supabase Postgres table) rather than
+  // leaving it as an owed edge-middleware deferral.
+  assert.match(source, /durable/i, 'the file must reference the durable, cross-instance limiter')
+  assert.match(source, /#55/, 'and name the issue that implements it')
 }

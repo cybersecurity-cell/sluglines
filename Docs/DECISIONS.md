@@ -3858,3 +3858,99 @@ cost rates in `cost.ts` are explicitly not real billing data. The check-then-ins
 counters is not closed. Each of these is named here rather than left to be discovered.
 
 **Status:** DONE — Option A scope, all five issues fixed and tested, boundary rule live.
+
+---
+
+## D-66 — Durable, cross-instance rate-limit store. **Closes #55**
+
+**Date:** 2026-09-02
+
+### The gap this closes
+
+`src/lib/api/rate-limit.ts` backs the four OTP-route limiters (send-otp per-IP/per-phone,
+verify-otp per-phone/per-IP) with a module-level `Map`. Its own header, and D-45, both name the
+consequence: single-process, best-effort, resets on every redeploy, does not coordinate across
+serverless instances. D-45 recorded it plainly — "the per-number cap D-8 actually specifies is
+still enforced only by rate-limit.ts... Defence in depth, not the durable control."
+
+The maintainer decided the durable backing store is a Supabase Postgres table — no new vendor, no
+Redis/KV. This entry records that migration.
+
+### What was built
+
+| File | Role |
+|---|---|
+| `supabase/migrations/0012_durable_rate_limit.sql` | `rate_limit_windows` table + `rate_limit_hit()` (atomic check-and-increment, one round trip) + `rate_limit_sweep()` (pg_cron target, unscheduled) |
+| `src/lib/supabase/service.ts` | Server-only service-role client factory — first use of `service_role` in application code, not just test tooling |
+| `src/lib/api/durable-rate-limit.ts` | Adapter: same `RateLimitResult` shape as `rate-limit.ts`, `consume()` async, hashes the bucket key, takes the Supabase client as a parameter |
+| `src/lib/api/send-otp-route.ts`, `verify-otp-route.ts` | Both rewired: in-memory limiter stays as a zero-round-trip pre-check, the durable limiter is now the source of truth, both must allow |
+
+### Why `bucket_key` is a SHA-256 digest, never the raw phone number or IP
+
+rev. 5.3 sec.6 and sec.12 constraint 3 — enforced everywhere else in this schema and asserted
+directly by `auth-otp-routes.test.mjs` ("no application table ever sees a phone number") — forbid a
+raw phone number from landing in any table but `auth.users`. The two limiters this migration exists
+for key on a phone number and an IP address. `durable-rate-limit.ts` hashes the key before it ever
+reaches SQL, so `rate_limit_windows` cannot answer "which phone number is this", only "has this
+opaque bucket been hit" — and the migration's own header states this constraint so a later slice
+that adds a fifth limiter does not quietly regress it by passing a raw value through.
+
+### Why `rate_limit_hit()` is granted to `service_role` only — not `authenticated`, never `anon`
+
+This is the one genuinely new grant shape in this repo. Every earlier SECURITY DEFINER writer is
+either `authenticated`-only (the client is logged in) or granted to nobody and run by a superuser
+scheduler (`sweep_expired_presence`, `offer_expire_sweep`). `rate_limit_hit()` fits neither: the
+send-otp route runs before any session exists, so `authenticated` is not even reachable for it, and
+the function's own arguments (`p_max`, `p_window_ms`) are policy that must never be caller-supplied
+by an untrusted party — a client that could call it directly could pass `p_max := 2000000000` to
+defeat its own limit, or spend another caller's bucket key (once hashed, still a fixed value) to
+lock a real phone number out of OTP verification. That is a denial-of-service delivered through the
+very table meant to stop abuse, so `anon` and `authenticated` are both wrong, regardless of grant.
+
+The only legitimate caller is the Next.js server itself, over the new service-role client. That
+client's key never reaches a browser, so this is a different trust boundary than the one
+`scripts/sql-lint.mjs`'s R10 defends (anon-reachability) — R10 does not need widening, and does not
+flag this grant, because `service_role` is not in its `FORBIDDEN_GRANTEES` list. What DID need a
+narrow, explicit widening is `tests/sql-migration-harness.test.mjs`'s own stricter check, which
+previously asserted every granted function's roles were exactly `authenticated` or
+`anon`+`authenticated` repo-wide. It now carries one literal exception,
+`SERVICE_ROLE_ONLY_FUNCTIONS = {'public.rate_limit_hit'}`, reviewed in the same commit — the same
+discipline `ANON_CALLABLE_FUNCTIONS` already establishes for the `anon` case.
+
+### Purging expired windows
+
+Two mechanisms, so retention works with or without a scheduler: `rate_limit_hit()` itself sweeps
+windows older than two days with low probability (~1 in 200 calls) on every invocation — comfortably
+past the longest window in use today (D-8's 24h per-IP cap) — and `rate_limit_sweep()` exists for
+pg_cron, unscheduled here, exactly as `sweep_expired_presence()` (0001) and `offer_expire_sweep()`
+(0002) are: scheduling is a database operation, not a migration concern (0008's own header makes the
+same call for those two).
+
+### Fail-open on a durable-store error
+
+`durable-rate-limit.ts` returns `{ allowed: true, retryAfterMs: 0 }` on any RPC error or missing
+row. D-45's own framing is why: Supabase Auth's per-number/IP controls are the actual security
+boundary for these routes; this limiter, durable or not, has only ever been defence-in-depth. A
+transient database error should degrade to "no extra limiting this request", not "OTP is down".
+
+### What is NOT done here, and why
+
+- **Not applied anywhere.** `0012` ships `APPLIED: no`, per `supabase/migrations/README.md` —
+  applying is a separate, explicitly authorised operator action, not part of writing the migration.
+- **Ordinal `0012`, not `0011`.** Two other slices in flight at the same time claim `0011` (agent
+  runtime) and `0013` (location content); this migration was deliberately numbered to leave both
+  free. Consequence stated plainly: `scripts/sql-lint.mjs`'s R2 (ordinals contiguous from `0001`)
+  fails on this branch in isolation, reporting exactly one violation —
+  `non-contiguous ordinal: expected 11, found 12` — because `0011` does not exist in this worktree.
+  That is expected and resolves the moment the three slices land together; it is not a defect in
+  this file, and `npm run test`'s harness (`tests/sql-migration-harness.test.mjs`) fails on the same
+  gap for the same reason. Every other check — RLS posture, grants, revokes, search_path pinning —
+  passes standalone.
+- **`external_phone_enabled` is still `false`** (D-45). This migration makes the durable control
+  exist; it does not itself change when phone auth goes live.
+
+**Status:** DONE as a static, unapplied artefact — SQL and application code written, statically
+verified, and unit-tested against a mocked RPC client. Behaviourally unproven against a real
+Postgres in this session (`tests/live-rate-limit.test.mjs` is written and skips without preview
+credentials, same pattern as `live-rls.test.mjs`); proving it live and applying `0012` to a preview
+branch are the next slice's job.

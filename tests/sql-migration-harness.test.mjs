@@ -166,8 +166,22 @@ for (const grant of statements.filter((s) => s.kind === 'grant_table')) {
 // R10's own exception, restated here rather than reused as a blanket pass: the
 // two rev. 5.3 §8 M1 aggregate functions are anon-callable by explicit review
 // (0005's own header); every other function is authenticated-only.
+//
+// One further, narrower exception (issue #55): `rate_limit_hit()` is callable
+// by `service_role` only, never `anon` or `authenticated` — see
+// `0012_durable_rate_limit.sql` for why a client that could call it directly
+// could defeat or weaponise it. `service_role`'s key never reaches a browser,
+// so this is not the anon-reachability R10 defends against; it is a distinct,
+// deliberately narrow allowlist, checked explicitly rather than folded into
+// ANON_CALLABLE_FUNCTIONS, which is specifically about the `anon` role.
+const SERVICE_ROLE_ONLY_FUNCTIONS = new Set(['public.rate_limit_hit'])
+
 for (const grant of statements.filter((s) => s.kind === 'grant_function')) {
-  const expectedRoles = ANON_CALLABLE_FUNCTIONS.has(grant.fn) ? ['anon', 'authenticated'] : ['authenticated']
+  const expectedRoles = ANON_CALLABLE_FUNCTIONS.has(grant.fn)
+    ? ['anon', 'authenticated']
+    : SERVICE_ROLE_ONLY_FUNCTIONS.has(grant.fn)
+      ? ['service_role']
+      : ['authenticated']
   assert.deepEqual(grant.roles, expectedRoles, `execute on ${grant.fn} may only be granted to ${expectedRoles.join(', ')}`)
 }
 

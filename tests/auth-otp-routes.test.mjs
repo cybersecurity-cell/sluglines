@@ -78,36 +78,83 @@ for (const [name, source] of [
 // the number "already exists".
 assert.match(sendHandler, /NextResponse\.json\(\{\s*ok:\s*true\s*\}\)/, 'send-otp success body must be generic')
 
-// -----------------------------------------------------------------------------
-// 3. Abuse controls: both handlers rate-limit before calling Supabase Auth
-// -----------------------------------------------------------------------------
-for (const [name, source] of [
-  ['send-otp handler', sendHandler],
-  ['verify-otp handler', verifyHandler],
-]) {
-  assert.match(source, /createFixedWindowLimiter/, `${name}: must use the shared rate limiter`)
-  assert.match(source, /from '\.\/rate-limit\.ts'/, `${name}: must import the rate limiter`)
-
-  const limiterIndex = source.indexOf('Limiter.consume')
-  const authCallIndex = source.search(/supabase\.auth\.(signInWithOtp|verifyOtp)\(/)
-  assert.ok(limiterIndex >= 0 && authCallIndex >= 0, `${name}: expected both a rate-limit check and an auth call`)
-  assert.ok(limiterIndex < authCallIndex, `${name}: the rate-limit check must run before the Supabase Auth call`)
-}
-
-// D-8's own number: verify attempts are capped at 5 per phone per hour.
-assert.match(verifyHandler, /max:\s*5,\s*windowMs:\s*HOUR_MS/, 'verify-otp: D-8 caps 5 attempts per number per hour')
-
-// -----------------------------------------------------------------------------
-// 4. set_home_spot(uuid): granted, revoked from PUBLIC, and only writes
-//    location_id — the same wiring proof api-routes.test.mjs runs for the M3
-//    transition functions, applied to the one M2 writer this slice adds.
-// -----------------------------------------------------------------------------
+// All migration SQL, joined — used by sections 3b, 4 below.
 const migrations = fs
   .readdirSync(path.join(root, 'supabase/migrations'))
   .filter((name) => name.endsWith('.sql'))
   .map((name) => fs.readFileSync(path.join(root, 'supabase/migrations', name), 'utf8'))
   .join('\n')
 
+// -----------------------------------------------------------------------------
+// 3. Abuse controls: both handlers rate-limit before calling Supabase Auth
+//
+// issue #55: the in-memory limiter is now a zero-round-trip pre-check, not
+// the source of truth. The durable, Postgres-backed limiter
+// (`durable-rate-limit.ts`) is what actually coordinates the cap across
+// serverless instances, and must run — via the service-role client, never
+// the cookie-bound one `rate_limit_hit()` is not granted to — before either
+// handler calls Supabase Auth.
+// -----------------------------------------------------------------------------
+for (const [name, source] of [
+  ['send-otp handler', sendHandler],
+  ['verify-otp handler', verifyHandler],
+]) {
+  assert.match(source, /createFixedWindowLimiter/, `${name}: must use the in-memory pre-check limiter`)
+  assert.match(source, /from '\.\/rate-limit\.ts'/, `${name}: must import the in-memory rate limiter`)
+  assert.match(source, /createDurableRateLimiter/, `${name}: must use the durable rate limiter`)
+  assert.match(source, /from '\.\/durable-rate-limit\.ts'/, `${name}: must import the durable rate limiter`)
+  assert.match(
+    source,
+    /from '@\/lib\/supabase\/service\.ts'/,
+    `${name}: must call the durable limiter through the service-role client`
+  )
+
+  const limiterIndex = source.indexOf('Limiter.consume')
+  const durableLimiterIndex = source.search(/durable\w*Limiter\.consume/)
+  const authCallIndex = source.search(/supabase\.auth\.(signInWithOtp|verifyOtp)\(/)
+  assert.ok(
+    limiterIndex >= 0 && durableLimiterIndex >= 0 && authCallIndex >= 0,
+    `${name}: expected an in-memory check, a durable check, and an auth call`
+  )
+  assert.ok(limiterIndex < authCallIndex, `${name}: the in-memory rate-limit check must run before the Supabase Auth call`)
+  assert.ok(durableLimiterIndex < authCallIndex, `${name}: the durable rate-limit check must run before the Supabase Auth call`)
+}
+
+// D-8's own number: verify attempts are capped at 5 per phone per hour, both
+// in-memory and in the durable limiter that is now the source of truth.
+assert.match(verifyHandler, /max:\s*5,\s*windowMs:\s*HOUR_MS/, 'verify-otp: D-8 caps 5 attempts per number per hour')
+assert.match(
+  verifyHandler,
+  /durablePhoneLimiter\s*=\s*createDurableRateLimiter\(\{\s*max:\s*5,\s*windowMs:\s*HOUR_MS\s*\}\)/,
+  'verify-otp: the durable limiter must carry the same D-8 cap as the in-memory pre-check'
+)
+
+// -----------------------------------------------------------------------------
+// 3b. rate_limit_hit() is locked to service_role — never anon, never
+// authenticated. A client that could call it directly could pass an
+// arbitrary p_max, or spend another caller's bucket key to lock them out.
+// -----------------------------------------------------------------------------
+assert.match(
+  migrations,
+  /grant execute on function public\.rate_limit_hit\([^)]*\) to service_role;/,
+  'rate_limit_hit(...) must be granted to service_role'
+)
+assert.equal(
+  /grant execute on function public\.rate_limit_hit\([^)]*\) to (anon|authenticated)/.test(migrations),
+  false,
+  'rate_limit_hit(...) must never be granted to anon or authenticated'
+)
+assert.match(
+  migrations,
+  /revoke all on function public\.rate_limit_hit\([^)]*\) from public;/,
+  'rate_limit_hit(...) must be revoked from PUBLIC'
+)
+
+// -----------------------------------------------------------------------------
+// 4. set_home_spot(uuid): granted, revoked from PUBLIC, and only writes
+//    location_id — the same wiring proof api-routes.test.mjs runs for the M3
+//    transition functions, applied to the one M2 writer this slice adds.
+// -----------------------------------------------------------------------------
 assert.match(
   migrations,
   /grant execute on function public\.set_home_spot\(uuid\) to authenticated;/,
