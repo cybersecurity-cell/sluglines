@@ -109,9 +109,14 @@ const WRITE_FREE_ROUTES = ['csp-report']
 // route — a stray route handler under src/app/api is an unreviewed write path.
 // `auth/` is excluded: it is the rev. 5.3 §8 M2 identity surface, a sibling
 // scope with its own exact inventory check in `auth-otp-routes.test.mjs`.
+// `agent/` is excluded the same way, as of Docs/DECISIONS.md D-65: it is the AI
+// runtime's one route, a different category again (not a transition, not
+// read-only, not write-free), with its own exact check in
+// `tests/ai-agent-runtime.test.mjs`.
+const EXCLUDED_TOP_LEVEL = ['auth', 'agent']
 function collectRoutes(dir, prefix = '') {
   return fs.readdirSync(dir, { withFileTypes: true }).flatMap((entry) => {
-    if (entry.isDirectory() && prefix === '' && entry.name === 'auth') return []
+    if (entry.isDirectory() && prefix === '' && EXCLUDED_TOP_LEVEL.includes(entry.name)) return []
     const full = path.join(dir, entry.name)
     if (entry.isDirectory()) return collectRoutes(full, prefix ? `${prefix}/${entry.name}` : entry.name)
     return entry.name === 'route.ts' ? [prefix] : []
@@ -123,7 +128,7 @@ assert.deepEqual(
   onDisk,
   [...ALL_ROUTES, ...READ_ONLY_ROUTES, ...WRITE_FREE_ROUTES].sort(),
   'src/app/api holds exactly the eleven §8 M3 routes, the named read-only routes and the named ' +
-    'write-free routes, plus auth/**'
+    'write-free routes, plus auth/** and agent/**'
 )
 
 // A read-only route must not export POST: that is what keeps this category a

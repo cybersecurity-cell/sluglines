@@ -3731,3 +3731,130 @@ through unnoticed. Set in `lighthouserc.json`'s `resource-summary:script:size` a
 
 **Status:** DONE. The other three budgets in the same assertion block (LCP, FCP, TBT) were not
 touched — they were not the failing gate and were not re-measured here.
+
+---
+
+## D-65 — The AI runtime is transplanted into `sluglines`, adapted (Option A), and issues #3/#8/#9/#13/#56 are fixed
+
+**Date:** 2026-09-02
+**Scope:** `supabase/migrations/0011_agent_traces_and_kill_switches.sql`, `src/lib/ai/**`,
+`src/lib/supabase/service-role.ts`, `src/app/api/agent/route.ts`, `eslint.config.mjs`,
+`tests/ai-agent-runtime.test.mjs`, plus the boundary-rule updates to `tests/domain-boundaries.test.mjs`
+and `tests/spot-locations-directory.test.mjs` that D-10 anticipated.
+
+### The transplant decision
+
+The user directive is explicit: *"all files from sluglines-ai should be merged and sluglines will be
+the only repo."* D-2/D-13 already settled that `sluglines` is the one canonical repo and that its
+*application core* is rebuilt from spec rather than transplanted wholesale. This entry is the AI
+agent layer's turn: it did not exist in `sluglines` at all (D-10's whole premise — "no `lib/ai`, no
+`assistant` route"), and `Sluglines-AI`'s `apps/web/lib/ai/{agent,tool-gate,tools,model-router}.ts`,
+its `/api/agent` route, and its `0024_agent_traces_and_kill_switches.sql` migration are the only
+place that layer's design exists. Per D-5/D-13, `Sluglines-AI` is read for design intent and nothing
+is copied byte-for-byte — every file below is stated as *adapted from*, with the adaptations named.
+
+### Why Option A, not a full 0011→0024 port
+
+A pre-slice scope analysis (`C:\Users\kalai\Projects\Temp\Sluglines\AI-transplant-scope-analysis.md`,
+not committed here — an external planning note) found that of `Sluglines-AI`'s seven `implemented:
+true` tools, six query objects `sluglines` does not have: `offers_board` (a view), Sluglines-AI's
+`get_presence_counts()`, `incidents`, `lostfound_items`, `stops`. Porting those means porting
+`Sluglines-AI`'s migrations `0007`, `0012`–`0021`, `0023` — fourteen feature migrations, their
+functions, RLS, and their own live-RLS tests — which is a multi-day milestone in its own right, not
+part of closing five bug-tracker issues. **Option A** ships the runtime adapted to the schema
+`sluglines` actually has today (migrations `0001`–`0010`), wires the tools that schema can honestly
+support, and marks the rest `implemented: false` with a named reason:
+
+| Tool | Status | Why |
+|---|---|---|
+| `presence.get_counts` | **live** | adapted to `get_public_spot_counts`/`get_public_open_offer_counts` (`0005`) via `lib/domain/public-counts.ts` — the same aggregate the public site already renders from |
+| `ride.list_offers` | **live** | adapted to `offers` + `locations` (0001/0002/0004) through the caller's own RLS-scoped session; no `offers_board` view added — a two-query join in `tools.ts` is smaller and no less safe |
+| `ride.get_offer` | **live** | same adaptation |
+| `ride.explain_match` | **live** | same adaptation, plus the seats/reservable computation `Sluglines-AI`'s tool also did |
+| `community.draft_response` | **live** | static, no DB — unchanged |
+| `incidents.get_active` | **off** | no `incidents` table in `sluglines`; `Sluglines-AI`'s `0018`/`0019` own that schema |
+| `lostfound.search` | **off** | no `lostfound_items` table; `src/app/lostfound/page.tsx` already states M5 is unbuilt here; `Sluglines-AI`'s `0020`/`0021` own that schema |
+| `transit.explain_alternatives` | **off** | no `stops` table |
+
+Each `off` tool carries a `TODO(Option B ...)` comment in `tools.ts` rather than an invented schema.
+**Option B — full consolidation (0011 becoming 0025+, porting incidents/lostfound/recurring
+offers/waitlist/leaderboard/dashboard) is explicitly deferred** to its own milestone; this entry does
+not open that issue, it records that the deferral is deliberate and named, so a later session does
+not read Option A as an oversight.
+
+### The five fixes, each with what was wrong and what changed
+
+- **#3 — kill-switch seed keys never matched the gate's lookup.** `Sluglines-AI`'s `0024` seeded
+  hyphenated keys (`skills.ride.explain-match`) against a gate that looks up
+  `` `skills.${toolName}` `` where every real tool name uses dots and underscores
+  (`ride.explain_match`); the seed also omitted five of the seven tools it shipped. `0011`'s seed is
+  `'skills.' || <exact CALLABLE_TOOLS name>` for every implemented tool, character for character.
+  `tests/ai-agent-runtime.test.mjs` parses the committed seed and requires it to equal
+  `CALLABLE_TOOLS` exactly in both directions, and behaviourally proves disabling one tool's row
+  denies only that tool.
+- **#8 — a failed audit write was indistinguishable from a successful one.** Both
+  `tool-gate.ts`'s `agent_tool_calls` insert and `agent.ts`'s `agent_traces` completion `update` had
+  their results discarded (`await audit.from(...).insert(...)`, error never read). `tool-gate.ts` now
+  fails the *decision* closed — an ALLOW whose own audit row failed to write is returned to the model
+  as a DENY, so no tool result reaches it unaudited; every tool here is read-only (R0/R1), so nothing
+  committed is lost by the downgrade. `agent.ts`'s completion update now logs (not fails-closed — by
+  that point the turn has already been shown to the member, so there is nothing left to deny, only a
+  log gap to close).
+- **#9 — a throwing `Anthropic` client orphaned the trace.** `new Anthropic()` and the
+  `z.toJSONSchema()` tool-schema build ran *before* the try block, so either one throwing (a missing
+  or invalid `ANTHROPIC_API_KEY`, most plausibly) propagated out of `runAgentTurn` entirely, and the
+  `agent_traces` row already inserted was left half-written forever. Both now run inside the try
+  block (`agent.ts`); the graceful "something went wrong" reply and the trace-closing update both run
+  regardless of which line failed. `createAnthropicClient` is a new, optional test-only constructor
+  parameter (default: the real SDK) — the seam that lets `tests/ai-agent-runtime.test.mjs` prove this
+  without a live model.
+- **#13 — a `refusal` stop dropped its reason.** `response.stop_details.category` (populated only
+  when `stop_reason === 'refusal'`) is now read and stored in a new `agent_traces.stop_details_category`
+  column (`0011`). Whether a refusal should retry against a fallback model/beta flag is a distinct,
+  real product decision — `agent.ts`'s `ENABLE_REFUSAL_FALLBACK` constant makes that choice explicit
+  and defaults it OFF (current behaviour: a clean refusal, no fallback, no paid retry). Flipping it
+  requires an actual fallback implementation alongside it, not a flag flip — the constant throws if
+  set true with none, rather than silently doing nothing.
+- **#56 — nothing bounded AI spend or volume while the kill switch was on.** Docs/costs.md's C1
+  (≤$0.10/turn) was recorded as a "hard cap" with no instrument to enforce it — see the correction in
+  that file's own changelog. Three new pilot-default caps, chosen because the maintainer asked for
+  sane defaults rather than an empirically-tuned number (no invoiced spend exists yet to tune from):
+
+  | Cap | Value | Enforcement |
+  |---|---|---|
+  | Per-member daily turns | 40/member/day | `0011`'s `ai_member_turn_count_today()`, checked before any model call; fails **closed** on a counter error |
+  | Global daily turns | 2,000/day | `0011`'s `ai_global_turn_count_today()`, same fail-closed discipline |
+  | Hard per-turn cost | $0.15/turn | `src/lib/ai/cost.ts` + `agent.ts`'s loop, checked between model calls against actual token usage; the in-flight call that crosses it is allowed to finish, no further call is made |
+
+  A capacity-denied turn gets its own `agent_traces` row (`capacity_denied = true`) rather than the
+  kill switch's "no trace at all" — the caps' own counters need to see it — and is *excluded* from
+  both counters, so a burst of denied attempts cannot itself inflate the global count against
+  everyone else. Counting via SQL functions over `agent_traces` rather than in application memory
+  means every app instance reads one number; it is not a transactional guarantee against the
+  check-then-insert race between the count read and the next trace insert, which is out of this
+  slice's scope and is stated rather than assumed away (see `0011`'s own comment on this function
+  pair). `src/lib/ai/cost.ts`'s per-token rates are a placeholder estimate (this pilot has no invoice
+  to reconcile against), deliberately set high so the cap trips before a real overspend rather than
+  after one.
+
+### The boundary rule (D-10 becomes live)
+
+`eslint.config.mjs` now carries the `no-restricted-imports` rule D-10 specified: `lib/ai/**`
+importable only by `app/**/api/agent/**` and `lib/ai/**` itself, everywhere else in `src/` restricted.
+Verified as a real gate, not a decorative one, by actually triggering it (a throwaway file importing
+`@/lib/ai/tools` from `src/lib/`, confirmed to fail lint, then removed). Two pre-existing tests
+asserted the *absence* of `lib/ai` as their half of this same boundary
+(`tests/domain-boundaries.test.mjs`, `tests/spot-locations-directory.test.mjs`); both are updated in
+this change to assert the allowlist instead of the absence, per each file's own comment that said
+this was the exact trigger for doing so.
+
+### What this entry does not claim
+
+No live database was touched — `0011` carries `APPLIED: no` and is a file only, per this session's
+authorisation (migration file only, no production writes). No RLS behaviour is verified beyond the
+static `sql-lint`/`sql-migration-harness` proof every migration in this directory gets; a live-RLS
+pass for `0011` is owed the same way D-23 already states for every other migration. The per-token
+cost rates in `cost.ts` are explicitly not real billing data. The check-then-insert race on the daily
+counters is not closed. Each of these is named here rather than left to be discovered.
+
+**Status:** DONE — Option A scope, all five issues fixed and tested, boundary rule live.

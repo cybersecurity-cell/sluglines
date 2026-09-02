@@ -5,12 +5,15 @@
 // Docs/DECISIONS.md D-10 deferred the boundary rule because its subject did not
 // exist: with no `lib/ai` in the repo, a `no-restricted-imports` rule could not
 // be made to fail, and "a gate that only looks green" was rejected. `lib/domain`
-// now exists, so its half of the rule is enforceable today — this test is that
-// enforcement. The `lib/ai` half stays deferred until `lib/ai` exists.
+// existed first, so its half of the rule was enforced here before `lib/ai` did.
+// `lib/ai` now exists too (D-65), and the ESLint rule landed in the same change
+// — see the bottom of this file for the check that it did.
 //
 // This is a static test rather than an ESLint rule on purpose: it fails in
 // `npm run test`, which is the gate rev. 5.3 §12 constraint 7 actually requires
-// output from. The ESLint rule lands with the P1 restructure.
+// output from. `lib/ai`'s half of the boundary is the actual ESLint rule
+// (eslint.config.mjs), because `lib/ai` is consumed from `app/**`, which this
+// file's import scanner does not walk.
 
 import { strict as assert } from 'node:assert'
 import fs from 'node:fs'
@@ -96,11 +99,23 @@ for (const file of files) {
 const barrel = fs.readFileSync(path.join(domainDir, 'index.ts'), 'utf8')
 assert.match(barrel, /never React, never lib\/ai/)
 
-// The other half of D-10: lib/ai still does not exist, so the rule that forbids
-// importing it has no subject. If this ever fails, the ESLint boundary rule is
-// due in the same change.
-assert.equal(
-  fs.existsSync(path.join(root, 'src/lib/ai')),
-  false,
-  'src/lib/ai now exists: complete the ESLint boundary rule per Docs/DECISIONS.md D-10'
+// The other half of D-10: lib/ai now exists (Docs/DECISIONS.md D-65), which is
+// what made the ESLint boundary rule due — this asserts the rule actually
+// landed in the same change, rather than re-deriving it from scratch. The full
+// behavioural proof (a stray import outside the allowlist fails lint) lives in
+// tests/ai-agent-runtime.test.mjs, since running ESLint itself is `npm run
+// lint`'s job, not this file's.
+assert.equal(fs.existsSync(path.join(root, 'src/lib/ai')), true, 'src/lib/ai must exist once D-65 lands')
+
+const eslintConfig = fs.readFileSync(path.join(root, 'eslint.config.mjs'), 'utf8')
+assert.match(
+  eslintConfig,
+  /no-restricted-imports/,
+  'eslint.config.mjs must carry the D-10 lib/ai boundary rule now that lib/ai exists'
+)
+assert.match(eslintConfig, /@\/lib\/ai/, 'the boundary rule must name the @/lib/ai import specifier')
+assert.match(
+  eslintConfig,
+  /ignores:\s*\[['"]src\/lib\/ai\/\*\*['"],\s*['"]src\/app\/api\/agent\/\*\*['"]\]/,
+  'the boundary rule must exempt lib/ai/** and app/api/agent/** from itself, per D-10\'s allowlist'
 )
