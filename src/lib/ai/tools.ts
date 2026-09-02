@@ -37,6 +37,13 @@
  * "real table, caller's own RLS session" pattern as `ride.*` — no new view was
  * needed on the TypeScript side because 0014 already ships one for the same
  * reason `offers_board` was judged unnecessary there.
+ *
+ * `lostfound.search` is no longer in that deferred set either: Option B slice 2
+ * (issue #90, Docs/DECISIONS.md D-69) ships `lostfound_items`/`lostfound_claims`/
+ * `lostfound_messages` (0016/0017) and points this tool at the
+ * `lostfound_items_board` view — same pattern again. `stops` remains the one
+ * genuinely missing table; `transit.explain_alternatives` still carries its
+ * `TODO(Option B)` deferral.
  */
 
 import { z } from 'zod'
@@ -224,10 +231,11 @@ export const TOOLS: ToolDefinition[] = [
   {
     name: 'lostfound.search',
     riskTier: 'R0',
-    // TODO(Option B): sluglines has no `lostfound_items` table — see
-    // src/app/lostfound/page.tsx, which is explicit that M5 is unbuilt here.
-    // Sluglines-AI's 0020/0021 own that schema.
-    description: 'Search open lost-and-found items by category and/or ride date. Not available yet.',
+    // Option B slice 2 (issue #90, Docs/DECISIONS.md D-69): `lostfound_items_board`
+    // now exists (0016/0017). Reads through the caller's own RLS-scoped
+    // session, same pattern as ride.list_offers / incidents.get_active —
+    // same-location open items only.
+    description: 'Search open lost-and-found items by category and/or ride date.',
     schema: z
       .object({
         kind: z.enum(['lost', 'found']).optional(),
@@ -235,7 +243,24 @@ export const TOOLS: ToolDefinition[] = [
         rideDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
       })
       .strict(),
-    implemented: false,
+    implemented: true,
+    run: async (args, ctx) => {
+      let query = ctx.supabase
+        .from('lostfound_items_board')
+        .select(
+          'id, kind, category, description, ride_date, state, pending_claim_count, my_claim_state, created_at, expires_at'
+        )
+        .eq('location_id', ctx.locationId)
+        .in('state', ['REPORTED', 'MATCHED'])
+
+      if (typeof args.kind === 'string') query = query.eq('kind', args.kind)
+      if (typeof args.category === 'string') query = query.eq('category', args.category)
+      if (typeof args.rideDate === 'string') query = query.eq('ride_date', args.rideDate)
+
+      const { data, error } = await query.order('created_at', { ascending: false }).limit(25)
+      if (error) throw error
+      return { items: data ?? [] }
+    },
   },
   {
     name: 'ride.explain_match',

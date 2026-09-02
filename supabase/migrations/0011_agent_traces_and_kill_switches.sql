@@ -40,16 +40,18 @@
 --   * two columns are new: agent_traces.capacity_denied and .cost_capped, and
 --     one more: agent_traces.estimated_cost_usd -- all three for issue #56.
 --
--- SCOPE (Docs/DECISIONS.md D-65, "Option A"; amended by D-68, "Option B slice 1")
+-- SCOPE (Docs/DECISIONS.md D-65, "Option A"; amended by D-68 and D-69,
+-- "Option B" slices 1 and 2)
 -- -----------------------------------------------------------------------------
--- src/lib/ai/tools.ts ships eight tool definitions. Two of them --
--- lostfound.search, transit.explain_alternatives -- read tables
--- (lostfound_items, stops) that do not exist anywhere in this repo's
--- migrations, so tools.ts marks them `implemented: false` and the gate denies
--- them on that ground before a kill-switch lookup is ever reached. A third,
--- incidents.get_active, was in that same set at D-65 but is not anymore: D-68
--- (issue #90) ships the `incidents` schema (0014/0015) and flips it live. This
--- file therefore seeds a switch for exactly the six tools that are both
+-- src/lib/ai/tools.ts ships eight tool definitions. One of them --
+-- transit.explain_alternatives -- reads a table (stops) that does not exist
+-- anywhere in this repo's migrations, so tools.ts marks it `implemented: false`
+-- and the gate denies it on that ground before a kill-switch lookup is ever
+-- reached. Two others, incidents.get_active and lostfound.search, were in that
+-- same deferred set at D-65 but are not anymore: D-68 (issue #90) ships the
+-- `incidents` schema (0014/0015) and flips the first live; D-69 (same issue)
+-- ships the `lostfound` schema (0016/0017) and flips the second. This file
+-- therefore seeds a switch for exactly the seven tools that are both
 -- `implemented: true` and tier R0/R1 -- i.e. every tool CALLABLE_TOOLS in
 -- tools.ts actually advertises to the model -- plus `global`. Seeding a switch
 -- for a tool the gate can never reach for a different reason first would be a
@@ -387,9 +389,9 @@ grant execute on function public.ai_global_turn_count_today() to authenticated;
 
 
 -- =============================================================================
--- SEED -- 'global' plus exactly the six tools tools.ts marks `implemented: true`
--- at tier R0/R1 (CALLABLE_TOOLS). See the file header, "THE #3 FIX", for why
--- every key is `'skills.' || <exact tool name>` and nothing else.
+-- SEED -- 'global' plus exactly the seven tools tools.ts marks `implemented:
+-- true` at tier R0/R1 (CALLABLE_TOOLS). See the file header, "THE #3 FIX", for
+-- why every key is `'skills.' || <exact tool name>` and nothing else.
 --
 -- tests/ai-agent-runtime.test.mjs parses this VALUES list and requires it to
 -- equal `['global', ...CALLABLE_TOOLS.map(t => 'skills.' + t.name)]` exactly, in
@@ -403,5 +405,6 @@ insert into public.ai_kill_switches (key, enabled) values
   ('skills.ride.get_offer', true),
   ('skills.ride.explain_match', true),
   ('skills.incidents.get_active', true),
+  ('skills.lostfound.search', true),
   ('skills.community.draft_response', true)
 on conflict (key) do nothing;
