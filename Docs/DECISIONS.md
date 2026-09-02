@@ -3954,3 +3954,97 @@ verified, and unit-tested against a mocked RPC client. Behaviourally unproven ag
 Postgres in this session (`tests/live-rate-limit.test.mjs` is written and skips without preview
 credentials, same pattern as `live-rls.test.mjs`); proving it live and applying `0012` to a preview
 branch are the next slice's job.
+
+---
+
+## D-67 — `public_transportation`/`external_links` columns pay down the two sections D-59 owed. `0013`, issue #77
+
+**Date:** 2026-09-02
+**Issue:** #77. Debt recorded in D-59: "Two legacy sections have no field in `SpotLocation` and were
+therefore dropped: Public Transportation (on 40 of 42 pages) and External links (37)."
+
+### Column shapes, and why
+
+`public_transportation text[]` — one entry per bus route, rail line or shuttle, as free text. The
+legacy pages describe these in prose or short list items and never cleanly separate a route from
+its operator (some name a route number with no operator, some an operator with no route number),
+so a `{route, operator}` column pair would mean guessing a structure the source does not have. Same
+shape as `lines_from`/`lines_to`, for the same reason.
+
+`external_links jsonb` — an array of `{label, url}` objects: the legacy page's own "External links"
+section is link text plus a destination and nothing else structured. `jsonb` rather than a parallel
+`external_link_labels[]`/`external_link_urls[]` pair, which would rely on index alignment to mean
+anything — a foot-gun `jsonb` does not have. Every `url` is required to be an absolute `http(s)` URL,
+enforced by `isSafeExternalLinkUrl` in `lib/domain/locations.ts` and asserted over the whole
+directory by `tests/spot-locations-directory.test.mjs`: these render as outbound links on a spot
+page, so a `javascript:`, `data:`, or relative-path entry is refused at the application boundary
+rather than trusted through.
+
+### Counts, re-measured rather than carried over from D-59
+
+Re-parsing `src/data/legacy-site-content.json` directly (rather than trusting D-59's prose figures)
+found **40 of 42** legacy spot pages with a "Public Transportation" section — matching D-59 exactly
+— and **35**, not 37, with a non-empty "External links" section. The difference: two pages
+(`landmark-mall`, `tysons-corner`) never had the heading at all, and five more (`cardinal-forest-
+plaza`, `14th-st-and-g-st`, `dale-city`, `lenfant-plaza`, `saratoga`) had the heading with no links
+under it — an empty section reads identically to no section for the purposes of this field, so both
+are the honest `undefined`, not an empty array. D-59's 37 likely counted the heading's presence
+rather than its content; this decision counts content, and the test pins 40/35 so the number cannot
+drift silently.
+
+One link was dropped outright rather than carried: `horner-rd`'s "External links" list held
+`{label: "/slug-pickup/Horner-Rd", url: "/slug-pickup/Horner-Rd"}`, a relative self-referential
+WordPress artifact, not a real external resource. One link was normalised rather than dropped:
+`navy-yard`'s one link was a real legacy PDF at a relative path (`/a/wp-content/uploads/...`);
+absolutized to `https://sluglines.com/a/wp-content/uploads/...` so it resolves as an actual outbound
+link rather than a broken path into this app. Both are the same class of correction D-59 made for
+the `L'Enfant`/`L Enfant`/`LEnfant` spelling: a normalisation of form, not an edit of content.
+Nothing else was corrected — an artifact already present in the source, such as `old-hechingers`'s
+external link containing a literal `*` in its path, or `route-610-staffordboro-blvd`'s link
+containing a literal space, is carried exactly as scraped rather than guessed into a "fixed" URL
+that might not be the real one (D-31/D-33 posture: never fabricate).
+
+### Why `SEED_COLUMNS`/`0004`/its snapshot are untouched
+
+The obvious move — add the two columns to `SEED_COLUMNS` and refreeze `0004.seed-snapshot.json` —
+does not work: `renderLocationsMigration()`'s `create table` DDL is a literal in the generator
+template, not derived from `SEED_COLUMNS`, so widening `SEED_COLUMNS` without also widening that
+literal would emit an `INSERT` with more columns than the table declares. Widening the literal too
+would change what `renderLocationsMigration(snapshot)` emits for the *frozen* snapshot, which would
+then disagree with the actually-committed `0004_spot_locations_directory.sql` — a file `APPLIED:
+production`, which `supabase/migrations/README.md` forbids editing, full stop. There is no version
+of "reuse 0004's mechanism" that does not end in either an editing an applied migration or a broken
+guard.
+
+So this follows 0009's precedent instead, one step further: `TRANSIT_EXTERNAL_COLUMNS`,
+`TRANSIT_EXTERNAL_MIGRATION_PATH` (`0013_location_transit_external.sql`) and
+`renderTransitExternalMigration()` are a parallel, independent construct in
+`scripts/seed-locations.mjs`, guarded byte-for-byte the same way 0009 is. Unlike 0009 — an UPDATE
+only, because 0004 already had the columns — 0013 carries the `alter table ... add column` DDL too,
+because these two columns do not exist anywhere yet. `0004`, its `SEED_COLUMNS` and its snapshot are
+untouched by this change.
+
+### Ordinal `0013`, not `0011`
+
+`0011` and `0012` are reserved by other slices in the same batch, not present in this worktree at
+the time `0013` was authored. `npm run sql:check` and `tests/sql-migration-harness.test.mjs`
+therefore report a single `R2` violation (`non-contiguous ordinal: expected 11, found 13`) until
+those ordinals land — an expected, inherent consequence of parallel batch numbering, not a defect in
+`0013` itself. Every other `sql-lint` rule and every other assertion in the migration-harness suite
+passes against `0013` on its own merits.
+
+### What this migration does not do, and why
+
+It does not extend `get_public_location` (0010) to return either new column to anonymous visitors.
+That function is also `APPLIED: production`; widening its returned columns is a second, separately
+authorised and separately reviewed act, preserving the function's exact signature per the README's
+correction rule. Until that ships, `PublicLocation.publicTransportation`/`.externalLinks` resolve
+only through `publicLocationFromDirectory` (an inactive spot, or any environment without `0010`
+applied) and never through `publicLocationFromRow` — so an active spot's database-backed page in
+production will not show either field until the follow-up lands. Tracked as `TODO(#77)` in
+`lib/domain/public-location.ts` rather than assumed complete.
+
+### Not applied
+
+`0013` carries `APPLIED: no`. Applying it, and separately extending `get_public_location`, are each
+a distinct, separately authorised act.

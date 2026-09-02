@@ -1,5 +1,5 @@
 import type { ReactNode } from 'react'
-import { Car, Clock, Info, MapPin, ParkingCircle } from 'lucide-react'
+import { Bus, Car, Clock, Info, MapPin, ParkingCircle } from 'lucide-react'
 import type { SpotFactState } from '@/lib/domain/locations'
 import type { PublicLocation } from '@/lib/public-directory'
 
@@ -21,6 +21,13 @@ export default function SpotQuickFacts({ location }: SpotQuickFactsProps) {
         />
         {location.parking && (
           <Fact icon={<ParkingCircle aria-hidden className="h-4 w-4" />} label="Parking" value={location.parking} />
+        )}
+        {location.publicTransportation && (
+          <Fact
+            icon={<Bus aria-hidden className="h-4 w-4" />}
+            label="Public transportation"
+            value={location.publicTransportation.join(', ')}
+          />
         )}
       </dl>
       <FreshnessNote location={location} />

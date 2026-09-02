@@ -14,7 +14,7 @@
  * rule keeps out of `lib/domain`.
  */
 
-import type { SpotImage, SpotLocation, SpotProvenance } from './locations.ts'
+import type { SpotExternalLink, SpotImage, SpotLocation, SpotProvenance } from './locations.ts'
 import { findSpotLocation, spotImage } from './locations.ts'
 
 export type PublicLocationSource = 'database' | 'directory'
@@ -37,6 +37,19 @@ export interface PublicLocation {
   parking?: string
   linesFrom: string[]
   linesTo: string[]
+  /**
+   * Resolved from the committed directory only (issue #77). `locations` gained
+   * `public_transportation`/`external_links` columns in `0013`, but
+   * `get_public_location` -- 0010, `APPLIED: production` -- was not re-defined
+   * to return them: that needs its own migration, preserving the function's
+   * exact signature per `supabase/migrations/README.md`'s correction rule, and
+   * its own review of what an anonymous visitor gains. Until then the database
+   * branch of `getPublicLocation` never sets these two fields, even once the
+   * columns are populated; only `publicLocationFromDirectory` does. TODO(#77).
+   */
+  publicTransportation?: string[]
+  /** See `publicTransportation` above -- same gap, same TODO(#77). */
+  externalLinks?: SpotExternalLink[]
   communityUrl?: string
   notes?: string
   /**
@@ -162,6 +175,8 @@ export function publicLocationFromDirectory(location: SpotLocation): PublicLocat
     ...(location.parking ? { parking: location.parking } : {}),
     linesFrom: location.linesFrom ?? [],
     linesTo: location.linesTo ?? [],
+    ...(location.publicTransportation ? { publicTransportation: location.publicTransportation } : {}),
+    ...(location.externalLinks ? { externalLinks: location.externalLinks } : {}),
     ...(location.fbUrl ? { communityUrl: location.fbUrl } : {}),
     ...(location.notes ? { notes: location.notes } : {}),
     ...(location.image ? { image: location.image } : {}),
