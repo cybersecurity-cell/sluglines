@@ -69,7 +69,7 @@ export async function sendOtpHandler(request: NextRequest): Promise<NextResponse
     return NextResponse.json(otpError('rate_limited'), { status: otpStatus('rate_limited') })
   }
 
-  const supabase = createClient()
+  const supabase = await createClient()
   const { error } = await supabase.auth.signInWithOtp({ phone })
 
   if (error !== null) {

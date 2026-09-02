@@ -69,7 +69,7 @@ export function offerTransitionRoute(fn: OfferTransitionFn) {
   const operation = operationOrThrow(fn)
 
   return async function POST(request: NextRequest): Promise<NextResponse> {
-    const supabase = createClient()
+    const supabase = await createClient()
 
     const { data, error: sessionError } = await supabase.auth.getUser()
     if (sessionError !== null || data.user === null) {

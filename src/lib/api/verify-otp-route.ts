@@ -62,7 +62,7 @@ export async function verifyOtpHandler(request: NextRequest): Promise<NextRespon
     return NextResponse.json(otpError('rate_limited'), { status: otpStatus('rate_limited') })
   }
 
-  const supabase = createClient()
+  const supabase = await createClient()
   const { data, error } = await supabase.auth.verifyOtp({
     phone: input.phone,
     token: input.token,

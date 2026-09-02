@@ -7,17 +7,18 @@ import {
 } from '@/lib/legacy-content'
 
 interface LegacyRoutePageProps {
-  params: {
+  params: Promise<{
     legacyPath: string[]
-  }
+  }>
 }
 
 export function generateStaticParams() {
   return getLegacyStaticParams()
 }
 
-export function generateMetadata({ params }: LegacyRoutePageProps) {
-  const page = getLegacyRouteForPath(`/${params.legacyPath.join('/')}/`)
+export async function generateMetadata({ params }: LegacyRoutePageProps) {
+  const { legacyPath } = await params
+  const page = getLegacyRouteForPath(`/${legacyPath.join('/')}/`)
 
   if (!page) {
     return { title: 'Page Not Found - Sluglines' }
@@ -26,8 +27,9 @@ export function generateMetadata({ params }: LegacyRoutePageProps) {
   return buildLegacyMetadata(page)
 }
 
-export default function LegacyRoutePage({ params }: LegacyRoutePageProps) {
-  const page = getLegacyRouteForPath(`/${params.legacyPath.join('/')}/`)
+export default async function LegacyRoutePage({ params }: LegacyRoutePageProps) {
+  const { legacyPath } = await params
+  const page = getLegacyRouteForPath(`/${legacyPath.join('/')}/`)
 
   if (!page) {
     notFound()

@@ -60,7 +60,7 @@ interface PresenceLocationRow {
  */
 export async function getMemberPresence(now = new Date()): Promise<MemberPresence> {
   try {
-    const supabase = createClient()
+    const supabase = await createClient()
 
     const { data: auth, error: authError } = await supabase.auth.getUser()
 
@@ -93,7 +93,7 @@ export async function getMemberPresence(now = new Date()): Promise<MemberPresenc
  */
 async function readPresenceLocation(locationId: string) {
   try {
-    const supabase = createClient()
+    const supabase = await createClient()
     const { data, error } = await supabase
       .from('locations')
       .select(PRESENCE_LOCATION_COLUMNS)

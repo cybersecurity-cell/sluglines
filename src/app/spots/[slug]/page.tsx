@@ -14,8 +14,9 @@ import { getPublicLocation, getPublicSpotCounts } from '@/lib/public-directory'
  */
 export const dynamic = 'force-dynamic'
 
-export async function generateMetadata({ params }: { params: { slug: string } }) {
-  const location = await getPublicLocation(params.slug)
+export async function generateMetadata({ params }: { params: Promise<{ slug: string }> }) {
+  const { slug } = await params
+  const location = await getPublicLocation(slug)
 
   if (!location) {
     return { title: 'Location Not Found - Sluglines' }
@@ -28,8 +29,9 @@ export async function generateMetadata({ params }: { params: { slug: string } })
   }
 }
 
-export default async function SpotPage({ params }: { params: { slug: string } }) {
-  const location = await getPublicLocation(params.slug)
+export default async function SpotPage({ params }: { params: Promise<{ slug: string }> }) {
+  const { slug } = await params
+  const location = await getPublicLocation(slug)
 
   if (!location) {
     notFound()

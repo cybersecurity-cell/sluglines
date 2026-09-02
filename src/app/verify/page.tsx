@@ -15,8 +15,8 @@ export const metadata = {
   description: 'Enter the 6-digit code we texted you.',
 }
 
-export default function VerifyPage({ searchParams }: { searchParams?: { phone?: string } }) {
-  const phone = searchParams?.phone
+export default async function VerifyPage({ searchParams }: { searchParams?: Promise<{ phone?: string }> }) {
+  const phone = (await searchParams)?.phone
   if (!phone) {
     redirect('/login')
   }

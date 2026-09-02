@@ -22,35 +22,14 @@
     "GHSA-f82v-jwr5-mffw is CLEARED. Nine waivers were deleted because their advisories",
     "no longer appear: @next/eslint-plugin-next, eslint-config-next,",
     "@typescript-eslint/parser, @typescript-eslint/typescript-estree, brace-expansion,",
-    "minimatch, js-yaml, nanoid, and ws."
+    "minimatch, js-yaml, nanoid, and ws.",
+    "",
+    "Updated 2026-09-01 by the issue #67 Next 16 / React 19 / Tailwind 4 migration:",
+    "next -> 16.3.4, eslint-config-next in lockstep. This is exactly the remediation",
+    "each of the three remaining waivers (next, postcss, glob) named as their own",
+    "clearing condition. `npm audit` now reports 0 vulnerabilities at any severity, so",
+    "all three are deleted rather than left in place pointing at advisories that no",
+    "longer appear."
   ],
-  "exceptions": [
-    {
-      "package": "next",
-      "advisory": null,
-      "severity": "high",
-      "reason": "next is now 14.2.35, the newest release on the 14.2.x line. That bump cleared the critical middleware authorization bypass (GHSA-f82v-jwr5-mffw) plus four highs (GHSA-gp8f-8m3g-qvj9 cache poisoning, GHSA-7gfc-8cq8-jh5f authorization bypass, GHSA-mwv6-3258-q52c and GHSA-5j59-xgg2-r9c4 RSC DoS). Eight highs remain — GHSA-h25m-26qc-wcjf, GHSA-q4gf-8mx6-v5v3, GHSA-8h8q-6873-q5fj, GHSA-c4j6-fc7j-m34r, GHSA-36qx-fr4f-26g5, GHSA-m99w-x7hq-7vfj, GHSA-89xv-2m56-2m9x, GHSA-p9j2-gv94-2wf4. Every one of these is first fixed in the 15.5.x line (npm reports the only fix as next@16.3.1, semver-major), so none can be resolved without leaving Next 14; that migration is deliberately out of scope for this slice. Reachability was checked against this app rather than assumed: there is no middleware.ts, no i18n config, no Server Actions ('use server' appears nowhere in src/), no rewrites in next.config.js, and no custom server. That rules out the i18n proxy bypass (GHSA-36qx-fr4f-26g5), both Server Actions issues (GHSA-m99w-x7hq-7vfj, GHSA-89xv-2m56-2m9x), and the rewrite-destination SSRF (GHSA-p9j2-gv94-2wf4) on the current surface. The residual exposure is the RSC/WebSocket-upgrade DoS and SSRF cluster against a build that is 405 static paths with two dynamic routes.",
-      "approvedBy": "dependency-security slice, 2026-08-14, pending human confirmation",
-      "expires": "2026-10-15",
-      "remediation": "Requires next >= 15.5.21. Plan a Next 15 migration slice (App Router codemods, eslint-config-next bumped in lockstep, full test/lint/build/audit pass). Re-verify the reachability assumptions above if middleware, i18n, Server Actions, rewrites, or a custom server are ever introduced — any of those would invalidate this waiver early."
-    },
-    {
-      "package": "postcss",
-      "advisory": null,
-      "severity": "high",
-      "reason": "The direct devDependency was raised to ^8.5.26 and that top-level copy is fully patched. The two remaining highs (GHSA-6g55-p6wh-862q and GHSA-r28c-9q8g-f849, arbitrary .map file disclosure via attacker-controlled sourceMappingURL) come from node_modules/next/node_modules/postcss only, which next@14.2.35 pins to exactly 8.4.31 in its own dependencies — it cannot be overridden without leaving Next 14. Build-time CSS processing over CSS authored in this repo; no untrusted stylesheet ever reaches it, and it is not present in the deployed bundle.",
-      "approvedBy": "dependency-security slice, 2026-08-14, pending human confirmation",
-      "expires": "2026-10-15",
-      "remediation": "Cleared by the same Next 15 migration as the `next` entry above, which unpins the bundled postcss."
-    },
-    {
-      "package": "glob",
-      "advisory": "GHSA-5j98-mcp5-4vw2",
-      "severity": "high",
-      "reason": "Command injection in the glob CLI's -c/--cmd flag. Reached only as a transitive dev dependency of the lint toolchain; this repo never invokes the glob CLI, and no CI job passes -c/--cmd. Still present after the 14.2.35 bump — npm reports the only fix as eslint-config-next@16.3.1, a semver-major jump that would outpace the pinned Next 14 runtime. Not reachable at runtime or in the deployed bundle.",
-      "approvedBy": "P0-adapted slice, 2026-08-14; re-confirmed by the dependency-security slice, 2026-08-14, pending human confirmation",
-      "expires": "2026-11-14",
-      "remediation": "Cleared by the eslint-config-next major bump that accompanies the Next 15 migration."
-    }
-  ]
+  "exceptions": []
 }

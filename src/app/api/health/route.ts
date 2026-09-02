@@ -51,7 +51,7 @@ export async function GET() {
   // --- the database, through the same anonymous path a visitor uses ----------
   const dbStartedAt = Date.now()
   try {
-    const supabase = createClient()
+    const supabase = await createClient()
     const { data, error } = await supabase.rpc(PUBLIC_SPOT_COUNTS_FUNCTION)
 
     if (error) {
@@ -81,7 +81,7 @@ export async function GET() {
   // --- the second aggregate, because the board needs both -------------------
   const offersStartedAt = Date.now()
   try {
-    const { error } = await createClient().rpc(PUBLIC_OPEN_OFFER_COUNTS_FUNCTION)
+    const { error } = await (await createClient()).rpc(PUBLIC_OPEN_OFFER_COUNTS_FUNCTION)
     checks.offerCounts = {
       ok: !error,
       detail: error ? `${PUBLIC_OPEN_OFFER_COUNTS_FUNCTION} failed: ${error.code ?? 'no sqlstate'}` : 'ok',
@@ -107,7 +107,7 @@ export async function GET() {
   // `scheduledJobs.healthy` while the status line stays about reachability.
   let scheduledJobs
   try {
-    const { data, error } = await createClient().rpc(SCHEDULED_JOB_HEALTH_FUNCTION)
+    const { data, error } = await (await createClient()).rpc(SCHEDULED_JOB_HEALTH_FUNCTION)
     scheduledJobs = summariseScheduledJobs((data as ScheduledJobRow[] | null) ?? null, {
       error: error ? `${error.code ?? 'no sqlstate'} ${error.message ?? ''}`.trim() : null,
     })

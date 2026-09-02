@@ -1,46 +1,39 @@
 import { createServerClient } from '@supabase/ssr'
-import type { CookieOptions } from '@supabase/ssr'
 import { cookies } from 'next/headers'
 
 /**
  * The cookie-bound server client. Every server-side read and every M3 write
  * route gets its session from here, so the adapter below has to match the
- * `CookieMethods` contract of the **installed** `@supabase/ssr`.
+ * `CookieMethodsServer` contract of the **installed** `@supabase/ssr`.
  *
- * It previously supplied `getAll`/`setAll`. That is the 0.5+ API; this project is
- * pinned to `^0.3.0`, whose `createServerClient` calls only `get`, `set` and
- * `remove` and ignores anything else it is handed. The mismatch typechecked and
- * built — the options type is an intersection, so the excess-property check does
- * not fire — and failed silently at runtime: no cookie was ever read, so
- * `auth.getUser()` returned no user for a signed-in member and every server
- * client was effectively anonymous.
+ * `getAll`/`setAll` is the API the installed 0.12.x package calls; the
+ * previous `get`/`set`/`remove` trio it replaced is ignored silently by a
+ * client that expects `getAll`/`setAll`, which is exactly the failure mode
+ * `tests/supabase-server-client.test.mjs` exists to catch — see that file for
+ * how a mismatch here previously typechecked, built, and left every server
+ * client anonymous.
  *
- * `tests/supabase-server-client.test.mjs` now asserts this adapter implements
- * exactly the method names the installed package's own type declaration lists,
- * so a version bump that renames them fails a gate instead of silently
- * un-authenticating the app again.
+ * `cookies()` is async as of Next 15/16 (`next/headers`), so this function is
+ * now async too; every caller must `await createClient()`.
  */
-export function createClient() {
-  const cookieStore = cookies()
+export async function createClient() {
+  const cookieStore = await cookies()
   return createServerClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
     process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
     {
       cookies: {
-        get(name: string) {
-          return cookieStore.get(name)?.value
+        getAll() {
+          return cookieStore.getAll()
         },
         // Server Components cannot write cookies; only Route Handlers and
         // Server Actions can. The throw is expected there and is swallowed —
         // the session is refreshed on the next request that can write.
-        set(name: string, value: string, options: CookieOptions) {
+        setAll(cookiesToSet) {
           try {
-            cookieStore.set({ name, value, ...options })
-          } catch {}
-        },
-        remove(name: string, options: CookieOptions) {
-          try {
-            cookieStore.set({ name, value: '', ...options })
+            cookiesToSet.forEach(({ name, value, options }) => {
+              cookieStore.set(name, value, options)
+            })
           } catch {}
         },
       },

@@ -26,14 +26,18 @@ export const metadata = {
 export default async function OnboardingPage({
   searchParams,
 }: {
-  searchParams?: { onboarding?: string }
+  searchParams?: Promise<{ onboarding?: string }>
 }) {
   const userId = await getAuthenticatedUserId()
   if (userId === null) {
     redirect('/login')
   }
 
-  const [profile, homeSpots] = await Promise.all([getMemberProfile(userId), getActiveHomeSpotOptions()])
+  const [profile, homeSpots, resolvedSearchParams] = await Promise.all([
+    getMemberProfile(userId),
+    getActiveHomeSpotOptions(),
+    searchParams,
+  ])
 
   return (
     <div className="bg-white text-slate-950">
@@ -52,7 +56,7 @@ export default async function OnboardingPage({
           currentDisplayName={profile?.displayName ?? ''}
           currentLocationId={profile?.locationId ?? null}
           homeSpots={homeSpots}
-          failed={searchParams?.onboarding === 'failed'}
+          failed={resolvedSearchParams?.onboarding === 'failed'}
         />
       </div>
     </div>

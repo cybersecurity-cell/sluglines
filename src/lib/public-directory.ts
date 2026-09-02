@@ -69,7 +69,7 @@ export async function getPublicLocation(slug: string): Promise<PublicLocation | 
  */
 async function readLocationRow(slug: string): Promise<LocationRow | null> {
   try {
-    const supabase = createClient()
+    const supabase = await createClient()
     const { data, error } = await supabase
       .rpc('get_public_location', { p_slug: canonicalSlug(slug) })
       .maybeSingle()
@@ -89,7 +89,7 @@ async function readLocationRow(slug: string): Promise<LocationRow | null> {
  */
 export async function getPublicSpotCounts(): Promise<PublicCountsSnapshot> {
   try {
-    return await fetchPublicSpotCounts(createClient())
+    return await fetchPublicSpotCounts(await createClient())
   } catch {
     return { ...UNAVAILABLE_SNAPSHOT, reason: 'supabase client unavailable' }
   }
