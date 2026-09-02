@@ -12,14 +12,20 @@
  *   - Resend cooldown (60s, D-8) and CAPTCHA are Supabase Auth dashboard
  *     config — this route surfaces whatever GoTrue answers, never invents its
  *     own cooldown clock.
- *   - The in-memory limiters below are defence-in-depth on top of that, not a
- *     replacement for it — see `rate-limit.ts` for why they are best-effort.
+ *   - The in-memory limiters are a zero-round-trip pre-check, not the source
+ *     of truth — see `rate-limit.ts`.
+ *   - The durable limiters (issue #55, `durable-rate-limit.ts`) ARE the source
+ *     of truth: a Postgres-backed fixed window that coordinates across every
+ *     serverless instance and survives a redeploy, closing the gap
+ *     Docs/DECISIONS.md D-45 recorded against the in-memory-only version.
  */
 
 import { NextResponse } from 'next/server'
 import type { NextRequest } from 'next/server'
 import { normalizePhone } from '@/lib/domain/phone.ts'
 import { createClient } from '@/lib/supabase/server.ts'
+import { createServiceClient } from '@/lib/supabase/service.ts'
+import { createDurableRateLimiter } from './durable-rate-limit.ts'
 import { classifySendError, otpError, otpStatus } from './otp-http.ts'
 import { createFixedWindowLimiter } from './rate-limit.ts'
 import { clientIp, readJson } from './request.ts'
@@ -40,15 +46,16 @@ const DAY_MS = 24 * HOUR_MS
  * already exhausted the day, so the extra limiter could never bind first. Per-
  * number bursts are covered by `phoneLimiter` below.
  *
- * This is still NOT the durable cap D-8 assigns to the edge (#52). It resets on
- * every redeploy and does not coordinate across instances, so a distributed
- * sender gets one budget per instance. That gap is real, is a reason
- * `external_phone_enabled` should stay off, and cannot be closed here without the
- * decision recorded in D-51 — see `rate-limit.ts` for the standing caveat.
+ * In-memory pre-check only now — see `durableIpDailyLimiter` below for the
+ * cross-instance control this repo's own D-45/D-51 record as owed.
  */
 const ipDailyLimiter = createFixedWindowLimiter({ max: 10, windowMs: DAY_MS })
-/** Backs up Supabase Auth's own 60s resend cooldown with a coarser per-number cap. */
+/** In-memory pre-check backing up Supabase Auth's own 60s resend cooldown. */
 const phoneLimiter = createFixedWindowLimiter({ max: 5, windowMs: HOUR_MS })
+
+/** Durable, cross-instance form of the two limiters above — issue #55. */
+const durableIpDailyLimiter = createDurableRateLimiter({ max: 10, windowMs: DAY_MS })
+const durablePhoneLimiter = createDurableRateLimiter({ max: 5, windowMs: HOUR_MS })
 
 function parsePhoneInput(raw: unknown): string | null {
   if (typeof raw !== 'object' || raw === null || Array.isArray(raw)) return null
@@ -66,6 +73,15 @@ export async function sendOtpHandler(request: NextRequest): Promise<NextResponse
   const ip = clientIp(request)
 
   if (!ipDailyLimiter.consume(`ip:${ip}`, now).allowed || !phoneLimiter.consume(`phone:${phone}`, now).allowed) {
+    return NextResponse.json(otpError('rate_limited'), { status: otpStatus('rate_limited') })
+  }
+
+  const rateLimitClient = createServiceClient()
+  const [ipDaily, phoneHourly] = await Promise.all([
+    durableIpDailyLimiter.consume(rateLimitClient, `ip:${ip}`, now),
+    durablePhoneLimiter.consume(rateLimitClient, `phone:${phone}`, now),
+  ])
+  if (!ipDaily.allowed || !phoneHourly.allowed) {
     return NextResponse.json(otpError('rate_limited'), { status: otpStatus('rate_limited') })
   }
 

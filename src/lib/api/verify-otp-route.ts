@@ -12,9 +12,12 @@
  * on the `auth.users` insert `signInWithOtp` performs, not here. This route
  * never touches `public.members` directly.
  *
- * Abuse control: D-8's "≤5 verify attempts per number per hour", enforced
- * in-process (see `rate-limit.ts` for the P2 durable-limiting caveat). A wider
- * per-IP cap backs it up against an attacker spreading guesses across many
+ * Abuse control: D-8's "≤5 verify attempts per number per hour". The
+ * in-memory limiters are a zero-round-trip pre-check; the durable limiters
+ * (issue #55, `durable-rate-limit.ts`) are the source of truth, coordinating
+ * across every serverless instance rather than resetting on redeploy — see
+ * `rate-limit.ts` and Docs/DECISIONS.md D-45 for the gap this closes. A wider
+ * per-IP cap backs both up against an attacker spreading guesses across many
  * numbers from one address.
  */
 
@@ -22,16 +25,22 @@ import { NextResponse } from 'next/server'
 import type { NextRequest } from 'next/server'
 import { isOtpCode, normalizePhone } from '@/lib/domain/phone.ts'
 import { createClient } from '@/lib/supabase/server.ts'
+import { createServiceClient } from '@/lib/supabase/service.ts'
+import { createDurableRateLimiter } from './durable-rate-limit.ts'
 import { classifyVerifyError, otpError, otpStatus } from './otp-http.ts'
 import { createFixedWindowLimiter } from './rate-limit.ts'
 import { clientIp, readJson } from './request.ts'
 
 const HOUR_MS = 60 * 60 * 1000
 
-/** D-8: "≤5 verify attempts per number per hour." */
+/** D-8: "≤5 verify attempts per number per hour." In-memory pre-check only. */
 const phoneLimiter = createFixedWindowLimiter({ max: 5, windowMs: HOUR_MS })
 /** Defence-in-depth against guesses spread across many numbers from one IP. */
 const ipLimiter = createFixedWindowLimiter({ max: 20, windowMs: HOUR_MS })
+
+/** Durable, cross-instance form of the two limiters above — issue #55. */
+const durablePhoneLimiter = createDurableRateLimiter({ max: 5, windowMs: HOUR_MS })
+const durableIpLimiter = createDurableRateLimiter({ max: 20, windowMs: HOUR_MS })
 
 interface VerifyInput {
   readonly phone: string
@@ -59,6 +68,15 @@ export async function verifyOtpHandler(request: NextRequest): Promise<NextRespon
   const ip = clientIp(request)
 
   if (!ipLimiter.consume(`ip:${ip}`, now).allowed || !phoneLimiter.consume(`phone:${input.phone}`, now).allowed) {
+    return NextResponse.json(otpError('rate_limited'), { status: otpStatus('rate_limited') })
+  }
+
+  const rateLimitClient = createServiceClient()
+  const [ipHourly, phoneHourly] = await Promise.all([
+    durableIpLimiter.consume(rateLimitClient, `ip:${ip}`, now),
+    durablePhoneLimiter.consume(rateLimitClient, `phone:${input.phone}`, now),
+  ])
+  if (!ipHourly.allowed || !phoneHourly.allowed) {
     return NextResponse.json(otpError('rate_limited'), { status: otpStatus('rate_limited') })
   }
 
