@@ -4948,3 +4948,138 @@ and `promote_waitlist_sweep()` (0022) are both unscheduled — actually wiring e
 database backing them. Every migration in the `0014`–`0024` range carries `APPLIED: no`; none of this
 work has touched a live database, and applying it remains a deliberate, separately authorised act per
 `supabase/migrations/README.md`.
+
+---
+
+## D-74 — SECURITY FIX: anon/authenticated could execute internal SECURITY DEFINER functions. `0025`, hardens `scripts/sql-lint.mjs` (R12)
+
+**Date:** 2026-09-02
+**Scope:** `supabase/migrations/0025_lock_down_definer_functions.sql` (new), `scripts/sql-lint.mjs` (new
+rule R12), `supabase/migrations/README.md` (R12 documented), `tests/sql-migration-harness.test.mjs`
+(R12 negative fixtures), `tests/live-definer-grants.test.mjs` (new), `tests/lock-down-definer-functions.test.mjs`
+(new), and the baseline-N header in `Docs/consolidated-architecture.md`.
+
+### The finding
+
+Applying `0011`–`0024` to the preview branch (`xqonrogwwytkmqfinszp`) and running the live suite failed:
+`tests/live-rate-limit.test.mjs` — "anon must be refused; the call unexpectedly succeeded". Ten internal
+/ service-only `SECURITY DEFINER` functions were reachable by `anon` and `authenticated`:
+`rate_limit_hit`, `rate_limit_sweep`, `offer_create_for_member`, `offer_reserve_seat_for_member`,
+`instantiate_recurring_offers`, `promote_waitlist_sweep`, `record_completed_ride`,
+`record_completed_rides_sweep`, `expire_stale_incidents`, `expire_stale_lostfound_items` — none of them
+meant to be called by anything except another `SECURITY DEFINER` function (running as the owner) or the
+`pg_cron` scheduler (also the owner), except `rate_limit_hit`, meant for `service_role` only. Because
+each is `SECURITY DEFINER`, an anonymous PostgREST RPC call runs with the owner's privileges and bypasses
+RLS entirely: `offer_create_for_member`/`offer_reserve_seat_for_member` take an explicit actor id, so an
+anon caller could forge rides as any member; `rate_limit_hit` takes caller-supplied `p_max`/`p_window_ms`,
+so an anon caller could defeat or weaponise its own rate limit.
+
+### Root cause
+
+Every migration through `0024` secures its `SECURITY DEFINER` functions with
+`revoke all on function ... from public;` alone (`scripts/sql-lint.mjs` R9). On a Supabase project,
+`anon` and `authenticated` are **not** the `PUBLIC` pseudo-role — Supabase's own default privileges grant
+them `EXECUTE` directly on every new function created in the `public` schema, independent of whatever
+`PUBLIC` holds. `revoke ... from public` never touches that grant, so a function intended for "nobody" or
+"service_role only" stayed reachable the whole time. `sql:check` R9 passed regardless, because it has no
+database connection and only proves the shape "a `revoke ... from public` statement exists" — it cannot
+model Supabase's default role grants (`supabase/migrations/README.md`, "Known limits").
+
+### Scope grew from 10 to 18 functions once the fix was generalised into a rule
+
+Rather than write ten one-off revokes, this session generalised the check into `sql-lint.mjs` R12: every
+`SECURITY DEFINER` function **not** granted to `authenticated` must be explicitly revoked from both `anon`
+and `authenticated`, somewhere in the migration sequence (see `scripts/sql-lint.mjs` and
+`supabase/migrations/README.md` for the rule). Running R12 over the *entire* tree — not just `0011`–`0024`
+— surfaced **8 more functions with the identical gap**, going back to `0001`/`0002`:
+
+| function | migration | already applied to |
+|---|---|---|
+| `record_audit_event`, `handle_new_member`, `sweep_expired_presence` | `0001` | **production** (`bwpguotjzczmieeepczf`) |
+| `claim_offer_operation`, `complete_offer_operation`, `apply_offer_transition`, `offer_expire_sweep` | `0002`/`0003` | **production** |
+| `promote_from_waitlist` | `0022` | preview only |
+
+**`0001` and `0002` are already applied to production.** This is not a preview-only, pre-apply risk the
+way the original 10 are — it is a live production exposure today, independent of whether `0011`–`0024`
+ever ship. Closing it is not scope creep; it is the same root cause, followed to every migration it
+actually touches, which is exactly what asking "does R9 alone prove this" for the *whole* tree — not just
+the ten functions a single live-test failure happened to name — was always going to find. `0025` therefore
+revokes `anon, authenticated` from all 18, explicitly, in one new forward-only migration, without editing
+`0001`–`0024`. `claim_offer_operation`/`complete_offer_operation`/`apply_offer_transition` are called only
+from other `SECURITY DEFINER` functions in `0002`/`0003` (which run as the functions' owner and so need no
+`EXECUTE` grant of their own — object owners bypass privilege checks on their own objects), so revoking
+`anon`/`authenticated` changes nothing about how `offer_create`/`offer_advance`/etc. call them internally.
+`rate_limit_hit` keeps its existing `service_role` grant (`0012`); every other function goes to nobody.
+
+### `scripts/sql-lint.mjs` R12
+
+New rule, evaluated across the whole migration sequence rather than per-file (same cross-file shape R9/R11
+already use): a `SECURITY DEFINER` function not granted to `authenticated` must be revoked from `anon` and
+`authenticated` explicitly, by the migration that creates it **or a later one** — the mechanism that lets
+`0025` satisfy R12 for every function `0011`–`0024` (and `0001`/`0002`/`0022`) left open, without editing
+any of those files. A function granted to `authenticated` is exempt (the legitimate client entry point,
+governed by R10 instead). `tests/sql-migration-harness.test.mjs` gained three fixtures: R12 firing on a
+`security definer` function revoked only from `public`, R12 satisfied when the revoke lands in a *later*
+migration than the creating one, and R12 not firing on a function granted to `authenticated`. The
+pre-existing R8/R9 fixture (`0001_loose_fn.sql`) now also trips R12, correctly — it was never revoked from
+anon/authenticated either — so its expected-rules assertion grew from `['R8', 'R9']` to `['R12', 'R8', 'R9']`.
+`supabase/migrations/README.md`'s rules table and "Adding a migration" checklist are updated to describe
+R12 and the internal-function case step 4 didn't previously cover.
+
+### Live proof: `tests/live-definer-grants.test.mjs`
+
+Same shape as `live-rls.test.mjs`/`live-rate-limit.test.mjs` (skips without `.env.preview.local`, refuses
+production). It asserts anon refusal for all 18 functions, requiring specifically SQLSTATE `42501`
+(permission denied) rather than any error — the first draft accepted any error and that was wrong: with
+`EXECUTE` still granted, several of these functions "fail" on an unrelated business error (a foreign key
+on a random dummy id, an idempotency-claim miss) that reads like a refusal but proves nothing about the
+grant. Run against the **unpatched** preview branch (which already carried `0011`–`0024` and had
+`.env.preview.local` from the session that produced this finding), the tightened test correctly failed
+red on 17 of 18 functions — real, live confirmation of the vulnerability across the full widened set, not
+just the original 10. (The 18th, `handle_new_member`, returns `trigger`, a pseudo-type PostgREST's schema
+cache never exposes as an RPC target regardless of grants — `PGRST202`, not `42501` — so it is asserted
+separately, by any-error, with that exception documented inline.) It also re-confirms `rate_limit_hit`
+stays callable by `service_role` after `0025`. `tests/lock-down-definer-functions.test.mjs` is the static
+counterpart: no DB, asserts `0025` contains exactly 18 `revoke_function` statements, each with the exact
+signature and exactly `{anon, authenticated}` as roles, that `service_role` is never touched, and that the
+whole `0001`–`0025` tree lints clean.
+
+**A side effect of running the live test against the still-unpatched preview** (both while developing it
+and on every subsequent `npm run test` in this session, since the vulnerability isn't actually closed until
+a future session applies `0025`): several of the still-exploitable functions actually execute as anon each
+time (sweeps that are no-ops on this near-empty branch, an `audit_events` row, an `offer_idempotency_keys`
+row, a `rate_limit_windows` row, per run). `offer_idempotency_keys`/`rate_limit_windows` rows were deleted
+with `service_role` after every run this session made. `audit_events` is append-only by its own trigger
+(`audit_events_append_only`, `0001`) and rejects `DELETE` even for `service_role` — by design — so 5 test
+rows (`entity_type = 'test'`) remain permanently in the preview branch's `audit_events` table as of this
+entry (one per red run of the live suite this session). Low-stakes on a rehearsal database and not
+reachable any other way, but noted here rather than left silent. This stops accumulating the moment `0025`
+is applied: every one of the 18 calls then fails at the permission check, before touching any table.
+
+### Applied-state note
+
+Migrations `0011`–`0024` were applied to preview `xqonrogwwytkmqfinszp` on 2026-09-02, ahead of this fix,
+which is what surfaced the finding. Their `APPLIED:` header lines still say `no` in the repo — per
+`supabase/migrations/README.md`, that line is changed only by the session that actually applies a file, so
+this session (which did not apply anything) leaves them alone rather than asserting a state it didn't
+create. This entry is that record instead. **Production (`bwpguotjzczmieeepczf`) remains at `0001`–`0010`,
+untouched by this session**, and — per the same finding — **must not receive `0011`–`0024` until `0025` is
+included in the same apply**, or production would gain the identical anon-exec hole `0025` exists to
+close. `0025` itself carries `APPLIED: no`; applying it (to preview, to re-run the live suite, and
+eventually to production alongside `0011`–`0024`) is the next session's authorised act, not this one's.
+
+### Gates
+
+`npm run build`, `npm run lint`, `npm run typecheck`, `npm run sql:check` (25 contiguous migrations, R12
+included, 0 violations). `npm run test`: baseline N is now **49 test files / 1,521 assertion call sites**
+(from 47/1,501, D-73) — `tests/baseline-n.test.mjs` and the `Docs/consolidated-architecture.md` header
+agree. `tests/live-rate-limit.test.mjs` and `tests/live-definer-grants.test.mjs` are the two files in the
+suite that reach a live database when `.env.preview.local` is present, which it is in this worktree (left
+over from the session that produced the finding): both **currently fail**, correctly, against the
+unpatched preview — they will turn green once a future session applies `0025`. Every other file is green.
+
+### What this entry does not claim
+
+No production database was touched, queried for writes, or had any grant changed. `0025` was not applied
+to preview or production by this session — the live evidence above comes from probing the *already*
+unpatched preview with read/RPC calls, not from applying anything. `0001`–`0024` were not edited.
