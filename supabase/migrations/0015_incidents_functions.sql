@@ -1,7 +1,8 @@
 -- =============================================================================
 -- 0015_incidents_functions.sql
 --
--- APPLIED: no
+-- APPLIED: preview
+-- TARGET:  Supabase preview branch phase-3-4-staging (project ref xqonrogwwytkmqfinszp), applied 2026-09-02
 --
 -- The write path for 0014's incidents/incident_confirmations tables. Every
 -- transition is a SECURITY DEFINER function: server-side, atomic, re-checks

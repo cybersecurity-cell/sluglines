@@ -1,7 +1,8 @@
 -- =============================================================================
 -- 0014_incidents_schema.sql
 --
--- APPLIED: no
+-- APPLIED: preview
+-- TARGET:  Supabase preview branch phase-3-4-staging (project ref xqonrogwwytkmqfinszp), applied 2026-09-02
 --
 -- Option B slice 1 (Docs/DECISIONS.md D-65's deferral, closed here for issue
 -- #90): the `incidents` schema `src/lib/ai/tools.ts`'s `incidents.get_active`

@@ -5083,3 +5083,41 @@ unpatched preview — they will turn green once a future session applies `0025`.
 No production database was touched, queried for writes, or had any grant changed. `0025` was not applied
 to preview or production by this session — the live evidence above comes from probing the *already*
 unpatched preview with read/RPC calls, not from applying anything. `0001`–`0024` were not edited.
+
+---
+
+## D-75 — Migrations `0011`–`0025` applied to the preview branch; headers updated
+
+**Date:** 2026-09-02
+**Target:** preview branch `phase-3-4-staging` (project ref `xqonrogwwytkmqfinszp`). **Production
+`bwpguotjzczmieeepczf` was NOT touched.**
+
+**Decision:** the orchestration session that landed the AI-runtime, rate-limiter, transit/external, and
+Option B feature slices (issues #3/#8/#9/#13/#55/#56/#77 and #90) plus the `0025` security fix (D-74)
+applied `0011`–`0025` to the preview branch, in order, each in its own transaction, and updated each
+file's `APPLIED:` header from `no` to `preview` with a `TARGET:` line naming the ref and the date.
+
+**Why:** rev. 5.3 §12 / the migrations README make preview the rehearsal target and the home of the live
+RLS suite. Applying there is what turns `tests/live-rls.test.mjs` and `tests/live-definer-grants.test.mjs`
+from silent-skips into real evidence. It is also how D-74's anon-exec vulnerability was found and then
+verified closed.
+
+**Evidence:**
+- Applied via a guarded `pg`-client script that refuses any connection string not naming
+  `xqonrogwwytkmqfinszp` (and aborts if it names the production ref). 14 files 0011–0024 applied OK, then
+  0025 applied OK.
+- Post-apply probe: anon/authenticated `execute` privilege on all 18 SECURITY DEFINER functions D-74
+  names = **0 of 18** (was 18/18 before 0025).
+- Full suite with preview credentials present: **all green**, including `live-rls` and the new
+  `live-definer-grants` anon-refusal suite.
+
+**Header edits are comment-only** (README's bounded carve-out): `sql-lint`'s statement count is unmoved
+at 489, and `tests/sql-migration-harness.test.mjs` passes with the new `APPLIED: preview` + dated `TARGET`
+lines and the monotonic-rank rule (0001–0010 remain `production`; 0011–0025 are `preview`; preview ≤
+production holds).
+
+**Production remains exposed to D-74** until `0025` is applied there. Production apply of `0011`–`0025`
+is a separate, owner-authorised act (D-41 pattern) and **must include `0025`** — see
+`Temp/Sluglines/SECURITY-FINDING-definer-anon-grants.md` and the `#90` / D-74 records.
+
+**Status:** DONE for preview. Production apply of 0011–0025 (with 0025) is PENDING owner authorisation.

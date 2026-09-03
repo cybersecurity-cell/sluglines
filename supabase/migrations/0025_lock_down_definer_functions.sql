@@ -1,7 +1,8 @@
 -- =============================================================================
 -- 0025_lock_down_definer_functions.sql
 --
--- APPLIED: no
+-- APPLIED: preview
+-- TARGET:  Supabase preview branch phase-3-4-staging (project ref xqonrogwwytkmqfinszp), applied 2026-09-02
 --
 -- SECURITY FIX. Closes the anon/authenticated-execute hole verified live on
 -- preview (`xqonrogwwytkmqfinszp`) by applying 0011-0024 and running the live

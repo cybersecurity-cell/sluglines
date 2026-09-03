@@ -1,7 +1,8 @@
 -- =============================================================================
 -- 0022_waitlist_eta_noshow_functions.sql
 --
--- APPLIED: no
+-- APPLIED: preview
+-- TARGET:  Supabase preview branch phase-3-4-staging (project ref xqonrogwwytkmqfinszp), applied 2026-09-02
 --
 -- The write path for 0021's offer_waitlist/eta_updates/no_show_reports
 -- tables: join/leave the waitlist, post an ETA note, report a no-show, and the

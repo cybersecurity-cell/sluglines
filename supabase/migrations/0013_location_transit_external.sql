@@ -1,7 +1,8 @@
 -- =============================================================================
 -- 0013_location_transit_external.sql
 --
--- APPLIED: no
+-- APPLIED: preview
+-- TARGET:  Supabase preview branch phase-3-4-staging (project ref xqonrogwwytkmqfinszp), applied 2026-09-02
 --
 -- GENERATED FILE -- DO NOT EDIT BY HAND.
 --   Source:    src/lib/domain/locations.ts

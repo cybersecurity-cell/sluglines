@@ -1,7 +1,8 @@
 -- =============================================================================
 -- 0024_dashboard_summary.sql
 --
--- APPLIED: no
+-- APPLIED: preview
+-- TARGET:  Supabase preview branch phase-3-4-staging (project ref xqonrogwwytkmqfinszp), applied 2026-09-02
 --
 -- Option B slice 6, part two, and the last migration issue #90 asks for: a
 -- single moderator-only aggregate-summary function, so a moderator dashboard

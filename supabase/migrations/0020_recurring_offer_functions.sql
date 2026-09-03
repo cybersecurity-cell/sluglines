@@ -1,7 +1,8 @@
 -- =============================================================================
 -- 0020_recurring_offer_functions.sql
 --
--- APPLIED: no
+-- APPLIED: preview
+-- TARGET:  Supabase preview branch phase-3-4-staging (project ref xqonrogwwytkmqfinszp), applied 2026-09-02
 --
 -- The write path for 0019's recurring_offer_templates/recurring_offer_skips
 -- tables, plus instantiate_recurring_offers() -- the scheduled sweep that turns
