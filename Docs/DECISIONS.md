@@ -4782,3 +4782,169 @@ Leaderboard and dashboard remain fully deferred — this slice touches neither.
 
 **Status:** DONE — Option B slice 5, the last of the four named in D-68/D-69/D-70/D-71. Issue #90
 remains OPEN only for the leaderboard and dashboard slices.
+
+---
+
+## D-73 — Option B slice 6 (final): ride history, leaderboard and the moderator dashboard summary. `0023`/`0024`, **closes issue #90**
+
+**Date:** 2026-09-02
+**Scope:** `supabase/migrations/0023_ride_history_leaderboard.sql`,
+`0024_dashboard_summary.sql` (both new), `tests/leaderboard-dashboard-schema.test.mjs` (new), and the
+baseline-N header in `Docs/consolidated-architecture.md`.
+
+### What this closes
+
+D-68 through D-72 each named the same remaining pair; this is the last entry on that list — ride
+history, the leaderboard, and the moderator-only dashboard summary. **Issue #90 is now CLOSED**: every
+feature its four-item scope named (incidents, lost & found, transit stops, recurring offers,
+waitlist/ETA/no-show, and now leaderboard/dashboard) has landed across `0014`–`0024`, and all eight AI
+tools `src/lib/ai/tools.ts` catalogs have a live database backing them. It adds no AI tool of its own —
+neither leaderboard nor dashboard-summary appears in that catalog, so `src/lib/ai/` and `0011`'s
+kill-switch seed are untouched, the same as D-71/D-72.
+
+### The route/stop-to-location adaptation — and why it's a deletion, not a rename
+
+Sluglines-AI's `completed_rides` carries `origin_stop_id`/`dest_stop_id` (both `references stops(id)`)
+plus a separate `location_id`, because that repo's offers are themselves stop-keyed and its
+`get_leaderboard()` derives each member's most-frequent route from the stop pair. This repo's `offers`
+has never worked that way — `origin_location_id`/`destination_location_id` reference
+`public.locations` directly (0002), and `0018`'s `stops` table is a standalone lookup wired into
+nothing, explicitly not into `offers` (D-70). The option considered and declined was renaming the
+column pair onto locations (`origin_location_id`/`destination_location_id` on `completed_rides` too);
+the option taken, per the task's own explicit allowance, drops the route granularity entirely.
+`completed_rides` carries exactly one location column, `location_id`, populated from the completing
+offer's `origin_location_id` — the same "home spot" scoping every other Option B slice keys its own
+`location_id` by. `get_leaderboard()` returns `member_id`/`masked_name`/`total_rides`/
+`total_saved_cents` and nothing route-shaped. `mask_display_name()` is carried unchanged — it is a
+genuine masking concern the source got right, not a route concern the adaptation needed to touch.
+
+### How a completion is recorded — a sweep, never a hook into `offer_advance()`
+
+This is the review-critical part, the same shape D-72 records for waitlist promotion. Sluglines-AI's
+`advance_offer()` is redefined in its own source migration to insert a `completed_rides` row for the
+driver and every ACTIVE-reservation rider in the same statement that flips the offer to `COMPLETED`,
+because that repo's advance function has no applied/frozen constraint at the time its migration ships.
+
+This repo's equivalent is `offer_advance()` (0002) — `CONFIRMED -> ARRIVING -> PICKED_UP -> COMPLETED`,
+the **only** place any offer in this schema reaches `COMPLETED` (`offer_transition_allowed()`'s edge
+list has no other path into it, and none out of it — `COMPLETED` is terminal). `0002` is **applied to
+production** (`supabase/migrations/README.md`'s table). That README's correction rule is explicit: an
+applied file is never edited, and a later ordinal may only re-create one of its functions to *fix a
+defect*, carrying the old signature exactly. `offer_advance()` has no defect — appending a
+`completed_rides` insert to it would be a feature addition to a frozen function, exactly what the rule
+forbids, the identical reasoning D-71/D-72 already give for never touching
+`offer_create()`/`offer_reserve_seat()`/`offer_release_seat()`. Wiring in is therefore not safe, so this
+migration takes the task's other named branch: a separate SECURITY DEFINER recorder plus an
+ops-scheduled sweep over terminal offers.
+
+- **`record_completed_ride(p_offer_id)`** — internal, reads one offer that must already be `COMPLETED`
+  (raises otherwise) and inserts one `completed_rides` row for the poster (role `driver`, `saved_cents`
+  from `app_settings.toll_savings_estimate_cents`) and one for every rider whose reservation is still
+  `CONFIRMED` (role `rider`, `saved_cents` from `bus_fare_estimate_cents`) — `CONFIRMED`, not `ACTIVE`,
+  because `offer_confirm()` (0002) is what moves a live reservation from `ACTIVE` to `CONFIRMED`, and
+  `offer_advance()`'s later hops never touch `reservations.state` again, so a reservation still
+  `CONFIRMED` at `COMPLETED` time is exactly a rider who rode. `0022`'s `report_no_show()` cancels a
+  rider's reservation before the ride completes, which correctly excludes a no-show from this count
+  without this file needing to know `report_no_show` exists. Idempotent via `completed_rides`' unique
+  `(offer_id, member_id)` constraint and `on conflict do nothing`.
+- **`record_completed_rides_sweep()`** — internal, finds every `COMPLETED` offer with no
+  `completed_rides` row yet and calls `record_completed_ride()` once per offer, each attempt isolated in
+  its own `exception when others` block (same isolation as `promote_waitlist_sweep()`, 0022, for the
+  same reason: one offer's failure must not abort recording for every other offer in the run).
+  Self-correcting across consecutive runs, the same cheap-idempotent-no-op shape as
+  `instantiate_recurring_offers()` (0020) and `promote_waitlist_sweep()` (0022) once nothing is left to
+  record.
+
+**Neither function ever writes `offers.state`, `offers.revision`, or `reservations.state`.** Because
+`COMPLETED` is terminal, the offer row this sweep reads cannot change under it — there is no state
+machine to bypass, because no state change is being made at all, only a read of an already-terminal
+offer and inserts into a brand-new table. This is a strictly narrower footprint than D-72's promotion
+sweep, which did have to reach `apply_offer_transition()` because it was creating new reservations. Same
+reasoning as `0008`/`0015`/`0017`/`0020`/`0022`'s own headers for why the sweep's schedule is not in this
+migration: scheduling is a `supabase/operations/` concern, target-specific, not something every preview
+branch should replay.
+
+### `app_settings` — moderator-tunable, with no client UPDATE policy
+
+Sluglines-AI's `app_settings` ships a moderator-checked RLS `UPDATE` policy
+(`app_settings_update_moderator`, gated on `is_moderator()`). R4 ("no insert/update/delete/all policy on
+any new table, for any role — client writes must go through a SECURITY DEFINER function") has no
+carve-out for a moderator-checked update any more than it did for Sluglines-AI's own "no cross-cutting
+effects" waitlist-leave policy D-72 already declined — so `0023` ships `set_app_setting()`, a SECURITY
+DEFINER function that re-checks `caller_is_moderator()` itself before writing, and the table carries a
+select-only policy. That select policy uses `using (auth.uid() is not null)` rather than `using (true)` —
+R6 forbids the literal unconditional predicate; `to authenticated` already excludes anonymous callers,
+and this states the real predicate (a live authenticated session) rather than letting the role clause
+carry the whole meaning silently — the same idiom `0011`'s `ai_kill_switches_select_authenticated` and
+`0018`'s stops read policy already use.
+
+### `completed_rides` RLS posture
+
+Default-deny, unchanged from every other file in this harness: RLS on, revoked from `anon` and
+`authenticated`, `select` granted back to `authenticated` only. Two policies — own (`member_id =
+auth.uid()`) and moderator (`caller_is_moderator()`) — matching `offer_waitlist`/`no_show_reports`'
+(0021) own posture of member-visible-to-self plus moderator-visible-to-all. No insert/update/delete
+policy exists; `record_completed_ride()`, reached only from the sweep, is the only writer.
+
+### The dashboard summary — moderator-only, and adapted to tables that actually exist
+
+`get_dashboard_summary(p_location_id)` (0024) is SECURITY DEFINER (it must aggregate across every
+member's rows the same way `get_leaderboard()` does), pins `search_path`, is revoked from `PUBLIC` and
+granted execute to `authenticated` only — it self-checks `caller_is_moderator()` inside and raises for
+anyone else, never filtering silently. `is_moderator()` → `caller_is_moderator()`, same as every other
+Option B slice.
+
+Sluglines-AI's source aggregates a sixth column, `open_moderation_reports`, from a `moderation_reports`
+table. **That table does not exist anywhere in this repo's migrations** — no moderation-report queue has
+been transplanted; it was never part of issue #90's four-feature list. Rather than reference a table
+this repo doesn't have, that column is replaced with `active_waitlist_entries`, sourced from `0021`'s
+`offer_waitlist` — a table that does exist and is exactly the kind of operational signal ("how much
+unmet demand is queued right now") a moderator dashboard exists to surface. The other five columns map
+onto tables this repo actually has: `offers` (active-state count, 0002), `completed_rides` (today's
+count, 0023, this slice), `incidents` (open count, 0014), `lostfound_items` (active count, 0016),
+`presence_checkins` (current count — `count(*)`, not `sum(party_size)`: 0001's `presence_checkins` is
+one row per member, not per party, unlike the source's schema).
+
+### Tests
+
+`tests/leaderboard-dashboard-schema.test.mjs` (new): static RLS/grant/shape checks for both migrations
+in the style of `tests/waitlist-eta-noshow-schema.test.mjs`, plus the review-critical assertions —
+`record_completed_ride()` requires the offer already be `COMPLETED`, never writes `offers` or
+`reservations`, never calls `apply_offer_transition()`, is idempotent via `on conflict`, and credits only
+`CONFIRMED` reservations; `record_completed_rides_sweep()` isolates each offer's failure; no
+`cron.schedule` anywhere; `get_leaderboard()` returns no raw `display_name` column; `set_app_setting()`
+checks `caller_is_moderator()` and no client-facing `app_settings_update_moderator` policy exists;
+`get_dashboard_summary()` gates on `caller_is_moderator()` and raises, aggregates over exactly the six
+tables that exist in this repo, and never references `moderation_reports`.
+
+### Baseline N
+
+Adding `tests/leaderboard-dashboard-schema.test.mjs` moves `N` from 46 files / 1,443 assertions (D-72) to
+**47 test files / 1,501 assertion call sites**. The `Docs/consolidated-architecture.md` header is updated
+in this same change; `tests/baseline-n.test.mjs` enforces the two stay in agreement.
+
+### Gates
+
+`npm run build` (all routes compile), `npm run test` (47 files, all green), `npm run lint` (0 errors —
+the 2 pre-existing config-file warnings are unrelated to this change), `npm run typecheck` (clean),
+`npm run sql:check` (**24 contiguous migrations, 471 statements, 0 violations**). Both migrations carry
+`APPLIED: no`; nothing was applied to any database. `0002`/`0003` were not edited.
+
+### What this entry does not claim
+
+No live database was touched. No RLS behaviour is verified beyond the static `sql-lint`/
+`sql-migration-harness`/`leaderboard-dashboard-schema` proofs every migration in this directory gets; a
+live-RLS pass for `0023`/`0024` is owed the same way D-23 already states for every other migration. No API
+route was wired: `tests/api-routes.test.mjs`/`src/lib/api/deferred-endpoints.ts` name no leaderboard or
+dashboard route among rev. 5.3 §8 M3's API surface at all — the tripwire the task asked to check for
+simply does not exist for this slice, so nothing was due to be un-deferred. `record_completed_rides_sweep()`
+and `promote_waitlist_sweep()` (0022) are both unscheduled — actually wiring either into
+`supabase/operations/` is future work for whichever session applies these migrations.
+
+**Status:** DONE — Option B slice 6, the last slice this issue named. **Issue #90 is CLOSED**: incidents
+(`0014`/`0015`), lost & found (`0016`/`0017`), transit stops (`0018`), recurring offers
+(`0019`/`0020`), waitlist/ETA/no-show (`0021`/`0022`), and ride history/leaderboard/dashboard
+(`0023`/`0024`) are all transplanted, and all eight of `src/lib/ai/tools.ts`'s AI tools have a live
+database backing them. Every migration in the `0014`–`0024` range carries `APPLIED: no`; none of this
+work has touched a live database, and applying it remains a deliberate, separately authorised act per
+`supabase/migrations/README.md`.
