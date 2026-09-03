@@ -6,10 +6,18 @@
  * `/api/recurring-offers/{cancel,pause,resume,skip}` in one sentence — but the
  * same section's table puts *"recurring templates + skips, waitlist/ETA/no-show"*
  * behind §11 **Phase 4**, and `0002_ride_coordinator_state.sql` says so in its
- * own scope note (line 67). Those tables and functions do not exist in any
- * migration in this repo, applied or unapplied.
+ * own scope note (line 67). Most of those tables and functions still do not
+ * exist in any migration in this repo, applied or unapplied.
  *
- * So seven of the eleven routes have nothing to call. They are shipped as **501
+ * `/api/recurring-offers/skip` is the one exception, closed by Option B slice 4
+ * (Docs/DECISIONS.md D-71, issue #90): its dependency, `recurring_offer_skips`,
+ * landed in `0019_recurring_offers_schema.sql`, so it is wired live
+ * (`src/lib/api/recurring-offer-skip-route.ts`) rather than registered here.
+ * `recurring-offers/{cancel,pause,resume}` are unaffected — their own missing
+ * dependency is a `recurring_offers` table distinct from that slice's
+ * `recurring_offer_templates`, so they remain correctly deferred below.
+ *
+ * So six of the eleven routes have nothing to call. They are shipped as **501
  * Not Implemented** with the missing dependency named in the response, rather
  * than omitted:
  *
@@ -77,12 +85,11 @@ export const DEFERRED_M3_ENDPOINTS: readonly DeferredEndpoint[] = [
     missing: ['recurring_offers', 'recurring_offer_resume'],
     blockedOn: 'rev. 5.3 §11 Phase 4 — recurring templates + skips',
   },
-  {
-    route: '/api/recurring-offers/skip',
-    operation: 'skip a single occurrence of a recurring template',
-    missing: ['recurring_offer_skips', 'recurring_offer_skip'],
-    blockedOn: 'rev. 5.3 §11 Phase 4 — recurring templates + skips',
-  },
+  // '/api/recurring-offers/skip' is no longer here: Option B slice 4 (D-71,
+  // issue #90) brought in `recurring_offer_skips` and
+  // `skip_recurring_offer_occurrence()`, so this exact registration is what
+  // told tests/api-routes.test.mjs the route was due. It is now wired live —
+  // see src/lib/api/recurring-offer-skip-route.ts.
 ]
 
 export function deferredEndpoint(route: string): DeferredEndpoint | undefined {

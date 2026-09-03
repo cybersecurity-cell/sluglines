@@ -1,12 +1,13 @@
 /**
- * POST /api/recurring-offers/skip — rev. 5.3 §8 M3 names it; §11 Phase 4 owns its writer.
+ * POST /api/recurring-offers/skip — issue #90, Docs/DECISIONS.md D-71.
  *
- * Skip one occurrence of a recurring template. No recurring_offer_skips table exists in any migration.
+ * Skip one occurrence of a recurring template: `skip_recurring_offer_occurrence()`
+ * (0020) records the skip and, if that day's offer was already generated and is
+ * still cancellable, cancels it through the M3 offer state machine.
  *
- * Answers **501** with the missing database objects named. See
- * `src/lib/api/deferred-endpoints.ts` for why it is shipped rather than omitted.
+ * Body: `{ template_id, occurrence_date }`.
  */
 
-import { deferredRoute } from '@/lib/api/deferred-route.ts'
+import { skipRecurringOfferOccurrenceRoute } from '@/lib/api/recurring-offer-skip-route.ts'
 
-export const POST = deferredRoute('/api/recurring-offers/skip')
+export const POST = skipRecurringOfferOccurrenceRoute()
