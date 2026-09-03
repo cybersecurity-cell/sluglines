@@ -1,12 +1,15 @@
 /**
- * POST /api/offers/waitlist — rev. 5.3 §8 M3 names it; §11 Phase 4 owns its writer.
+ * POST /api/offers/waitlist — issue #90, Option B slice 5.
  *
- * Join the waitlist for a full offer, with the 10-minute soft hold and quiet renotify (§9.4). No waitlist table exists in any migration.
+ * Join the waitlist for a full offer: offer_waitlist_join() (0022) inserts an
+ * ACTIVE offer_waitlist row, idempotently, once the offer is RESERVED. A seat
+ * that later opens up is offered to the oldest waitlist entry by
+ * promote_from_waitlist() (0022), driven by the promote_waitlist_sweep()
+ * scheduled job — not by this route.
  *
- * Answers **501** with the missing database objects named. See
- * `src/lib/api/deferred-endpoints.ts` for why it is shipped rather than omitted.
+ * Body: `{ offer_id }`.
  */
 
-import { deferredRoute } from '@/lib/api/deferred-route.ts'
+import { offerWaitlistJoinRoute } from '@/lib/api/offer-waitlist-join-route.ts'
 
-export const POST = deferredRoute('/api/offers/waitlist')
+export const POST = offerWaitlistJoinRoute()

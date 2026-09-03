@@ -4586,3 +4586,199 @@ to any database.
 
 **Status:** DONE — Option B slice 4. Issue #90 remains OPEN: the waitlist, leaderboard and dashboard
 slices are still to come.
+
+---
+
+## D-72 — Option B slice 5: waitlist, ETA and no-show. `0021`/`0022`, issue #90
+
+**Date:** 2026-09-02
+**Scope:** `supabase/migrations/0021_waitlist_eta_noshow_schema.sql`,
+`0022_waitlist_eta_noshow_functions.sql` (both new), `src/lib/api/offer-waitlist-join-route.ts` (new),
+`src/app/api/offers/waitlist/route.ts`, `src/lib/api/deferred-endpoints.ts`, `tests/api-routes.test.mjs`,
+`tests/waitlist-eta-noshow-schema.test.mjs` (new), and the baseline-N header in
+`Docs/consolidated-architecture.md`.
+
+### What this closes
+
+D-68/D-69/D-70/D-71 each named the same remaining list; this is the last entry on it — the waitlist,
+ETA and no-show slice. Issue #90 remains OPEN only for leaderboard and dashboard, which this diff does
+not touch. It adds no AI tool: none of this is in `src/lib/ai/tools.ts`'s catalog, so `src/lib/ai/` and
+`0011`'s kill-switch seed are untouched, the same as D-71.
+
+### A clean transplant — no architectural divergence this time
+
+Unlike the transit-stops and recurring-offers slices, this one needed no schema adaptation beyond the
+naming swap every Option B slice makes: `is_moderator()` → `caller_is_moderator()` (0002),
+`log_audit_event()` → `record_audit_event()` (0001). Sluglines-AI's `offer_waitlist`/`eta_updates`/
+`no_show_reports` reference `offers`/`members`/`reservations` by id only, and this repo's own versions
+of those three tables (0002) already carry everything the reference schema needs — `offers.poster_id`
+in place of the source's own poster column, `reservations.rider_id`, `members.id`. No `stops`
+dependency exists in the source file at all, so there was nothing to drop.
+
+### The three tables, and their RLS posture
+
+`offer_waitlist` (`waitlist_state`: ACTIVE → PROMOTED | CANCELLED), `eta_updates`, `no_show_reports` —
+default-deny, unchanged from every other file in this harness: RLS on all three, revoked from `anon`
+*and* `authenticated`, `select` granted back to `authenticated` only.
+
+- `offer_waitlist`: select policies are own (`rider_id = auth.uid()`), offer-owner (reusing 0002's
+  recursion-breaking `caller_owns_offer()` rather than a fresh `EXISTS` subquery), and moderator.
+- `eta_updates`: one participant policy, built from 0002's `caller_is_offer_participant()` (covers the
+  poster and any confirmed-or-active rider in one call) `or caller_is_moderator()` — simpler than the
+  source's own inline `EXISTS` because 0002 already publishes the predicate.
+- `no_show_reports`: reporter-only plus moderator, matching the source's "driver-reported,
+  moderator-visible only" posture exactly — no rider-visibility policy, since only the poster can ever
+  call `report_no_show()`.
+
+**Sluglines-AI's `offer_waitlist_delete_own` policy — R4's carve-out that isn't.** The source's own
+header argues leaving the waitlist "has no cross-cutting effects... no function needed" and gives it a
+plain RLS delete policy. R4 has no carve-out for a "plain" delete regardless of blast radius — the same
+conversion D-69/D-71 made for lost & found and recurring-offer skips — so `offer_waitlist_leave()`
+(0022) is a SECURITY DEFINER function, and it soft-cancels (`state = 'CANCELLED'`) rather than deleting,
+matching this repo's own convention of never hard-deleting a row with a state machine (reservations,
+offer_waitlist entries, incidents are all transitioned, never removed).
+
+### What deliberately did not ship
+
+The source's `must_confirm_by`/`ttl_prompt_sent_at` reservation columns, its `notification_outbox`
+dedup column/index, and `send_confirmation_prompts()` are all absent. Issue #90 scopes this slice to
+three tables and the join/leave/promote, post-ETA and report-no-show functions — a confirmation-TTL
+nudge is a different feature, and `notification_outbox` does not exist anywhere in this repo's
+migrations (no push infrastructure has been transplanted yet, the same gap D-69's header records for
+lost & found). Shipping either would be exactly the "schema no task asked for" D-68/D-69/D-71 already
+decline. `0021` alters neither `offers` nor `reservations` — the one deliberate contrast with `0019`,
+which had to.
+
+### How waitlist promotion preserves the offer state machine
+
+This is the review-critical part. Sluglines-AI's `promote_from_waitlist()` does
+`insert into reservations (...)` and `update offers set state = ...` directly, because that repo's
+offers table has no SECURITY DEFINER create-and-transition split. This repo's `offers` is 0002's M3
+state machine — `apply_offer_transition()` is, in its own words, "the only place offers.state or
+offers.revision moves" — so a raw write from a promotion sweep would produce a reservation and a bumped
+`seats_taken` with no `offer_transitions` ledger row, no idempotency claim, and a revision the M3
+optimistic-concurrency contract never saw move. This is the identical gap D-71 closed for recurring-offer
+instantiation, and `0022` closes it the same way, applied to `offer_reserve_seat()` instead of
+`offer_create()`:
+
+1. **`offer_reserve_seat_for_member(p_actor_id, …)`** — a *new internal* function carrying
+   `offer_reserve_seat()`'s (0002) full body (the same room check, the same `reservations` insert, the
+   same `claim_offer_operation`/`complete_offer_operation` idempotency pair, the same
+   `apply_offer_transition()` calls for the OPEN→PARTIALLY_RESERVED→RESERVED hops) with one change: the
+   actor is an explicit parameter rather than `auth.uid()`, because a promotion has no session to read
+   one from. `offer_reserve_seat()` itself (0002) is left completely untouched, for the same two reasons
+   D-71 gives for `offer_create_for_member()`: (a) `supabase/migrations/README.md` permits a later
+   ordinal to re-create an applied function only to fix a defect in it, carrying the old signature
+   exactly — `offer_reserve_seat()` has no defect; (b) `tests/offer-state-machine.test.mjs` asserts,
+   function-by-function, that every client-callable M3 entry point takes its actor from `auth.uid()` and
+   never accepts a caller-supplied `p_actor_id` — redefining `offer_reserve_seat()` to delegate to a
+   `p_actor_id`-taking internal would still pass that check technically while making a promotion-only
+   capability reachable through the exact name that suite exists to keep pinned to session identity.
+   Two near-identical function bodies is the accepted cost, exactly as D-71 records for its own pair.
+2. **`apply_offer_transition()`** (0002) — reached from inside `offer_reserve_seat_for_member()` exactly
+   as it is from inside `offer_reserve_seat()` itself. The revision check, the `offer_transitions`
+   ledger row and `record_audit_event()` all fire exactly as they would for a rider who reserved the
+   seat directly.
+
+**Idempotency.** `offer_reserve_seat_for_member()` claims a *deterministic* key,
+`'waitlist-promotion:<waitlist_id>'`, through the same `claim_offer_operation()`/
+`complete_offer_operation()` pair every client call uses — a replayed promotion attempt for the same
+waitlist entry returns the first attempt's result rather than a second reservation. The hard backstop is
+`reservations_one_live_seat_per_rider` (0002's own partial unique index), which already refuses a second
+live reservation for any rider, promoted or not.
+
+**Why `promote_from_waitlist()` never checks room itself.** It only calls
+`offer_reserve_seat_for_member()` after reading the offer as `OPEN` or `PARTIALLY_RESERVED` under its
+own `for update` lock — both states imply `seats_taken < seats_total` by construction, since
+`offer_reserve_seat()` only ever advances an offer to `RESERVED` in the same transaction that fills the
+last seat. The room check inside `offer_reserve_seat_for_member()` is therefore live defence-in-depth,
+not dead code, but it cannot fail on the path `promote_from_waitlist()` takes to it.
+
+**Why promotion is a sweep, not a hook off `offer_release_seat()`.** `offer_release_seat()` (0002) is
+**applied to production** and frozen the same way `offer_create()`/`offer_reserve_seat()` are — this
+migration cannot add a call to `promote_from_waitlist()` inside it without violating the same
+correction-discipline rule (a) above. So a freed seat is picked up by `promote_waitlist_sweep()`
+instead: one promotion attempt per offer carrying both room and an ACTIVE waitlist entry, per run,
+self-correcting across consecutive runs the same way `instantiate_recurring_offers()` (0020) is a cheap
+idempotent no-op once nothing is left to do. Each offer's attempt is wrapped in its own
+`exception when others` block so one offer's failure (its oldest waiting rider already holding a seat
+some other way, the one race this design does not otherwise guard against) cannot abort promotion for
+every other unrelated offer in the same run. `promote_from_waitlist()` itself is also called directly —
+nowhere in this file, notably not from `report_no_show()`; see below for why.
+
+### `report_no_show()`, and why it never promotes the waitlist
+
+A no-show is only reportable once the offer has reached `CONFIRMED`, `ARRIVING` or `PICKED_UP` — and
+0002's M3 edge list has **no** `CONFIRMED -> RELEASED` or `CONFIRMED -> OPEN` edge at all. A ride already
+bilaterally confirmed cannot legally reopen for new reservations, so there is no seat for a promotion to
+fill even in principle; this matches Sluglines-AI's own `report_no_show()`, which likewise never touches
+`offers.state` or seat counts on an ordinary no-show. The one state change either version makes is the
+"everyone no-showed before departure" case (offer still `CONFIRMED`, zero riders left `CONFIRMED`), and
+this file makes that one exclusively through `apply_offer_transition()` — never a raw
+`update offers set state`, satisfying the same "route it through the state machine" rule the task set for
+this case. Per the phased design's "no automatic penalties" principle (carried by every Sluglines-AI
+phase and restated here): the rider's reservation is cancelled and the report is logged for moderator
+review; nothing else touches the rider's account.
+
+### What deliberately does not ship: the schedule
+
+Same reasoning as 0008/0015/0017/0020's own headers: a migration carrying `cron.schedule` would fail on
+any branch without `pg_cron` and would schedule production's sweep onto every preview branch that ever
+runs this sequence. `0022` ships `promote_waitlist_sweep()` — the function — and nothing else;
+scheduling it is a `supabase/operations/` concern for whichever session is authorised to apply this
+migration.
+
+### The one API change, and why it was not optional
+
+`tests/api-routes.test.mjs` carries the same self-invalidating tripwire D-71 hit: each deferred route
+names the database objects it waits on, and the test fails the moment one appears in a migration while
+the route still answers 501. `/api/offers/waitlist`'s entry named `offer_waitlist` — the exact table
+name `0021` introduces (task-specified, matching the source) — so that tripwire fired as designed. It is
+now wired live to `offer_waitlist_join()` through a small dedicated factory
+(`src/lib/api/offer-waitlist-join-route.ts`), the same shape as `recurring-offer-skip-route.ts`: the SQL
+function takes `(offer_id)` only and no `expected_revision`, because joining is idempotent by
+construction via `0021`'s partial unique index on `(offer_id, rider_id)` where `state = 'ACTIVE'`, not an
+optimistic-concurrency hop on an existing row. `offers/eta` and `reservations/no-show` are untouched and
+correctly remain 501 — their deferred entries name `offer_set_eta` and `reservation_mark_no_show`, and
+this slice's functions are `post_eta_update()` and `report_no_show()`; neither literal name appears in
+any migration, so neither tripwire fired. `tests/api-routes.test.mjs` gained a `WAITLIST_ROUTES` block
+mirroring `RECURRING_ROUTES`'s own wiring-proof shape; `ALL_ROUTES.length` stays 11.
+
+### Tests
+
+`tests/waitlist-eta-noshow-schema.test.mjs` (new): static RLS/grant/shape checks for all three tables
+in the style of `tests/recurring-offers-schema.test.mjs`, plus the review-critical assertions —
+`offer_reserve_seat_for_member()` claims/completes an idempotency key and transitions only through
+`apply_offer_transition()`; `promote_from_waitlist()` never inserts into `reservations` or writes
+`offers.state` directly, and skip-locks the waitlist row it reads; `promote_waitlist_sweep()` isolates
+each offer's failure; `offer_waitlist_leave()` soft-cancels rather than deleting; `report_no_show()`
+reaches `apply_offer_transition()` for its one mutation and never calls `promote_from_waitlist()` at
+all; no confirmation-TTL columns, no `notification_outbox` reference, no `alter table offers|reservations`
+anywhere in `0021`. `tests/api-routes.test.mjs` gained the `WAITLIST_ROUTES` wiring-proof block described
+above.
+
+### Baseline N
+
+Adding `tests/waitlist-eta-noshow-schema.test.mjs` and the `WAITLIST_ROUTES` assertions in
+`tests/api-routes.test.mjs` moves `N` from 45 files / 1,383 assertions (D-71) to **46 test files /
+1,443 assertion call sites**. The `Docs/consolidated-architecture.md` header is updated in this same
+change; `tests/baseline-n.test.mjs` enforces the two stay in agreement.
+
+### Gates
+
+`npm run build` (all routes compile, `/api/offers/waitlist` now dynamic instead of a deferred stub),
+`npm run test` (46 files, all green), `npm run lint` (0 errors — the 2 pre-existing config-file warnings
+are unrelated to this change), `npm run typecheck` (clean), `npm run sql:check` (**22 contiguous
+migrations, 439 statements, 0 violations**). Both migrations carry `APPLIED: no`; nothing was applied to
+any database.
+
+### What this entry does not claim
+
+No live database was touched. No RLS behaviour is verified beyond the static `sql-lint`/
+`sql-migration-harness`/`waitlist-eta-noshow-schema` proofs every migration in this directory gets; a
+live-RLS pass for `0021` is owed the same way D-23 already states for every other migration. The
+confirmation-TTL nudge and `notification_outbox` dedup are a deliberate, stated gap, not an oversight.
+Leaderboard and dashboard remain fully deferred — this slice touches neither.
+
+**Status:** DONE — Option B slice 5, the last of the four named in D-68/D-69/D-70/D-71. Issue #90
+remains OPEN only for the leaderboard and dashboard slices.

@@ -74,16 +74,30 @@ const RECURRING_ROUTES = {
   'recurring-offers/skip': 'skip_recurring_offer_occurrence',
 }
 
+// Backed the same way as RECURRING_ROUTES — a real writer, granted to
+// authenticated, its own small wiring-proof block. Option B slice 5 (issue
+// #90): offer_waitlist_join() takes (offer_id) only — joining the waitlist is
+// idempotent by construction (the partial unique index on (offer_id,
+// rider_id) where state = 'ACTIVE', 0021), not an optimistic-concurrency hop
+// on an existing row.
+const WAITLIST_ROUTES = {
+  'offers/waitlist': 'offer_waitlist_join',
+}
+
 const DEFERRED_ROUTES = [
   'offers/eta',
-  'offers/waitlist',
   'reservations/no-show',
   'recurring-offers/cancel',
   'recurring-offers/pause',
   'recurring-offers/resume',
 ]
 
-const ALL_ROUTES = [...Object.keys(BACKED_ROUTES), ...Object.keys(RECURRING_ROUTES), ...DEFERRED_ROUTES]
+const ALL_ROUTES = [
+  ...Object.keys(BACKED_ROUTES),
+  ...Object.keys(RECURRING_ROUTES),
+  ...Object.keys(WAITLIST_ROUTES),
+  ...DEFERRED_ROUTES,
+]
 
 assert.equal(ALL_ROUTES.length, 11, 'rev. 5.3 §8 M3 names eleven POST routes in this slice')
 
@@ -274,6 +288,34 @@ for (const [route, fn] of Object.entries(RECURRING_ROUTES)) {
   )
 }
 
+// WAITLIST_ROUTES — same wiring proof, different factory and signature.
+// Option B slice 5 (issue #90): offer_waitlist_join() takes (offer_id) only.
+for (const [route, fn] of Object.entries(WAITLIST_ROUTES)) {
+  const source = routeSource(route)
+
+  assert.match(
+    source,
+    /export const POST = offerWaitlistJoinRoute\(\)/,
+    `${route}: must be wired to its waitlist-join route factory`
+  )
+  assert.match(
+    source,
+    /from '@\/lib\/api\/offer-waitlist-join-route\.ts'/,
+    `${route}: wrong factory import`
+  )
+
+  assert.match(
+    migrations,
+    new RegExp(`grant execute on function public\\.${fn}\\(uuid\\) to authenticated;`),
+    `${route}: ${fn}(uuid) is not granted to authenticated`
+  )
+  assert.match(
+    migrations,
+    new RegExp(`revoke all on function public\\.${fn}\\(uuid\\) from public;`),
+    `${route}: ${fn} must be revoked from PUBLIC (rev. 5.3 §12 constraint 6)`
+  )
+}
+
 // The factory calls exactly the three SQL parameters, and never names the actor.
 // rev. 5.3 §14 risk 1: a client entry point that lets a caller say who they are
 // is the whole vulnerability class. `auth.uid()` decides, inside the function.
@@ -434,7 +476,7 @@ for (const route of DEFERRED_ROUTES) {
 }
 
 // A backed route must never be in the deferred registry, and vice versa.
-for (const route of [...Object.keys(BACKED_ROUTES), ...Object.keys(RECURRING_ROUTES)]) {
+for (const route of [...Object.keys(BACKED_ROUTES), ...Object.keys(RECURRING_ROUTES), ...Object.keys(WAITLIST_ROUTES)]) {
   assert.equal(deferredEndpoint(`/api/${route}`), undefined, `${route} has a writer; it must not be deferred`)
 }
 
