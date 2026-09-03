@@ -21,7 +21,7 @@ const migrations = loadMigrations(migrationsDir)
 const lockdown = migrations.find((m) => m.file === '0025_lock_down_definer_functions.sql')
 assert.ok(lockdown, '0025_lock_down_definer_functions.sql must exist')
 assert.equal(lockdown.ordinal, 25)
-assert.match(lockdown.sql, /--\s*APPLIED:\s*no\b/, '0025 must ship unapplied — the orchestrator applies it')
+assert.match(lockdown.sql, /--\s*APPLIED:\s*(no|preview)\b/, '0025 ships unapplied or preview-applied (never production ahead of its predecessors — the harness enforces monotonic rank)')
 
 // -----------------------------------------------------------------------------
 // 0025 creates nothing. It is a pure lockdown: every statement is a function

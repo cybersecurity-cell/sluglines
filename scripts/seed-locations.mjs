@@ -550,7 +550,8 @@ export function renderTransitExternalMigration(locations = SPOT_LOCATIONS) {
   return `-- =============================================================================
 -- ${path.basename(TRANSIT_EXTERNAL_MIGRATION_PATH)}
 --
--- APPLIED: no
+-- APPLIED: preview
+-- TARGET:  Supabase preview branch phase-3-4-staging (project ref xqonrogwwytkmqfinszp), applied 2026-09-02
 --
 -- GENERATED FILE -- DO NOT EDIT BY HAND.
 --   Source:    src/lib/domain/locations.ts
