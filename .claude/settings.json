@@ -1,0 +1,31 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(git fetch *)",
+      "Bash(git log *)",
+      "Bash(git diff *)",
+      "Bash(git status *)",
+      "Bash(npm run test *)",
+      "Bash(npm test *)",
+      "Bash(npm run lint *)",
+      "Bash(npm run typecheck *)",
+      "Bash(npm run build *)",
+      "Bash(npm run sql:check *)",
+      "Bash(npm run e2e *)",
+      "Bash(npm run audit:check *)",
+      "Bash(npx tsc --noEmit *)",
+      "Bash(gh issue list *)",
+      "Bash(gh issue view *)",
+      "Bash(gh pr view *)",
+      "Bash(gh pr checks *)",
+      "Bash(gh run watch *)",
+      "Bash(gh run view *)"
+    ],
+    "deny": [
+      "Read(./.env)",
+      "Read(./.env.*)",
+      "Bash(npm run seed:locations *)",
+      "Bash(supabase db push *)"
+    ]
+  }
+}

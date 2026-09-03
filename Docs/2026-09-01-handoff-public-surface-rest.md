@@ -1,3 +1,5 @@
+> **Record.** Executor handoff for the `ui/public-surface-rest` slice (D-63, 2026-09-01), moved from the repo root on 2026-09-03. Not updated again; open items named here live in GitHub Issues.
+
 # Notes for the orchestrator — `ui/public-surface-rest`
 
 Executor slice: finish the §10 palette migration across the rest of the PUBLIC surface, make the
