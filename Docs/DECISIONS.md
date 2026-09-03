@@ -3668,7 +3668,7 @@ this is the class of defect a pair table catches and a reviewer does not.
 on `/dashboard`, an authenticated surface this slice is scoped out of. Migrating it would have left
 a §10 board under a sky-blue hero beside a sky-blue `CheckInStatusPanel`, and fixing that means
 editing `src/app/dashboard/page.tsx` and `CheckInStatusPanel`, both hard-stop out of scope. It keeps
-its sky palette and is recorded in `NOTES-FOR-ORCHESTRATOR.md` instead.
+its sky palette and is recorded in `Docs/2026-09-01-handoff-public-surface-rest.md` (moved from `NOTES-FOR-ORCHESTRATOR.md` on 2026-09-03) instead.
 
 ---
 
