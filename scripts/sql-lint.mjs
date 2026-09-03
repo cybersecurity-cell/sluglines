@@ -13,7 +13,7 @@
 //                      Postgres and positive/negative RLS tests. See
 //                      supabase/migrations/README.md, "Known limits".
 //
-// Rules R1..R11 are documented in supabase/migrations/README.md.
+// Rules R1..R12 are documented in supabase/migrations/README.md.
 //
 // Usage:
 //   node scripts/sql-lint.mjs [dir]     # default dir: supabase/migrations
@@ -305,6 +305,10 @@ export function lintMigrations(migrations) {
   const revokedFromAnon = new Set()
   const createdFunctions = new Map() // fn -> file
   const revokedFromPublic = new Set()
+  const securityDefinerFunctions = new Map() // fn -> file, first creation only
+  const revokedFromAnonFn = new Set()
+  const revokedFromAuthenticatedFn = new Set()
+  const grantedToAuthenticatedFn = new Set()
 
   for (const m of migrations) {
     for (const s of m.statements) {
@@ -312,9 +316,15 @@ export function lintMigrations(migrations) {
       if (s.kind === 'enable_rls') rlsEnabled.add(s.table)
       if (s.kind === 'revoke_table' && s.roles.includes('anon')) revokedFromAnon.add(s.table)
       if (s.kind === 'create_function' && !createdFunctions.has(s.fn)) createdFunctions.set(s.fn, m.file)
-      if (s.kind === 'revoke_function' && (s.roles.includes('public') || s.roles.includes('anon'))) {
-        if (s.roles.includes('public')) revokedFromPublic.add(s.fn)
+      if (s.kind === 'create_function' && s.securityDefiner && !securityDefinerFunctions.has(s.fn)) {
+        securityDefinerFunctions.set(s.fn, m.file)
       }
+      if (s.kind === 'revoke_function') {
+        if (s.roles.includes('public')) revokedFromPublic.add(s.fn)
+        if (s.roles.includes('anon')) revokedFromAnonFn.add(s.fn)
+        if (s.roles.includes('authenticated')) revokedFromAuthenticatedFn.add(s.fn)
+      }
+      if (s.kind === 'grant_function' && s.roles.includes('authenticated')) grantedToAuthenticatedFn.add(s.fn)
     }
   }
 
@@ -394,6 +404,35 @@ export function lintMigrations(migrations) {
   for (const [fn, file] of createdFunctions) {
     if (!revokedFromPublic.has(fn)) {
       add('R9', file, `function ${fn} is never revoked from PUBLIC (Postgres grants EXECUTE to PUBLIC by default)`)
+    }
+  }
+
+  // R12 -- every SECURITY DEFINER function not granted to `authenticated`
+  // must be explicitly revoked from BOTH `anon` and `authenticated`, in this
+  // migration or a later one in the sequence.
+  //
+  // R9's blind spot: on a Supabase project, `anon` and `authenticated` are
+  // NOT the `PUBLIC` pseudo-role -- Supabase's own default privileges grant
+  // them EXECUTE directly on every new function in the `public` schema,
+  // independent of whatever PUBLIC holds. `revoke ... from public` (R9)
+  // never removes that grant, so a SECURITY DEFINER function intended for
+  // "nobody" or "service_role only" stays reachable by anon/authenticated
+  // no matter how clean R9 looks (Docs/DECISIONS.md, the 0025 entry).
+  //
+  // A function granted to `authenticated` is the legitimate client entry
+  // point (RLS/actor checks live inside it) and is exempted here -- R10
+  // already governs what that grant may look like. Checked across the whole
+  // migration sequence, not just the creating file, so a later migration
+  // (like 0025) can close a gap left by an earlier one without editing it.
+  for (const [fn, file] of securityDefinerFunctions) {
+    if (grantedToAuthenticatedFn.has(fn)) continue
+    if (!revokedFromAnonFn.has(fn) || !revokedFromAuthenticatedFn.has(fn)) {
+      add(
+        'R12',
+        file,
+        `SECURITY DEFINER function ${fn} is not granted to authenticated but is never explicitly revoked ` +
+          'from anon and authenticated (Supabase grants them EXECUTE on new functions independent of PUBLIC)'
+      )
     }
   }
 

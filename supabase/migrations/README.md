@@ -76,10 +76,23 @@ legacy `supabase/schema.sql` (`Docs/DECISIONS.md` D-24).
 | R9 | Every created function has an explicit `revoke ... on function ... from public` | Postgres grants `execute` to `PUBLIC` by default — without this, R4/R7 are bypassable through the function |
 | R10 | No `grant execute on function ... to anon` or `to public` | §8 M1 — anonymous-callable functions arrive in P2 with their own review |
 | R11 | Every created table is explicitly revoked from `anon` | defence in depth behind RLS |
+| R12 | Every `security definer` function not granted to `authenticated` is explicitly revoked from **both** `anon` and `authenticated`, somewhere in the migration sequence | Supabase default privileges (`Docs/DECISIONS.md`, the `0025` entry) — R9 alone is not enough |
 
 R9 is the non-obvious one and the reason this analyser is worth having: a migration can satisfy
 every RLS rule and still hand anonymous clients a write path, because `CREATE FUNCTION` grants
 `EXECUTE` to `PUBLIC` unless you say otherwise.
+
+R12 exists because R9 turned out not to be enough. On a Supabase project `anon` and `authenticated`
+are not the `PUBLIC` pseudo-role — Supabase configures its own default privileges that grant them
+`EXECUTE` directly on every new function created in the `public` schema, independent of whatever
+`PUBLIC` holds. `revoke ... from public` (R9) never removes that grant, so a `security definer`
+function meant to be called by nobody (an internal helper or scheduler sweep) or by `service_role`
+only stayed reachable by `anon`/`authenticated` the whole time — the defect `0025` fixes and
+`Docs/DECISIONS.md` records. A function that *is* granted to `authenticated` is exempt from R12: it
+is the legitimate client entry point, and R10 already governs the shape of that grant. R12 is
+evaluated across the **whole sequence**, not just the file that creates the function, so a later
+migration (like `0025`) can close a gap an earlier one left open without editing that earlier file —
+append-only migrations, but the property still gets proven for the whole tree.
 
 ### Known limits of the analyser
 
@@ -100,7 +113,10 @@ Stated so a later session does not over-trust it:
 1. Create `supabase/migrations/NNNN_name.sql` with the next ordinal.
 2. Route every client write through a `security definer` function; give the table no write policy.
 3. `revoke all on table ... from anon, authenticated;` then grant back only what is needed.
-4. `revoke all on function ...(...) from public;` then `grant execute ... to authenticated;`.
+4. `revoke all on function ...(...) from public;` then `grant execute ... to authenticated;` for a
+   client entry point. For an internal function nobody or only `service_role` should call, there is
+   no step 4 grant — instead `revoke all on function ...(...) from anon, authenticated;` explicitly
+   (R12). `revoke ... from public` alone is not enough on Supabase; see R12 above.
 5. Run `npm run sql:check` (or `npm run test`).
 6. Record the migration and its rationale in `Docs/DECISIONS.md`.
 

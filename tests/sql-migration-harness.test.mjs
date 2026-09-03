@@ -362,7 +362,8 @@ const noRls = rulesOf(
 )
 assert.deepEqual(noRls, ['R11', 'R3', 'R7']) // rulesOf() sorts lexically, so R11 precedes R3
 
-// R8 / R9 — the default-EXECUTE-to-PUBLIC hole plus an unpinned search_path.
+// R8 / R9 / R12 — the default-EXECUTE-to-PUBLIC hole, an unpinned
+// search_path, and (R12) no explicit revoke from anon/authenticated either.
 const looseFunction = rulesOf(
   lintMigrations([
     analyzeSql(
@@ -375,7 +376,7 @@ const looseFunction = rulesOf(
     ),
   ])
 )
-assert.deepEqual(looseFunction, ['R8', 'R9'])
+assert.deepEqual(looseFunction, ['R12', 'R8', 'R9']) // rulesOf() sorts lexically, so R12 precedes R8/R9
 
 // R10 — an anonymous execute grant.
 const anonExecute = lintMigrations([
@@ -387,6 +388,66 @@ const anonExecute = lintMigrations([
   ),
 ])
 assert.deepEqual(rulesOf(anonExecute), ['R10'])
+
+// R12 — a SECURITY DEFINER function revoked from PUBLIC (satisfying R9) but
+// never explicitly from anon/authenticated is still anon-reachable on
+// Supabase, because anon/authenticated are not PUBLIC there (Docs/
+// DECISIONS.md, the 0025 entry). `revoke ... from public` alone must not
+// satisfy this rule — that is exactly the gap 0025 exists to close.
+const definerNotRevokedFromAnon = rulesOf(
+  lintMigrations([
+    analyzeSql(
+      '0001_internal_fn.sql',
+      `create or replace function public.internal_sweep()
+       returns void
+       language plpgsql
+       security definer
+       set search_path = public, pg_temp
+       as $$ begin delete from public.members where false; end; $$;
+       revoke all on function public.internal_sweep() from public;`
+    ),
+  ])
+)
+assert.deepEqual(definerNotRevokedFromAnon, ['R12'])
+
+// R12 is satisfied once the same function is explicitly revoked from anon
+// and authenticated, even split across roles, and even in a LATER migration
+// than the one that created it — the "0025 closes gaps in 0011-0024 without
+// editing them" shape.
+const definerRevokedAcrossMigrations = lintMigrations([
+  analyzeSql(
+    '0001_internal_fn.sql',
+    `create or replace function public.internal_sweep()
+     returns void
+     language plpgsql
+     security definer
+     set search_path = public, pg_temp
+     as $$ begin delete from public.members where false; end; $$;
+     revoke all on function public.internal_sweep() from public;`
+  ),
+  analyzeSql(
+    '0002_lock_down.sql',
+    `revoke all on function public.internal_sweep() from anon, authenticated;`
+  ),
+])
+assert.deepEqual(rulesOf(definerRevokedAcrossMigrations), [])
+
+// R12 does not fire on a SECURITY DEFINER function granted to authenticated
+// — that is the legitimate client entry point, governed by R10 instead.
+const definerGrantedToAuthenticated = lintMigrations([
+  analyzeSql(
+    '0001_client_fn.sql',
+    `create or replace function public.client_write()
+     returns void
+     language plpgsql
+     security definer
+     set search_path = public, pg_temp
+     as $$ begin null; end; $$;
+     revoke all on function public.client_write() from public;
+     grant execute on function public.client_write() to authenticated;`
+  ),
+])
+assert.deepEqual(rulesOf(definerGrantedToAuthenticated), [])
 
 // R1 / R2 — filename and ordinal conventions.
 assert.deepEqual(rulesOf(lintMigrations([analyzeSql('setup.sql', '')])), ['R1'])
