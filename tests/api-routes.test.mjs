@@ -63,6 +63,17 @@ const BACKED_ROUTES = {
   'reservations/confirm': 'offer_confirm',
 }
 
+// Backed the same way as BACKED_ROUTES (a real writer, granted to authenticated)
+// but with a different call shape, so it gets its own small wiring-proof block
+// rather than being forced into BACKED_ROUTES's (offer_id, expected_revision,
+// idempotency_key) assumption. Option B slice 4 (Docs/DECISIONS.md D-71, issue
+// #90): skip_recurring_offer_occurrence() takes (template_id, occurrence_date)
+// — a skip is idempotent by construction (the unique index on those two
+// columns, 0019), not an optimistic-concurrency hop on an existing row.
+const RECURRING_ROUTES = {
+  'recurring-offers/skip': 'skip_recurring_offer_occurrence',
+}
+
 const DEFERRED_ROUTES = [
   'offers/eta',
   'offers/waitlist',
@@ -70,10 +81,9 @@ const DEFERRED_ROUTES = [
   'recurring-offers/cancel',
   'recurring-offers/pause',
   'recurring-offers/resume',
-  'recurring-offers/skip',
 ]
 
-const ALL_ROUTES = [...Object.keys(BACKED_ROUTES), ...DEFERRED_ROUTES]
+const ALL_ROUTES = [...Object.keys(BACKED_ROUTES), ...Object.keys(RECURRING_ROUTES), ...DEFERRED_ROUTES]
 
 assert.equal(ALL_ROUTES.length, 11, 'rev. 5.3 §8 M3 names eleven POST routes in this slice')
 
@@ -230,6 +240,36 @@ for (const [route, fn] of Object.entries(BACKED_ROUTES)) {
   assert.match(
     migrations,
     new RegExp(`revoke all on function public\\.${fn}\\(uuid, integer, text\\) from public;`),
+    `${route}: ${fn} must be revoked from PUBLIC (rev. 5.3 §12 constraint 6)`
+  )
+}
+
+// RECURRING_ROUTES — same wiring proof, different factory and signature. See
+// the constant's own comment for why skip_recurring_offer_occurrence() is not
+// forced into BACKED_ROUTES's (offer_id, expected_revision, idempotency_key)
+// shape.
+for (const [route, fn] of Object.entries(RECURRING_ROUTES)) {
+  const source = routeSource(route)
+
+  assert.match(
+    source,
+    /export const POST = skipRecurringOfferOccurrenceRoute\(\)/,
+    `${route}: must be wired to its recurring-offer route factory`
+  )
+  assert.match(
+    source,
+    /from '@\/lib\/api\/recurring-offer-skip-route\.ts'/,
+    `${route}: wrong factory import`
+  )
+
+  assert.match(
+    migrations,
+    new RegExp(`grant execute on function public\\.${fn}\\(uuid, date\\) to authenticated;`),
+    `${route}: ${fn}(uuid, date) is not granted to authenticated`
+  )
+  assert.match(
+    migrations,
+    new RegExp(`revoke all on function public\\.${fn}\\(uuid, date\\) from public;`),
     `${route}: ${fn} must be revoked from PUBLIC (rev. 5.3 §12 constraint 6)`
   )
 }
@@ -394,7 +434,7 @@ for (const route of DEFERRED_ROUTES) {
 }
 
 // A backed route must never be in the deferred registry, and vice versa.
-for (const route of Object.keys(BACKED_ROUTES)) {
+for (const route of [...Object.keys(BACKED_ROUTES), ...Object.keys(RECURRING_ROUTES)]) {
   assert.equal(deferredEndpoint(`/api/${route}`), undefined, `${route} has a writer; it must not be deferred`)
 }
 

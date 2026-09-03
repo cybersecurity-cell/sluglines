@@ -4427,3 +4427,162 @@ touches none of them, per the task's explicit scope. `public.offers` is untouche
 **Status:** DONE — Option B slice 3, `transit.explain_alternatives` live, all eight `CALLABLE_TOOLS`
 tools now backed by real schema, all gates green. Issue #90 remains OPEN: recurring offers, waitlist,
 leaderboard and dashboard slices are still to come.
+
+---
+
+## D-71 — Option B slice 4: recurring offers, adapted to sluglines' location-based offers. `0019`/`0020`, issue #90
+
+**Date:** 2026-09-02
+**Scope:** `supabase/migrations/0019_recurring_offers_schema.sql`, `0020_recurring_offer_functions.sql`
+(both new), `src/lib/api/recurring-offer-skip-route.ts` (new),
+`src/app/api/recurring-offers/skip/route.ts`, `src/lib/api/deferred-endpoints.ts`,
+`tests/recurring-offers-schema.test.mjs` (new), `tests/api-routes.test.mjs`, and the baseline-N header
+in `Docs/consolidated-architecture.md`.
+
+### What this closes
+
+D-68/D-69/D-70 named the remaining Option B slices explicitly: "recurring offers, waitlist,
+leaderboard and dashboard slices are still to come." This is the recurring-offers slice, and only
+that one — waitlist, leaderboard and dashboard remain fully deferred and this diff touches none of
+them. It adds no AI tool: recurring offers are not in `src/lib/ai/tools.ts`'s catalog, so
+`src/lib/ai/` and `0011`'s kill-switch seed are untouched, unlike all three prior slices.
+
+### The architectural divergence: templates name locations, not stops
+
+Sluglines-AI's `recurring_offer_templates` (`0013_recurring_offers_schema.sql`) carries
+`origin_stop_id`/`dest_stop_id`, both `not null references stops(id)`, and its
+`instantiate_recurring_offers()` inserts offers keyed on the same stop pair — because *that* repo's
+`offers` table is itself stop-keyed. **This repo's `offers` has never worked that way** (the same
+divergence D-70 recorded for `stops` itself): `0001`/`0002`/`0004` give it
+`origin_location_id`/`destination_location_id` referencing `public.locations` directly, and `0018`'s
+`stops` is a standalone lookup deliberately wired into nothing.
+
+So `0019`'s template names `origin_location_id`/`destination_location_id` → `public.locations` — the
+same two columns `offer_create()` (0002) already takes — plus `poster_role` (plain text with
+`offers.poster_role`'s own CHECK, not a new enum), `seats_total`, `days_of_week integer[]` on
+Postgres's own `extract(dow)` convention, a local-time window (`window_start_local`/
+`window_end_local time` + `timezone text`), `starts_on`/`ends_on date`, `state recurring_offer_state`
+(ACTIVE/PAUSED/CANCELLED) and `member_id` → `members`. `tests/recurring-offers-schema.test.mjs`
+asserts the location FKs positively *and* asserts `origin_stop_id`/`dest_stop_id`/`stops(` appear
+nowhere in the file, so a future edit re-importing the source's stop shape is a named failure.
+
+### How instantiation preserves the state machine, idempotency and audit
+
+This is the review-critical part, and the reason a raw `insert into offers` — what Sluglines-AI's
+own `0014` does — was not an option here. `0002`/`0003` make `offers` an M3 state machine: every row
+starts `DRAFT`, and `apply_offer_transition()` is, in `0002`'s own words, "the only place
+offers.state or offers.revision moves". A raw insert from a sweep would produce a `DRAFT` row with no
+`offer_transitions` ledger entry, no revision bump, and no visibility
+(`offers_select_visible_for_caller` shows only OPEN/PARTIALLY_RESERVED to non-participants) —
+indistinguishable from an abandoned draft.
+
+`0020` therefore builds instantiation out of the two pieces `0002` already provides:
+
+1. **`offer_create_for_member(p_actor_id, …)`** — a *new internal* function carrying
+   `offer_create()`'s body (the same validation, the same insert, the same `record_audit_event`
+   `offer.created` write, the same `claim_offer_operation`/`complete_offer_operation` pair) with one
+   change: the actor is an explicit parameter rather than `auth.uid()`, because a scheduled sweep has
+   no session. It is revoked from PUBLIC and granted to **nobody** — a client-callable version would
+   be exactly the impersonation hole `offer_create()`'s `auth.uid()`-only design closes.
+2. **`apply_offer_transition()`** (0002) — called directly to move the fresh offer `DRAFT → OPEN`,
+   the same way `offer_expire_sweep()` already calls it for its own actor-less sweep. The revision
+   check, the `offer_transitions` ledger row and the choke point's own `record_audit_event` all fire
+   exactly as they do for a human-published offer.
+
+**Why `offer_create()` itself was not redefined.** `supabase/migrations/README.md` permits a later
+ordinal to re-create an applied function only to *fix a defect in it*, carrying the old signature
+exactly (0003/D-30 is the precedent). `offer_create()` has no defect. More concretely,
+`tests/offer-state-machine.test.mjs` asserts function-by-function that every client-callable entry
+point takes its actor from `auth.uid()` and never accepts a `p_actor_id` parameter — rewiring
+`offer_create()` to delegate to a `p_actor_id`-taking internal would still pass that check
+technically while making a scheduler-only capability reachable through the exact name that suite
+exists to keep pinned to session identity. Two near-identical bodies is the accepted cost, and it is
+recorded here as a tradeoff rather than left implicit.
+
+**Idempotency, guarded twice.** `instantiate_recurring_offers()` builds a *deterministic* key,
+`'recurring:<template_id>:<occurrence_date>'`, and passes it through the same
+`claim_offer_operation()`/`complete_offer_operation()` pair every client call uses — so a replayed
+sweep for a day already generated gets the first call's offer id back rather than a second offer. The
+hard backstop is `offers_recurring_occurrence_idx` (0019), a real partial unique index on
+`(recurring_template_id, occurrence_date)`, which is what actually prevents a double-post if two
+sweep runs ever raced past the application-level existence check. A post-create `state <> 'DRAFT'`
+guard means a replay never reaches `apply_offer_transition()` holding a stale expected revision.
+
+**Audit, two-layered.** `apply_offer_transition()`'s own `offer.open` event (entity `offer`) plus this
+file's `recurring_offer.instantiated` event (entity `recurring_offer_template`), so the trail is
+walkable from either the ride or the series.
+
+`cancel_recurring_offer()` and `skip_recurring_offer_occurrence()` cascade-cancel already-generated
+offers through `apply_offer_transition()` too — never a raw `update offers set state`. Neither calls
+`offer_cancel()` (0002) directly, because that function authorizes only the offer's own poster or a
+live participant, and a moderator cancelling someone else's series is neither; each does its own
+owner-or-moderator check (the same shape as every other Option B slice) and then reaches the choke
+point, exactly as `offer_cancel()` does internally. The schema test asserts all four properties
+directly: no `insert into public.offers`, no `update public.offers set state`, presence of
+`offer_create_for_member(` and `apply_offer_transition(` in the sweep, and the deterministic key.
+
+### What `offers` gains
+
+Two columns and one index — the one deliberate exception to the "don't touch `offers`" posture D-70
+established for the transit slice, and unavoidable here:
+
+| Addition | Why |
+|---|---|
+| `recurring_template_id uuid references recurring_offer_templates(id) on delete set null` | Links a generated ride back to its series. `set null`, not cascade: deleting a template must not delete the rides it already produced. |
+| `occurrence_date date` | The local calendar date (in the template's own timezone) the row was generated for. |
+| `offers_recurring_occurrence_idx` — partial unique on `(recurring_template_id, occurrence_date) where recurring_template_id is not null` | The "one offer per template per local day" guarantee as a database constraint rather than an application promise. |
+
+### RLS posture, and the policies converted from the source
+
+Default-deny, unchanged from every other file in this harness: RLS on both new tables, revoked from
+`anon` *and* `authenticated`, `select` granted back to `authenticated` only, two SELECT policies each
+(own + moderator via **`caller_is_moderator()`**, never Sluglines-AI's `is_moderator()`).
+Sluglines-AI's `recurring_offer_templates_insert_own`/`_update_own` and
+`recurring_offer_skips_insert_own`/`_delete_own` policies are **dropped entirely** — all four would
+fail R4, which has no carve-out for a "plain" insert (the same conversion D-69 made for lost &
+found). The five client entry points (`create_recurring_offer`, `pause_recurring_offer`,
+`resume_recurring_offer`, `cancel_recurring_offer`, `skip_recurring_offer_occurrence`) are the only
+writers, each SECURITY DEFINER with `search_path` pinned and granted to `authenticated`; the two
+internal functions (`offer_create_for_member`, `instantiate_recurring_offers`) are granted to no role
+at all.
+
+### What deliberately does not ship
+
+- **The schedule.** `0008`/`0015`/`0017`'s precedent: a migration carrying `cron.schedule` fails on
+  any branch without pg_cron and would schedule production's sweep onto every preview branch that
+  ran the sequence. `0020` ships `instantiate_recurring_offers()` — the function — and nothing else;
+  scheduling it (every 15 minutes is the source's own choice and a sound one, since it is a cheap
+  no-op once a day's offer exists) is a `supabase/operations/` concern for the session authorised to
+  apply this migration. The schema test asserts `cron.schedule` appears nowhere in the file.
+- **A board view.** Sluglines-AI's `0013` re-exposes its `offers_board` with the two new columns
+  appended. This repo has no `offers_board` view in any migration to extend, and inventing one for a
+  client surface #90 never scoped would be the "schema no task asked for" `0016`/`0018` already
+  decline.
+- **An unskip function.** The source's undo affordance is `recurring_offer_skips`'s delete-own RLS
+  policy, which R4 forbids; #90 scopes this slice to five named functions plus the sweep, none of
+  them an unskip.
+
+### The one API change, and why it was not optional
+
+`tests/api-routes.test.mjs` carries a deliberately self-invalidating check (restated in
+`src/lib/api/deferred-endpoints.ts`): each of the seven 501 routes names the database objects it
+waits on, and the test **fails** the moment one appears in a migration while the route still answers
+501. `/api/recurring-offers/skip`'s entry names `recurring_offer_skips` — the exact table name `0019`
+introduces — so that tripwire fired as designed and this route became due in the same change as its
+schema. It is now wired live to `skip_recurring_offer_occurrence()` through a small dedicated factory
+(`src/lib/api/recurring-offer-skip-route.ts`) rather than `offerTransitionRoute`: the SQL function
+takes `(template_id, occurrence_date)` and no `expected_revision`, because a skip is idempotent by
+construction via `0019`'s unique index, not an optimistic-concurrency hop on an existing row.
+`recurring-offers/{cancel,pause,resume}` are untouched and correctly remain 501 — their deferred
+entries name a `recurring_offers` table, which is distinct from this slice's
+`recurring_offer_templates` and still does not exist.
+
+### Gates
+
+`npm run build`, `npm run test` (45 files, all green — the new baseline N is **45 test files / 1,383
+assertion call sites**), `npm run lint`, `npm run typecheck`, `npm run sql:check` (**20 contiguous
+migrations, 394 statements, 0 violations**). Both migrations carry `APPLIED: no`; nothing was applied
+to any database.
+
+**Status:** DONE — Option B slice 4. Issue #90 remains OPEN: the waitlist, leaderboard and dashboard
+slices are still to come.
