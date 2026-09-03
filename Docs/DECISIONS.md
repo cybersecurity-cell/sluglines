@@ -5121,3 +5121,50 @@ is a separate, owner-authorised act (D-41 pattern) and **must include `0025`** �
 `Temp/Sluglines/SECURITY-FINDING-definer-anon-grants.md` and the `#90` / D-74 records.
 
 **Status:** DONE for preview. Production apply of 0011–0025 (with 0025) is PENDING owner authorisation.
+
+---
+
+## D-76 — The D-74 anon-exec hole is CLOSED on production (0025 subset applied)
+
+**Date:** 2026-09-03
+**Target:** production `bwpguotjzczmieeepczf`. Applied under **explicit owner authorisation** given this
+session ("apply 0025 to production", option 1: the 0025 subset that exists in production).
+
+**Decision:** the 7 SECURITY DEFINER functions that D-74 identified as anon/authenticated-executable AND
+that are live in production (from `0001`/`0002`/`0003`) were revoked from `anon` and `authenticated`, using
+statements byte-identical to `0025_lock_down_definer_functions.sql`, in one transaction.
+
+Functions locked down (production identity signatures):
+- `apply_offer_transition(uuid,text,integer,uuid,text,text,integer,integer)`
+- `claim_offer_operation(uuid,text,uuid,text)`
+- `complete_offer_operation(uuid,text,uuid,integer)`
+- `handle_new_member()`
+- `offer_expire_sweep()`
+- `record_audit_event(uuid,text,text,uuid,jsonb)`
+- `sweep_expired_presence()`
+
+**Evidence (read-only probes against production, before and after):**
+- Before: all 7 = anon `true`, authenticated `true` (the live exposure).
+- After: all 7 = anon `false`, authenticated `false`.
+- Client entry points unaffected: `offer_create`, `offer_publish`, `offer_reserve_seat`, `offer_release_seat`,
+  `offer_cancel`, `offer_confirm`, `offer_advance`, `presence_checkin`, `presence_clear`, `set_display_name`,
+  `set_home_spot`, `get_public_spot_counts`, `get_public_location` all retain `authenticated = true`. The app
+  is unbroken; only the internal/definer functions were closed.
+
+**Method:** `supabase link --project-ref bwpguotjzczmieeepczf` (CLI was already authenticated), then
+`supabase db query --linked --file <7-revoke transaction>`, then unlinked. Pure `revoke` statements — no
+data touched, reversible by re-granting. The applied file is `Temp/Sluglines/prod-0025-subset.sql`.
+
+**Scope boundary — deliberately NOT done:** the other 11 functions `0025` revokes belong to `0011`–`0024`,
+which are NOT applied to production (production has `0001`–`0010` only). Their revokes were excluded because
+the functions don't exist there yet. The full `0011`–`0025` production apply (all features + the complete
+0025) remains a separate, later, owner-authorised act — and should follow enabling PITR (#49). When it runs,
+`0025` in full supersedes this subset (re-revoking the same 7 is a harmless no-op).
+
+**Migration file headers unchanged:** `0025`'s header stays `APPLIED: preview`. This subset apply is a
+targeted security remediation of already-live functions, recorded here rather than by flipping `0025` to
+`production` — because `0025` as a whole (all 18) has not been applied to production, only its 7-function
+intersection with production's current schema. Flipping the header would misstate the record.
+
+**Status:** DONE. Production no longer exposes the D-74 functions to anon/authenticated. Full `0011`–`0025`
+production apply remains PENDING (owner-authorised, post-PITR).
