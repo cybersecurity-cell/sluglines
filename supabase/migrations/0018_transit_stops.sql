@@ -1,7 +1,8 @@
 -- =============================================================================
 -- 0018_transit_stops.sql
 --
--- APPLIED: no
+-- APPLIED: preview
+-- TARGET:  Supabase preview branch phase-3-4-staging (project ref xqonrogwwytkmqfinszp), applied 2026-09-02
 --
 -- Option B slice 3 (Docs/DECISIONS.md D-65's deferral, closed here for issue
 -- #90): the `stops` table `src/lib/ai/tools.ts`'s `transit.explain_alternatives`

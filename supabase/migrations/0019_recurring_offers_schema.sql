@@ -1,7 +1,8 @@
 -- =============================================================================
 -- 0019_recurring_offers_schema.sql
 --
--- APPLIED: no
+-- APPLIED: preview
+-- TARGET:  Supabase preview branch phase-3-4-staging (project ref xqonrogwwytkmqfinszp), applied 2026-09-02
 --
 -- Option B slice 4 (Docs/DECISIONS.md D-90's queue, issue #90): the last of the
 -- four Option B slices. Recurring ride templates -- "6:45-7:00am every weekday,

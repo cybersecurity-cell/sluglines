@@ -1,7 +1,8 @@
 -- =============================================================================
 -- 0011_agent_traces_and_kill_switches.sql
 --
--- APPLIED: no
+-- APPLIED: preview
+-- TARGET:  Supabase preview branch phase-3-4-staging (project ref xqonrogwwytkmqfinszp), applied 2026-09-02
 --
 -- The AI runtime transplant (Docs/DECISIONS.md D-13's consolidation follow-on,
 -- recorded as D-65): the agent trace log, the per-tool kill switches, and the
@@ -59,8 +60,8 @@
 -- tests/ai-agent-runtime.test.mjs asserts the seed and the catalog agree on
 -- this set exactly, in both directions.
 --
--- This file is still `APPLIED: no` (see the header above) -- it has not reached
--- any database -- so adding this row here, rather than as a fresh INSERT in
+-- This file is `APPLIED: preview` (see the header above); the incidents/
+-- lostfound/transit seed rows were folded in before any database applied it, so
 -- 0014/0015, is not the supabase/migrations/README.md "never edit an applied
 -- migration" case. That rule protects a file that is a record of what a real
 -- database ran; this one is not that yet.

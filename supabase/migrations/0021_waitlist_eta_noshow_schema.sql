@@ -1,7 +1,8 @@
 -- =============================================================================
 -- 0021_waitlist_eta_noshow_schema.sql
 --
--- APPLIED: no
+-- APPLIED: preview
+-- TARGET:  Supabase preview branch phase-3-4-staging (project ref xqonrogwwytkmqfinszp), applied 2026-09-02
 --
 -- Option B slice 5 (issue #90, the last of the four Docs/DECISIONS.md D-71
 -- named as still owed): a full-offer waitlist with FIFO auto-promotion, a
