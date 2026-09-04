@@ -1,8 +1,9 @@
 # Record — migrations 0011–0025 applied to production
 
 **Record.** Written as `Docs/intent/production-schema-apply.md` on 2026-09-03 while the apply
-was pending; converted to a dated record on 2026-09-04 after D-76 and D-77 closed it. Not
-updated again. The intent as written is preserved below the outcome.
+was pending; converted to a dated record on 2026-09-04 after D-76 and D-77 closed it. One
+amendment the same day: the two leftovers below were filed as #108 and #109 and the links added.
+Not updated again. The intent as written is preserved below the outcome.
 
 ## Outcome
 
@@ -33,8 +34,9 @@ holds with the whole sequence `0001`–`0025` on production.
 - **When the owner authorises the apply** — authorised and executed 2026-09-03.
 - **Whether the session-local security finding is copied into `Docs/` as a record** — still not
   done: `Temp/Sluglines/SECURITY-FINDING-definer-anon-grants.md` remains on one machine and the
-  `0025` header still points at it. The one leftover of this intent; a dated
-  `Docs/2026-09-02-security-finding-definer-anon-grants.md` would close it.
+  `0025` header still points at it. Filed as
+  [#108](https://github.com/cybersecurity-cell/sluglines/issues/108); a dated
+  `Docs/2026-09-02-security-finding-definer-anon-grants.md` closes it.
 
 ### What this apply did not do (D-77, "still deferred")
 
@@ -42,7 +44,8 @@ Scheduling the five new sweep functions (`instantiate_recurring_offers`,
 `expire_stale_incidents`, `expire_stale_lostfound_items`, `promote_waitlist_sweep`,
 `record_completed_rides_sweep`) is a separate ops step under `supabase/operations/`, per the
 0008/D-46 precedent. Until it runs, those features exist but their time-driven behaviour does
-not fire. That is the next action for the pilot and belongs in GitHub Issues, not here.
+not fire. That is the next action for the pilot, filed as
+[#109](https://github.com/cybersecurity-cell/sluglines/issues/109).
 
 ---
 
