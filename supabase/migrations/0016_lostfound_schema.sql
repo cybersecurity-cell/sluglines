@@ -1,8 +1,8 @@
 -- =============================================================================
 -- 0016_lostfound_schema.sql
 --
--- APPLIED: preview
--- TARGET:  Supabase preview branch phase-3-4-staging (project ref xqonrogwwytkmqfinszp), applied 2026-09-02
+-- APPLIED: production
+-- TARGET:  Supabase project sluglines (project ref bwpguotjzczmieeepczf), applied 2026-09-03 (full batch 0011-0025, D-77). Preview applied 2026-09-02 (D-75).
 --
 -- Option B slice 2 (Docs/DECISIONS.md D-69, issue #90): the lost & found schema
 -- `src/lib/ai/tools.ts`'s `lostfound.search` has been waiting on since the AI

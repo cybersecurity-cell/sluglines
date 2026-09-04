@@ -1,8 +1,8 @@
 -- =============================================================================
 -- 0011_agent_traces_and_kill_switches.sql
 --
--- APPLIED: preview
--- TARGET:  Supabase preview branch phase-3-4-staging (project ref xqonrogwwytkmqfinszp), applied 2026-09-02
+-- APPLIED: production
+-- TARGET:  Supabase project sluglines (project ref bwpguotjzczmieeepczf), applied 2026-09-03 (full batch 0011-0025, D-77). Preview applied 2026-09-02 (D-75).
 --
 -- The AI runtime transplant (Docs/DECISIONS.md D-13's consolidation follow-on,
 -- recorded as D-65): the agent trace log, the per-tool kill switches, and the
