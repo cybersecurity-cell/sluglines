@@ -5168,3 +5168,54 @@ intersection with production's current schema. Flipping the header would misstat
 
 **Status:** DONE. Production no longer exposes the D-74 functions to anon/authenticated. Full `0011`–`0025`
 production apply remains PENDING (owner-authorised, post-PITR).
+
+---
+
+## D-77 — Migrations `0011`–`0025` applied to PRODUCTION (full batch)
+
+**Date:** 2026-09-03
+**Target:** production `bwpguotjzczmieeepczf`. Applied under **explicit owner authorisation** given this
+session, with **PITR confirmed enabled** beforehand (the §0 precondition of the apply plan).
+
+**Decision:** the full feature + hardening batch `0011`–`0025` — AI runtime (#3/#8/#9/#13/#56), durable
+rate limiter (#55), transit/external content (#77), and all Option B features (#90: incidents, lost&found,
+transit stops, recurring offers, waitlist/ETA/no-show, leaderboard, dashboard), plus the complete `0025`
+lockdown (D-74) — was applied to production, in ascending ordinal, one file per transaction, stopping on
+any error. This supersedes the D-76 subset (which had closed the 7-function intersection early); `0025` in
+full re-revokes those 7 as a harmless no-op and adds the remaining 11.
+
+**Method:** `supabase link --project-ref bwpguotjzczmieeepczf`, then `supabase db query --linked --file`
+per migration 0011→0025 in order, then `supabase unlink`. Rehearsed identically on preview (D-75).
+
+**Verification (read-only probes against production, post-apply):**
+- **17/17** new tables present (`agent_traces, agent_tool_calls, ai_kill_switches, rate_limit_windows,
+  incidents, incident_confirmations, lostfound_items, lostfound_claims, lostfound_messages, stops,
+  recurring_offer_templates, recurring_offer_skips, offer_waitlist, eta_updates, no_show_reports,
+  completed_rides, app_settings`).
+- **RLS on:** 17/17.
+- **Security:** all **18** internal SECURITY DEFINER functions report anon=false, authenticated=false (0/18
+  callable by either). The D-74 hole is now closed for the full function set, not just the D-76 subset.
+- **Client entry points intact:** 11/11 sampled (offer_create, offer_publish, offer_reserve_seat,
+  presence_checkin, report_incident, create_lostfound_claim, create_recurring_offer,
+  skip_recurring_offer_occurrence, get_leaderboard, get_dashboard_summary, set_app_setting) retain
+  `authenticated` execute. App unbroken.
+- **Seeds:** ai_kill_switches = 9 (global + 8 tools), locations transit content = 40 spots, external links =
+  35 spots (matches D-69), app_settings = 2, stops = 0 (empty by design, D-70).
+- **Public site:** production Vercel deployment responds (HTTP 302 → the #47 SSO auth gate, a pre-existing
+  deployment-protection config, NOT a regression from this apply).
+
+**Headers:** `0011`–`0025` flipped `APPLIED: preview` → `APPLIED: production` with a dated `TARGET` line;
+`0013` via its generator (`scripts/seed-locations.mjs`) then regenerated. The two `APPLIED:` assertions
+relaxed in D-75 (`lock-down-definer-functions.test.mjs`, `spot-locations-directory.test.mjs`) now accept
+`production`. `tests/sql-migration-harness.test.mjs` monotonic-rank rule holds — the whole sequence
+`0001`–`0025` is now `production`.
+
+**Still deferred (NOT part of this apply):** scheduling the new sweep functions
+(`instantiate_recurring_offers`, `expire_stale_incidents`, `expire_stale_lostfound_items`,
+`promote_waitlist_sweep`, `record_completed_rides_sweep`) is a separate ops step — a new
+`supabase/operations/` file, per the 0008/D-46 precedent — because scheduling is target-specific, not
+schema. Until it runs, those features exist but their time-driven behaviour does not fire. `pg_cron` is
+already installed on production (D-46). This is the next action for the pilot.
+
+**Status:** DONE. Production is at `0001`–`0025`, all applied. The D-74 vulnerability is fully closed.
+Feature-sweep scheduling is the remaining ops step before the features are operationally live.
