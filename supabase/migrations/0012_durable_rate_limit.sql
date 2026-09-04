@@ -1,8 +1,8 @@
 -- =============================================================================
 -- 0012_durable_rate_limit.sql
 --
--- APPLIED: preview
--- TARGET:  Supabase preview branch phase-3-4-staging (project ref xqonrogwwytkmqfinszp), applied 2026-09-02
+-- APPLIED: production
+-- TARGET:  Supabase project sluglines (project ref bwpguotjzczmieeepczf), applied 2026-09-03 (full batch 0011-0025, D-77). Preview applied 2026-09-02 (D-75).
 --
 -- Closes issue #55. `src/lib/api/rate-limit.ts` is a fixed-window limiter
 -- backed by a module-level Map -- single-process, best-effort, resets on every

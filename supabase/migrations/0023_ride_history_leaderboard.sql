@@ -1,8 +1,8 @@
 -- =============================================================================
 -- 0023_ride_history_leaderboard.sql
 --
--- APPLIED: preview
--- TARGET:  Supabase preview branch phase-3-4-staging (project ref xqonrogwwytkmqfinszp), applied 2026-09-02
+-- APPLIED: production
+-- TARGET:  Supabase project sluglines (project ref bwpguotjzczmieeepczf), applied 2026-09-03 (full batch 0011-0025, D-77). Preview applied 2026-09-02 (D-75).
 --
 -- Option B slice 6 (the last one, issue #90): a per-ride completion log and a
 -- masked-name leaderboard, plus the moderator-tunable app_settings the

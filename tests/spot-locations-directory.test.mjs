@@ -328,7 +328,7 @@ assert.equal(
   renderTransitExternalMigration(),
   `${TRANSIT_EXTERNAL_MIGRATION_PATH} is stale — run \`npm run seed:locations -- --write\``
 )
-assert.match(transitExternalSql, /--\s*APPLIED:\s*(no|preview)\b/, '0013 is unapplied or preview-applied (not production)')
+assert.match(transitExternalSql, /--\s*APPLIED:\s*(no|preview|production)\b/, '0013 is unapplied, preview-, or production-applied')
 assert.match(
   transitExternalSql,
   /alter table public\.locations\s+add column if not exists public_transportation text\[\],\s+add column if not exists external_links jsonb;/,
