@@ -34,8 +34,52 @@ jobs:
 
       # tests/live-rls.test.mjs skips itself when .env.preview.local is absent, so the
       # suite is green here without database credentials and never targets production.
+      # A skip is reported as SKIP, not PASS (A6) — see the migration-live-check job
+      # below for the case where a skip here is not acceptable.
       - name: Run test suite
         run: npm run test
+
+  migration-live-check:
+    name: Live suites required for migration changes
+    runs-on: ubuntu-latest
+    # Only a pull request has a base to diff against; push/workflow_dispatch have
+    # no "other side" to compare, so there is nothing to gate here.
+    if: github.event_name == 'pull_request'
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+
+      - name: Check whether this PR touches supabase/migrations
+        id: diff
+        run: |
+          if git diff --name-only "${{ github.event.pull_request.base.sha }}...${{ github.event.pull_request.head.sha }}" -- supabase/migrations/ | grep -q .; then
+            echo "touched=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "touched=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        if: steps.diff.outputs.touched == 'true'
+        with:
+          node-version: '22'
+          cache: npm
+
+      - name: Install dependencies
+        if: steps.diff.outputs.touched == 'true'
+        run: npm ci --ignore-scripts
+
+      # A migration change is exactly the diff the live-* suites (live-rls,
+      # live-definer-grants, live-public-surface, live-rate-limit) exist to gate
+      # (A6): every live RLS assertion in the repo lives in this set. Without
+      # preview credentials configured as repo secrets, these suites SKIP rather
+      # than run — REQUIRE_NO_SKIPS turns that silent skip into a failed job
+      # instead of a migration PR merging on the strength of the static linter alone.
+      - name: Run live suites (must not skip on a migration PR)
+        if: steps.diff.outputs.touched == 'true'
+        env:
+          REQUIRE_NO_SKIPS: '1'
+        run: npm run test -- live-
 
   build:
     name: Next build
