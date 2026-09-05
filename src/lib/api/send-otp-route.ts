@@ -76,7 +76,23 @@ export async function sendOtpHandler(request: NextRequest): Promise<NextResponse
     return NextResponse.json(otpError('rate_limited'), { status: otpStatus('rate_limited') })
   }
 
-  const rateLimitClient = createServiceClient()
+  let rateLimitClient: ReturnType<typeof createServiceClient>
+  try {
+    rateLimitClient = createServiceClient()
+  } catch {
+    // `SUPABASE_SERVICE_ROLE_KEY` unset (production's current state, A11):
+    // `createServiceClient()` throws synchronously, which previously escaped
+    // this handler uncaught and surfaced as a raw framework 500 with no JSON
+    // body. Unlike a transient `rate_limit_hit()` RPC error — which
+    // `durable-rate-limit.ts` fails OPEN on deliberately, because Supabase
+    // Auth's own per-number/IP controls are the real boundary (D-45) — this is
+    // a permanent misconfiguration: the durable, cross-instance limiter cannot
+    // run at all, not just on this one request. Sending a billable SMS with
+    // zero durable abuse control until someone notices the missing variable is
+    // the wrong default, so OTP send fails CLOSED here specifically. (A11)
+    return NextResponse.json(otpError('unavailable'), { status: otpStatus('unavailable') })
+  }
+
   const [ipDaily, phoneHourly] = await Promise.all([
     durableIpDailyLimiter.consume(rateLimitClient, `ip:${ip}`, now),
     durablePhoneLimiter.consume(rateLimitClient, `phone:${phone}`, now),

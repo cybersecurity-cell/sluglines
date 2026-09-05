@@ -2,6 +2,13 @@
 
 import { useState } from 'react'
 import { useRouter } from 'next/navigation'
+import { otpError } from '@/lib/api/otp-http.ts'
+
+/** A7: the client's own last-resort copy when a response carries no parseable
+ * JSON body at all (a raw framework error page, or the fetch itself failing) —
+ * reuses the server's `unavailable` wording rather than a second, independently
+ * drifting "something went wrong" string. */
+const FALLBACK_MESSAGE = otpError('unavailable').error.message
 
 /**
  * `/login` — the phone entry step of rev. 5.3 §8 M2's OTP flow.
@@ -40,14 +47,14 @@ export default function LoginForm() {
 
       if (!response.ok) {
         const body = await response.json().catch(() => null)
-        setError(body?.error?.message ?? 'Something went wrong. Try again.')
+        setError(body?.error?.message ?? FALLBACK_MESSAGE)
         setPending(false)
         return
       }
 
       router.push(`/verify?phone=${encodeURIComponent(phone)}`)
     } catch {
-      setError('Something went wrong. Try again.')
+      setError(FALLBACK_MESSAGE)
       setPending(false)
     }
   }

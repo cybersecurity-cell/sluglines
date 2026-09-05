@@ -2,10 +2,14 @@
 
 import { useState } from 'react'
 import { useRouter } from 'next/navigation'
+import { otpError } from '@/lib/api/otp-http.ts'
 
 interface VerifyFormProps {
   phone: string
 }
+
+/** A7: same fallback copy as `LoginForm`, same reason — see there. */
+const FALLBACK_MESSAGE = otpError('unavailable').error.message
 
 /**
  * `/verify` — the code entry step of rev. 5.3 §8 M2's OTP flow.
@@ -42,7 +46,7 @@ export default function VerifyForm({ phone }: VerifyFormProps) {
 
       if (!response.ok) {
         const body = await response.json().catch(() => null)
-        setError(body?.error?.message ?? 'Something went wrong. Try again.')
+        setError(body?.error?.message ?? FALLBACK_MESSAGE)
         setPending(false)
         return
       }
@@ -50,7 +54,7 @@ export default function VerifyForm({ phone }: VerifyFormProps) {
       router.refresh()
       router.push('/onboarding')
     } catch {
-      setError('Something went wrong. Try again.')
+      setError(FALLBACK_MESSAGE)
       setPending(false)
     }
   }
@@ -68,10 +72,10 @@ export default function VerifyForm({ phone }: VerifyFormProps) {
         setResent(true)
       } else {
         const body = await response.json().catch(() => null)
-        setError(body?.error?.message ?? 'Something went wrong. Try again.')
+        setError(body?.error?.message ?? FALLBACK_MESSAGE)
       }
     } catch {
-      setError('Something went wrong. Try again.')
+      setError(FALLBACK_MESSAGE)
     }
   }
 

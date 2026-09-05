@@ -38,11 +38,6 @@ export const RESOURCE_MODULES: ResourceModule[] = [
     description: 'Slugging updates, commuter news, and site announcements.',
     href: '/blog',
   },
-  {
-    title: 'Mobile App',
-    description: 'Live counts and check-ins for commuters who are already on the move.',
-    href: '/app',
-  },
 ]
 
 export const HOMEPAGE_STATS = [
