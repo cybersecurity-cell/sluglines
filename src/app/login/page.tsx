@@ -1,4 +1,6 @@
 import LoginForm from '@/components/LoginForm'
+import SignInUnavailable from '@/components/SignInUnavailable'
+import { isPhoneAuthEnabled } from '@/lib/api/phone-auth-availability.ts'
 
 /**
  * `/login` — rev. 5.3 §8 M2. Phone entry only; the code goes to `/verify`.
@@ -7,13 +9,20 @@ import LoginForm from '@/components/LoginForm'
  * before this route requires a session, and nothing links here except an
  * explicit "sign in" affordance. `/spots` and the fast board's public counts
  * need no account.
+ *
+ * A7: the phone-auth-off check runs here, server-side, before either form or
+ * unavailable state renders — not inside `LoginForm` itself, which would mean
+ * a client-side round trip and a flash of the interactive form before it
+ * resolves.
  */
 export const metadata = {
   title: 'Sign in - Sluglines',
   description: 'Sign in with your phone number.',
 }
 
-export default function LoginPage() {
+export default async function LoginPage() {
+  const available = await isPhoneAuthEnabled()
+
   return (
     <div className="bg-white text-slate-950">
       <section className="border-b border-slate-200 bg-slate-50">
@@ -28,9 +37,7 @@ export default function LoginPage() {
         </div>
       </section>
 
-      <div className="mx-auto max-w-xl px-4 py-8">
-        <LoginForm />
-      </div>
+      <div className="mx-auto max-w-xl px-4 py-8">{available ? <LoginForm /> : <SignInUnavailable />}</div>
     </div>
   )
 }

@@ -71,11 +71,28 @@ export async function verifyOtpHandler(request: NextRequest): Promise<NextRespon
     return NextResponse.json(otpError('rate_limited'), { status: otpStatus('rate_limited') })
   }
 
-  const rateLimitClient = createServiceClient()
-  const [ipHourly, phoneHourly] = await Promise.all([
-    durableIpLimiter.consume(rateLimitClient, `ip:${ip}`, now),
-    durablePhoneLimiter.consume(rateLimitClient, `phone:${input.phone}`, now),
-  ])
+  // Unlike send-otp-route.ts (A11), this stays fail OPEN if the service client
+  // cannot even be constructed (`SUPABASE_SERVICE_ROLE_KEY` unset): a verify
+  // does not send a billable SMS, and blocking someone who already received a
+  // valid code because of an unrelated config fault is a worse outcome than
+  // the durable limiter sitting out one request. Supabase Auth's own
+  // per-number rate limits remain the real boundary either way (D-45).
+  let rateLimitClient: ReturnType<typeof createServiceClient> | null
+  try {
+    rateLimitClient = createServiceClient()
+  } catch {
+    rateLimitClient = null
+  }
+
+  const [ipHourly, phoneHourly] = rateLimitClient
+    ? await Promise.all([
+        durableIpLimiter.consume(rateLimitClient, `ip:${ip}`, now),
+        durablePhoneLimiter.consume(rateLimitClient, `phone:${input.phone}`, now),
+      ])
+    : [
+        { allowed: true, retryAfterMs: 0 },
+        { allowed: true, retryAfterMs: 0 },
+      ]
   if (!ipHourly.allowed || !phoneHourly.allowed) {
     return NextResponse.json(otpError('rate_limited'), { status: otpStatus('rate_limited') })
   }
