@@ -1,6 +1,6 @@
 # Sluglines Project Rules
 
-HOV-3 carpool coordination for Northern Virginia. Next.js 16 App Router on Vercel, Supabase (Postgres, Auth, Realtime), Tailwind. This repo is the canonical implementation repo (`Docs/DECISIONS.md` D-2); the application core is **rebuilt here from the rev. 6 specification, not transplanted** from `Sluglines-AI` (D-13, decided by the human 2026-08-14). `CLAUDE.md` is a one-line import of this file so that Claude Code, Codex and Hermes read the same rules.
+HOV-3 carpool coordination for Northern Virginia. Next.js 16 App Router on Vercel, Supabase (Postgres, Auth, Realtime), Tailwind. This repo is the canonical implementation repo (`Docs/DECISIONS.md` D-2). The M1–M4 core — directory, identity, the ride-coordinator state machine, and presence — is **rebuilt here from the rev. 6 specification, not transplanted**, from `Sluglines-AI` (D-13, decided by the human 2026-08-14, **narrowed to this scope by D-78**). The AI runtime and six further schema slices (incidents, lost & found, transit stops, recurring offers, waitlist/ETA/no-show, ride history/leaderboard/dashboard) **were** transplanted from `Sluglines-AI`, adapted rather than copied verbatim, under a verbal directive that was never itself recorded as a decision until D-78 reconciled it (D-65, D-68–D-73). `CLAUDE.md` is a one-line import of this file so that Claude Code, Codex and Hermes read the same rules.
 
 ## Gates
 
