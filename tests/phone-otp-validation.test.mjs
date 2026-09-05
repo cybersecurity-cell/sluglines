@@ -95,7 +95,9 @@ for (const kind of OTP_ERROR_KINDS) {
 assert.equal(otpStatus('invalid_argument'), 400)
 assert.equal(otpStatus('invalid_code'), 400)
 assert.equal(otpStatus('rate_limited'), 429)
-assert.equal(otpStatus('unavailable'), 502)
+// 503, not 502, as of A7: this kind also covers GoTrue reporting the phone
+// provider disabled, not only an upstream failure — see signin-error-states.test.mjs.
+assert.equal(otpStatus('unavailable'), 503)
 
 // classifySendError / classifyVerifyError diverge only on the plain-4xx case —
 // a bad phone number is `invalid_argument`, a bad code is `invalid_code` — so

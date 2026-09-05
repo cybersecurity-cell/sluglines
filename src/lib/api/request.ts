@@ -21,13 +21,32 @@ export async function readJson(request: NextRequest): Promise<unknown> {
  * proxy header a normal reverse proxy sets; `'unknown'` collapses every
  * caller with no header onto one bucket, which is a coarser limit rather than
  * a bypass.
+ *
+ * `x-vercel-forwarded-for` is checked first: Vercel's edge network sets it
+ * itself, overwriting whatever a client sent, so it cannot be forged the way
+ * `x-forwarded-for` can. Where that header is absent (e.g. local dev, or a
+ * platform other than Vercel), this falls back to `x-forwarded-for` — but
+ * reads the **rightmost** entry, not the leftmost. Each hop in a forwarding
+ * chain *appends* its observed peer address; only the outermost trusted proxy
+ * writes the rightmost entry, so that is the one hop this server actually
+ * witnessed. Every entry to its left, including the leftmost, is whatever the
+ * client claimed about itself and is trivially forged by sending
+ * `X-Forwarded-For: <anything>` — which is exactly how every IP-keyed rate
+ * limit here (OTP send/verify, CSP report) was bypassable before this fix.
  */
-// Typed structurally rather than as `NextRequest`: this reads two headers and
-// nothing else, and the narrower type forced a cast at the one call site that
-// holds a plain `Request` (the CSP report collector). `NextRequest` still
+// Typed structurally rather than as `NextRequest`: this reads three headers
+// and nothing else, and the narrower type forced a cast at the one call site
+// that holds a plain `Request` (the CSP report collector). `NextRequest` still
 // satisfies it, so no existing caller changes.
 export function clientIp(request: { headers: Headers }): string {
+  const vercelForwarded = request.headers.get('x-vercel-forwarded-for')
+  if (vercelForwarded) return vercelForwarded.split(',')[0]!.trim()
+
   const forwarded = request.headers.get('x-forwarded-for')
-  if (forwarded) return forwarded.split(',')[0]!.trim()
+  if (forwarded) {
+    const hops = forwarded.split(',')
+    return hops[hops.length - 1]!.trim()
+  }
+
   return request.headers.get('x-real-ip') ?? 'unknown'
 }

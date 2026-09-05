@@ -2453,7 +2453,7 @@ the edge daily cap and phone auth itself are all still owed, each named above an
 
 ---
 
-## D-46 — pg_cron installed and both sweeps scheduled. **Closes #46**
+## D-46 — pg_cron installed and both sweeps scheduled. ~~Closes #46~~ **Schedules the sweeps; #46 itself was not closed**
 
 **Date:** 2026-08-22
 **Target:** production `bwpguotjzczmieeepczf`, rehearsed on preview branch `phase-3-4-staging`
@@ -2546,9 +2546,15 @@ database through the anon key like any visitor.
 **Status:** DONE. All four checklist items in #46 are closed; the retention bound is stated above
 rather than left implicit.
 
+**Corrected 2026-09-05 (PR 1, `fix/public-surface-honesty`, D-78's reconciliation pass):** #46 is
+still **OPEN** on GitHub as of this date, and its own checklist boxes are still unchecked — "closes"
+above was never true of the *issue*, only of the *engineering work*. The DONE status for scheduling
+the sweeps and wiring the health endpoint stands; ticking #46's boxes and closing it on GitHub is a
+separate, not-yet-performed action.
+
 ---
 
-## D-47 — Vercel Authentication stays on until DNS cutover; CI gets a bypass instead. **Closes #47**
+## D-47 — Vercel Authentication stays on until DNS cutover; CI gets a bypass instead. ~~Closes #47~~ **Records the posture; #47 itself was not closed**
 
 **Date:** 2026-08-22
 **Observed state** (`prj_Uvmtv5fVBVg9tw5CJUyMSD4UHmGS`, team `kalaikandasamy-4291s-projects`, plan Pro):
@@ -2613,6 +2619,16 @@ exactly as before.
 and defaulted to the safe direction; #23's external check is unblocked in code; #21's external half
 is blocked on #25 with the blocker named rather than left looking merely unfinished. The dashboard
 toggle and the owner's optional decision to publish early are the two things outstanding, both named.
+
+**Corrected 2026-09-05 (PR 1, `fix/public-surface-honesty`, D-78's reconciliation pass):** #47 is
+still **OPEN** on GitHub, unchecked. It needs a second correction beyond the label: production facts
+verified the same day show `https://sluglines.vercel.app` **publicly reachable**, serving the app at
+`43c2ab8` with no Vercel login prompt — the opposite of "stays on" above, and also the opposite of
+D-77's 2026-09-03 verification (`HTTP 302 → the #47 SSO auth gate`). Either the Deployment Protection
+setting changed after this entry and D-77 were written, or `all_except_custom_domains` behaves
+differently than recorded; either way, the posture this entry describes is no longer the live one.
+Determining which, and whether it was a deliberate change, is separate work this entry does not
+perform.
 
 ---
 
@@ -5219,3 +5235,60 @@ already installed on production (D-46). This is the next action for the pilot.
 
 **Status:** DONE. Production is at `0001`–`0025`, all applied. The D-74 vulnerability is fully closed.
 Feature-sweep scheduling is the remaining ops step before the features are operationally live.
+
+---
+
+## D-78 — D-13 reconciled: M1–M4 stayed a rebuild; the AI layer and six Option B schema slices were a verbal-directive transplant, never separately decided
+
+**Date:** 2026-09-05
+
+### The contradiction
+
+D-13 (2026-08-14, DECIDED) is unambiguous: **"the application core is rebuilt inside the
+`sluglines` repo from the rev. 5.3 specification. `Sluglines-AI`'s code is **not** transplanted."**
+Its first consequence states it as a commitment, not an aspiration: *"no file is copied into this
+repo as implementation."*
+
+D-65 (2026-09-02) transplants the AI runtime — `src/lib/ai/**`,
+`0011_agent_traces_and_kill_switches.sql`, the `/api/agent` route — "adapted from"
+`Sluglines-AI`. D-68 through D-73 (2026-09-02–03, "Option B slices 1–6") then transplant six more
+schema slices the same way: incidents (D-68, `0014`/`0015`), lost & found (D-69, `0016`/`0017`), a
+`stops` lookup for transit (D-70, `0018`), recurring offers (D-71, `0019`/`0020`), waitlist/ETA/
+no-show (D-72, `0021`/`0022`), and ride history/leaderboard/moderator dashboard (D-73,
+`0023`/`0024`). D-68, D-69 and D-70 use the word "transplanted" in their own titles.
+
+Each of these seven entries frames itself as "adapted from, not copied from" `Sluglines-AI` —
+technically inside D-13's letter, which permits reading `Sluglines-AI` for design intent. But in
+substance, migration `0011` and `0014`–`0024`, an entire AI agent layer, and most of the product
+surface beyond the M1–M4 core did originate as `Sluglines-AI` schema and code, restated rather than
+designed fresh from rev. 5.3/6. That is what D-13 committed not to do, and no entry between D-13 and
+D-65 revisits or narrows that commitment before it was acted against.
+
+### The verbal directive, and why it was never a decision
+
+D-65's own text supplies the authorisation it acted on: *"The user directive is explicit: 'all
+files from sluglines-ai should be merged and sluglines will be the only repo.'"* That sentence is
+the entire record of it — it is quoted as justification inside D-65, and it is not itself an entry
+in this file. This file's own header states "nothing is inferred" and requires a decision to record
+evidence and a status; a directive quoted in passing inside the entry that acts on it, with no
+antecedent entry weighing it against D-13, does not meet that bar. D-13 was never reopened, amended,
+or superseded in writing before D-65 executed against its opposite.
+
+### Resolution
+
+**D-13 is narrowed, not retired.** Its rebuild claim held, and still holds, for the M1–M4 core —
+directory (M1), identity (M2), the ride-coordinator state machine (M3), and presence (M4):
+`supabase/migrations/0001`–`0010`, `lib/domain`, the identity and offer-state-machine code, all
+built from the rev. 5.3/6 specification with no `Sluglines-AI` file copied in, exactly as D-13
+committed. Read D-13 from 2026-09-05 forward as scoped to that core only.
+
+**D-65 and D-68–D-73 stand as their own lineage**: a later, separate transplant of the AI layer and
+six Option B schema slices, authorised by the verbal directive quoted above rather than by a
+decision entry that reconciled it with D-13 at the time. This entry is that reconciliation, written
+after the fact. It does not undo any of those migrations or unship any code — D-77 already recorded
+all of `0011`–`0025` as applied to production — it corrects the record of *why* they exist and
+closes the gap between what D-13 promised and what actually happened.
+
+**Status:** ADOPTED. D-13 is narrowed to the M1–M4 core effective this entry. `AGENTS.md`'s opening
+paragraph is corrected in the same change (PR 1, `fix/public-surface-honesty`) to stop asserting the
+whole application core is rebuilt-not-transplanted.
