@@ -18,14 +18,21 @@ const MESSAGE_BY_KIND: Readonly<Record<OtpErrorKind, string>> = {
   invalid_argument: 'Enter a valid phone number.',
   invalid_code: 'That code is incorrect or has expired.',
   rate_limited: 'Too many attempts. Try again in a few minutes.',
-  unavailable: 'Something went wrong. Try again.',
+  // A7: a config fault ("Something went wrong. Try again.") invited exactly
+  // the immediate-retry loop that made #52's production 500 worse than it
+  // needed to be. This says plainly the fault is ours and gives no "try again"
+  // call to action — retrying now cannot fix a server-side misconfiguration.
+  unavailable: "Sign-in isn't working on our end right now. Please check back later.",
 }
 
 const STATUS_BY_KIND: Readonly<Record<OtpErrorKind, number>> = {
   invalid_argument: 400,
   invalid_code: 400,
   rate_limited: 429,
-  unavailable: 502,
+  // 503, not 502: this kind now also covers GoTrue reporting the phone
+  // provider itself disabled (see `PROVIDER_DISABLED_CODES` below), which is
+  // "the service is not available" rather than "the upstream answered badly".
+  unavailable: 503,
 }
 
 export interface OtpErrorBody {
@@ -44,6 +51,24 @@ export function otpStatus(kind: OtpErrorKind): number {
 }
 
 /**
+ * GoTrue `error_code` values (surfaced by `supabase-js` as `AuthApiError.code`)
+ * that mean "this feature is switched off", not "you gave a bad phone
+ * number". Evidenced on the live project (Docs/2026-08-22-supabase-auth-
+ * config.md, D-51): with `external_phone_enabled: false`, `POST /auth/v1/otp`
+ * answers `400 phone_provider_disabled` — a 4xx that would otherwise
+ * misclassify as `invalid_argument` and tell a visitor with a perfectly valid
+ * number to fix it. Named explicitly rather than guessed at; add to this list
+ * only against evidence of another such code, the same discipline `D-51`
+ * itself follows.
+ */
+const PROVIDER_DISABLED_CODES = new Set(['phone_provider_disabled'])
+
+interface ClassifiableAuthError {
+  readonly status?: number
+  readonly code?: string
+}
+
+/**
  * Classify a `supabase-js` `AuthError` into an `OtpErrorKind`.
  *
  * `status` is the HTTP status the GoTrue server answered with — 429 for its
@@ -53,8 +78,15 @@ export function otpStatus(kind: OtpErrorKind): number {
  * only `verifyOtp` failures classify to it, via `classifyVerifyError` below,
  * because a bad code and a bad phone number are different refusals to the
  * caller even though both start as a 4xx from the same provider.
+ *
+ * `code` is checked before `status`: a `phone_provider_disabled` 400 is not a
+ * malformed argument, it is `unavailable` (A7) — this is the reactive
+ * fallback for the same fact `phone-auth-availability.ts` checks proactively
+ * before the form ever renders; this branch only fires if that check said
+ * "enabled" (a stale cache, most plausibly) and the live call disagreed.
  */
-export function classifySendError(error: { status?: number } | null | undefined): OtpErrorKind {
+export function classifySendError(error: ClassifiableAuthError | null | undefined): OtpErrorKind {
+  if (typeof error?.code === 'string' && PROVIDER_DISABLED_CODES.has(error.code)) return 'unavailable'
   if (error?.status === 429) return 'rate_limited'
   if (typeof error?.status === 'number' && error.status >= 400 && error.status < 500) return 'invalid_argument'
   return 'unavailable'
@@ -65,7 +97,8 @@ export function classifySendError(error: { status?: number } | null | undefined)
  * expired code, not a malformed request (the request was already validated
  * before the call). 401/403 in particular is GoTrue's "token invalid" case.
  */
-export function classifyVerifyError(error: { status?: number } | null | undefined): OtpErrorKind {
+export function classifyVerifyError(error: ClassifiableAuthError | null | undefined): OtpErrorKind {
+  if (typeof error?.code === 'string' && PROVIDER_DISABLED_CODES.has(error.code)) return 'unavailable'
   if (error?.status === 429) return 'rate_limited'
   if (typeof error?.status === 'number' && error.status >= 400 && error.status < 500) return 'invalid_code'
   return 'unavailable'

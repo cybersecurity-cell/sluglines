@@ -1,5 +1,7 @@
 import { redirect } from 'next/navigation'
+import SignInUnavailable from '@/components/SignInUnavailable'
 import VerifyForm from '@/components/VerifyForm'
+import { isPhoneAuthEnabled } from '@/lib/api/phone-auth-availability.ts'
 
 /**
  * `/verify` — rev. 5.3 §8 M2. Reached only from `/login`, with the phone
@@ -9,6 +11,10 @@ import VerifyForm from '@/components/VerifyForm'
  * No phone in the URL means this page was reached directly rather than via
  * `/login`'s redirect; there is nothing to verify, so it sends the visitor
  * back rather than rendering a code field with no destination.
+ *
+ * A7: mirrors `/login`'s phone-auth-off check — reachable directly by URL
+ * (e.g. a bookmarked or shared link) without ever passing through `/login`,
+ * so the same server-side gate has to run here too, not only there.
  */
 export const metadata = {
   title: 'Enter your code - Sluglines',
@@ -21,6 +27,8 @@ export default async function VerifyPage({ searchParams }: { searchParams?: Prom
     redirect('/login')
   }
 
+  const available = await isPhoneAuthEnabled()
+
   return (
     <div className="bg-white text-slate-950">
       <section className="border-b border-slate-200 bg-slate-50">
@@ -32,7 +40,7 @@ export default async function VerifyPage({ searchParams }: { searchParams?: Prom
       </section>
 
       <div className="mx-auto max-w-xl px-4 py-8">
-        <VerifyForm phone={phone} />
+        {available ? <VerifyForm phone={phone} /> : <SignInUnavailable />}
       </div>
     </div>
   )
