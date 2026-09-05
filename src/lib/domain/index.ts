@@ -157,4 +157,29 @@ export {
 
 export type { SpotSearchFilters, SpotStatusFilter } from './spot-search.ts'
 
-export { isE164Phone, isOtpCode, normalizePhone } from './phone.ts'
+export { isE164Phone, isOtpCode, normalizePhone, redactPii } from './phone.ts'
+
+export {
+  HORNER_RD,
+  HORNER_RD_LOCATION_ID,
+  LENFANT_PLAZA,
+  LENFANT_PLAZA_LOCATION_ID,
+  PILOT_CORRIDOR_PAIR_LOCATION_IDS,
+  CORRIDOR_DIRECTIONS,
+  isCorridorDirection,
+  corridorLocationsForDirection,
+  corridorDirectionOptions,
+  isPilotCorridorPair,
+  corridorDirectionLabel,
+} from './corridor.ts'
+
+export type { CorridorDirection, PilotCorridorLocation, CorridorDirectionOption } from './corridor.ts'
+
+export {
+  BOARD_VISIBLE_STATES,
+  CORRIDOR_OFFER_COLUMNS,
+  seatsRemaining,
+  buildCorridorBoard,
+} from './board.ts'
+
+export type { CorridorOfferRow, CorridorBoardOffer, CorridorBoard } from './board.ts'

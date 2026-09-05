@@ -48,9 +48,15 @@ const apiDir = path.join(root, 'src/app/api')
 // -----------------------------------------------------------------------------
 // 1. The route surface is exactly the one rev. 5.3 §8 M3 names
 //
-//   POST /api/offers/{advance,cancel,confirm,eta,waitlist}
-//   POST /api/reservations{,/confirm,/no-show}      -- the bare path is not this slice
+//   POST /api/offers{,/advance,/cancel,/confirm,/eta,/waitlist}
+//   POST /api/reservations{,/confirm,/no-show}
 //   POST /api/recurring-offers/{cancel,pause,resume,skip}
+//
+// The two bare paths — `/api/offers` (offer_create + offer_publish) and
+// `/api/reservations` (offer_reserve_seat) — are PR 5 "thin coordination
+// loop": this comment used to say "the bare path is not this slice" for
+// reservations, and offers had no writer of its own at all. Before this PR,
+// nothing in the product could create an offer or claim a seat.
 // -----------------------------------------------------------------------------
 
 /** Routes with a writer in `0002`/`0003`, and the SQL function each must call. */
@@ -84,6 +90,15 @@ const WAITLIST_ROUTES = {
   'offers/waitlist': 'offer_waitlist_join',
 }
 
+// PR 5 "thin coordination loop". Neither is a three-argument (offer_id,
+// expected_revision, idempotency_key) transition — `offers` is a *compound*
+// create-then-publish (two RPCs, two derived idempotency keys; see
+// `lib/api/offer-create-route.ts`'s own comment for why), and `reservations`
+// calls a function with a fourth `seats` argument — so each gets its own small
+// wiring-proof block below, same reasoning as RECURRING_ROUTES/WAITLIST_ROUTES.
+const OFFER_CREATE_ROUTES = ['offers']
+const RESERVATION_CREATE_ROUTES = ['reservations']
+
 const DEFERRED_ROUTES = [
   'offers/eta',
   'reservations/no-show',
@@ -96,10 +111,12 @@ const ALL_ROUTES = [
   ...Object.keys(BACKED_ROUTES),
   ...Object.keys(RECURRING_ROUTES),
   ...Object.keys(WAITLIST_ROUTES),
+  ...OFFER_CREATE_ROUTES,
+  ...RESERVATION_CREATE_ROUTES,
   ...DEFERRED_ROUTES,
 ]
 
-assert.equal(ALL_ROUTES.length, 11, 'rev. 5.3 §8 M3 names eleven POST routes in this slice')
+assert.equal(ALL_ROUTES.length, 13, 'rev. 5.3 §8 M3 names thirteen POST routes once PR 5 ships the two bare paths')
 
 function routeSource(route) {
   const file = path.join(apiDir, route, 'route.ts')
@@ -315,6 +332,95 @@ for (const [route, fn] of Object.entries(WAITLIST_ROUTES)) {
     `${route}: ${fn} must be revoked from PUBLIC (rev. 5.3 §12 constraint 6)`
   )
 }
+
+// OFFER_CREATE_ROUTES — PR 5. Two RPCs, not one: offer_create() then
+// offer_publish(), because §8 M3 has no single edge for "post a seat that
+// immediately goes live" — see lib/api/offer-create-route.ts's own comment.
+for (const route of OFFER_CREATE_ROUTES) {
+  const source = routeSource(route)
+
+  assert.match(
+    source,
+    /export const POST = offerCreateRoute\(\)/,
+    `${route}: must be wired to its offer-create route factory`
+  )
+  assert.match(source, /from '@\/lib\/api\/offer-create-route\.ts'/, `${route}: wrong factory import`)
+
+  assert.match(
+    migrations,
+    /grant execute on function public\.offer_create\(text, uuid, uuid, timestamptz, timestamptz, integer, text\) to authenticated;/,
+    `${route}: offer_create(...) is not granted to authenticated`
+  )
+  assert.match(
+    migrations,
+    /revoke all on function public\.offer_create\(text, uuid, uuid, timestamptz, timestamptz, integer, text\) from public;/,
+    `${route}: offer_create(...) must be revoked from PUBLIC (rev. 5.3 §12 constraint 6)`
+  )
+  assert.match(
+    migrations,
+    /grant execute on function public\.offer_publish\(uuid, integer, text\) to authenticated;/,
+    `${route}: offer_publish(...) is not granted to authenticated`
+  )
+}
+
+// RESERVATION_CREATE_ROUTES — PR 5. offer_reserve_seat() takes a fourth
+// `p_seats` argument the three-argument transition factory cannot pass.
+for (const route of RESERVATION_CREATE_ROUTES) {
+  const source = routeSource(route)
+
+  assert.match(
+    source,
+    /export const POST = reservationCreateRoute\(\)/,
+    `${route}: must be wired to its reservation-create route factory`
+  )
+  assert.match(source, /from '@\/lib\/api\/reservation-create-route\.ts'/, `${route}: wrong factory import`)
+
+  assert.match(
+    migrations,
+    /grant execute on function public\.offer_reserve_seat\(uuid, integer, text, integer\) to authenticated;/,
+    `${route}: offer_reserve_seat(...) is not granted to authenticated`
+  )
+  assert.match(
+    migrations,
+    /revoke all on function public\.offer_reserve_seat\(uuid, integer, text, integer\) from public;/,
+    `${route}: offer_reserve_seat(...) must be revoked from PUBLIC (rev. 5.3 §12 constraint 6)`
+  )
+}
+
+// Neither new factory names the actor (rev. 5.3 §14 risk 1) and both check the
+// session before calling Supabase. `offer-create-route.ts` legitimately sends
+// `p_poster_role` — a declared role, not an identity — so the negative check
+// below matches only the identity-carrying parameter names, not that one.
+const NO_ACTOR_PARAM = /\bp_actor_id\b|\bp_member_id\b|\bp_user_id\b|\bp_rider_id\b|\bp_poster_id\b/
+
+const offerCreateFactory = fs.readFileSync(path.join(root, 'src/lib/api/offer-create-route.ts'), 'utf8')
+assert.match(offerCreateFactory, /supabase\.auth\.getUser\(\)/, 'offer-create-route.ts must make a session check')
+assert.equal(NO_ACTOR_PARAM.test(offerCreateFactory), false, 'offer-create-route.ts must not pass an actor id; the SQL reads auth.uid()')
+assert.ok(
+  offerCreateFactory.indexOf('supabase.auth.getUser()') < offerCreateFactory.indexOf("supabase.rpc('offer_create'"),
+  'offer-create-route.ts: the session check must run before offer_create'
+)
+assert.ok(
+  offerCreateFactory.indexOf("supabase.rpc('offer_create'") < offerCreateFactory.indexOf("supabase.rpc('offer_publish'"),
+  'offer-create-route.ts: offer_create must be called before offer_publish'
+)
+
+const reservationCreateFactory = fs.readFileSync(path.join(root, 'src/lib/api/reservation-create-route.ts'), 'utf8')
+assert.match(
+  reservationCreateFactory,
+  /supabase\.auth\.getUser\(\)/,
+  'reservation-create-route.ts must make a session check'
+)
+assert.equal(
+  NO_ACTOR_PARAM.test(reservationCreateFactory),
+  false,
+  'reservation-create-route.ts must not pass an actor id; the SQL reads auth.uid()'
+)
+assert.ok(
+  reservationCreateFactory.indexOf('supabase.auth.getUser()') <
+    reservationCreateFactory.indexOf("supabase.rpc('offer_reserve_seat'"),
+  'reservation-create-route.ts: the session check must run before offer_reserve_seat'
+)
 
 // The factory calls exactly the three SQL parameters, and never names the actor.
 // rev. 5.3 §14 risk 1: a client entry point that lets a caller say who they are

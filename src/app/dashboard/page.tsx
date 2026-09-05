@@ -1,7 +1,9 @@
+import { redirect } from 'next/navigation'
 import CheckInStatusPanel from '@/components/CheckInStatusPanel'
 import FastBoard from '@/components/FastBoard'
 import { buildFastBoard } from '@/lib/domain/fast-board'
 import { getMemberPresence, getPublicSpotCounts } from '@/lib/dashboard'
+import { createClient } from '@/lib/supabase/server'
 
 /**
  * `/dashboard` — the M3 power-user view (rev. 5.3 §8 M3).
@@ -25,6 +27,24 @@ import { getMemberPresence, getPublicSpotCounts } from '@/lib/dashboard'
  * `?checkout=failed` is set by `clearPresence()` when the checkout call did not
  * land. It is a URL flag rather than client state because the whole surface,
  * including the button, is server-rendered.
+ *
+ * AUTH GUARD (product-review-2026-09-04 F9)
+ * ---------------------------------------------------------------------------
+ * This page had no session check of its own: it rendered public aggregates
+ * (legitimately public, per rev. 5.3 §7.1's "read-only value before sign-up")
+ * plus `getMemberPresence()`, which already refuses to read `presence_checkins`
+ * for a signed-out caller. The finding is that the page's safety was therefore
+ * *positional* — it depended on that helper's internal check rather than
+ * asserting anything itself — and this page also bundles the one-tap checkout,
+ * a member-only action, onto a URL a moderator cannot tell apart from a public
+ * one by its 200. The explicit `redirect('/login')` below makes the guard the
+ * page's own, matching how `/board` (new in this PR) and `/onboarding` treat an
+ * authenticated surface, and matching §10's nav table, which lists the Board
+ * zone as "not visible (auth surface)" signed-out. This does trade away the
+ * §7.1 "spots stay public" reading of this specific URL — noted, not hidden,
+ * in this PR's own description, since the two principles point opposite ways
+ * for exactly this page and a route-group split (the Phase 1 restructure that
+ * was never done) is the real fix.
  */
 export const dynamic = 'force-dynamic'
 
@@ -39,6 +59,11 @@ export default async function DashboardPage({
 }: {
   searchParams?: Promise<{ checkout?: string }>
 }) {
+  const { data: auth } = await (await createClient()).auth.getUser()
+  if (!auth?.user) {
+    redirect('/login')
+  }
+
   const [snapshot, presence, resolvedSearchParams] = await Promise.all([
     getPublicSpotCounts(),
     getMemberPresence(),

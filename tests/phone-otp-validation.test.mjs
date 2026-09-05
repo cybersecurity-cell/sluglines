@@ -7,7 +7,7 @@
 import { strict as assert } from 'node:assert'
 import fs from 'node:fs'
 import path from 'node:path'
-import { isE164Phone, isOtpCode, normalizePhone } from '../src/lib/domain/phone.ts'
+import { isE164Phone, isOtpCode, normalizePhone, redactPii } from '../src/lib/domain/phone.ts'
 import {
   OTP_ERROR_KINDS,
   classifySendError,
@@ -46,6 +46,40 @@ assert.equal(isOtpCode('123456'), true)
 for (const bad of ['12345', '1234567', 'abcdef', '12345a', 123456, null, undefined, '']) {
   assert.equal(isOtpCode(bad), false, `expected ${JSON.stringify(bad)} to be rejected`)
 }
+
+// -----------------------------------------------------------------------------
+// redactPii — PR 5's `agent_traces` guard (0011:113, the identity invariant
+// §6/D-somewhere restates: application tables hold no durable phone number).
+// Gated through `normalizePhone` itself, so the same cases that pass above are
+// exactly the ones redacted here.
+// -----------------------------------------------------------------------------
+assert.equal(
+  redactPii('call me at 703-555-0199 tonight'),
+  'call me at [redacted-phone] tonight',
+  'a dashed US number in a sentence is redacted'
+)
+assert.equal(
+  redactPii('my number is (703) 555-0199, text after 5'),
+  'my number is [redacted-phone], text after 5',
+  'a parenthesised US number is redacted'
+)
+assert.equal(redactPii('reach me at +15555550100'), 'reach me at [redacted-phone]', 'E.164 is redacted')
+assert.equal(
+  redactPii('email me at rider@example.com about the ride'),
+  'email me at [redacted-email] about the ride',
+  'an email address is redacted'
+)
+assert.equal(
+  redactPii('leaving Horner at 5:30, back by 7 with 2 seats'),
+  'leaving Horner at 5:30, back by 7 with 2 seats',
+  'times and small counts are not phone-shaped and must survive untouched'
+)
+assert.equal(
+  redactPii('meet the 300 spot near exit 152 on 10-15-2026'),
+  'meet the 300 spot near exit 152 on 10-15-2026',
+  'a date and a lot number are not 10/11-digit numbers and must survive untouched'
+)
+assert.equal(redactPii('nothing to redact here'), 'nothing to redact here')
 
 // -----------------------------------------------------------------------------
 // otp-http.ts — every kind has a message and a status, no kind unmapped
