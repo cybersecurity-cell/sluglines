@@ -18,27 +18,49 @@
  * (§10: <2.0s throttled 4G) for no decision it could make. `.php` is
  * deliberately **not** excluded — `/wp-login.php` is one of the dead WordPress
  * endpoints the policy answers.
+ *
+ * It also carries the `X-Robots-Tag` guard from `@/lib/robots-guard` — see
+ * that file for why. It rides along on every response this middleware
+ * produces, redirects and the 410 rewrite included. One hop it cannot reach:
+ * a legacy path with WordPress's trailing slash gets Next's own 308
+ * slash-canonicalisation first (`trailingSlash: false`, see
+ * `scripts/verify-legacy-routes.mjs`), which answers before this middleware
+ * runs. The second hop, the one this policy actually targets, still carries
+ * the header.
  */
 
 import { NextResponse } from 'next/server'
 import type { NextRequest } from 'next/server'
 import { GONE_PATH, classifyLegacyPath } from '@/lib/legacy-redirects'
+import { shouldNoIndex } from '@/lib/robots-guard'
+
+function withRobotsGuard(response: NextResponse, rawHost: string | null) {
+  if (shouldNoIndex(rawHost)) {
+    response.headers.set('X-Robots-Tag', 'noindex, nofollow')
+  }
+
+  return response
+}
 
 export function middleware(request: NextRequest) {
+  const rawHost = request.headers.get('host')
   const disposition = classifyLegacyPath(request.nextUrl.pathname)
 
   if (disposition.kind === 'redirect') {
-    return NextResponse.redirect(new URL(disposition.target, request.url), disposition.status)
+    return withRobotsGuard(
+      NextResponse.redirect(new URL(disposition.target, request.url), disposition.status),
+      rawHost
+    )
   }
 
   if (disposition.kind === 'gone') {
     const goneUrl = new URL(GONE_PATH, request.url)
     goneUrl.searchParams.set('from', request.nextUrl.pathname)
 
-    return NextResponse.rewrite(goneUrl)
+    return withRobotsGuard(NextResponse.rewrite(goneUrl), rawHost)
   }
 
-  return NextResponse.next()
+  return withRobotsGuard(NextResponse.next(), rawHost)
 }
 
 export const config = {
