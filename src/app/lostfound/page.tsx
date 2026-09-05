@@ -4,23 +4,24 @@ import { PackageSearch } from 'lucide-react'
 export const metadata = {
   title: 'Lost & Found - Sluglines',
   description:
-    'The Sluglines Lost & Found board for items left in a slug line carpool. Publicly readable; reporting and claiming require an account.',
+    'The Sluglines Lost & Found board for items left in a slug line carpool. The schema is live; there is no board to read or post to yet.',
 }
 
 /**
  * `/lostfound` — the landing target of the legacy forum 301s.
  *
- * M5 owns this board (rev. 5.3 §8 M5) and it is §11 Phase 3 work: the
- * `lostfound_*` tables do not exist in this repo's migrations yet. This page is
- * the **M1 half only** — the route has to resolve, because the §8 M1 redirect
- * policy sends `/forum/` and every legacy Lost & Found URL here, and a 301 into
- * a 404 loses exactly the traffic §3.1 decided to keep. It states what the board
- * will be and what has happened to the old one; it does not pretend to be a
- * board.
+ * M5 owns this board (rev. 5.3 §8 M5). The schema and write path
+ * (`0016_lostfound_schema.sql`, `0017_lostfound_functions.sql`) are both
+ * `APPLIED: production` — the report -> claim -> reunite lifecycle exists and
+ * works — but no UI reads or writes it yet. This page is the **M1 half only**:
+ * the route has to resolve, because the §8 M1 redirect policy sends `/forum/`
+ * and every legacy Lost & Found URL here, and a 301 into a 404 loses exactly
+ * the traffic §3.1 decided to keep. It states what is actually live (schema,
+ * functions) and what is not (a board a visitor can read or post to); it does
+ * not promise a board this page cannot show.
  *
- * The reason this page cannot honestly show items yet is the same reason it
- * exists: L&F is the only live legacy usage (116 topics, newest two days old),
- * and none of it is migrated.
+ * L&F is the only live legacy usage (116 topics, newest two days old), and
+ * none of it is migrated into the new schema.
  */
 export default function LostFoundPage() {
   return (
@@ -32,9 +33,10 @@ export default function LostFoundPage() {
             Left something in a slug line carpool?
           </h1>
           <p className="mt-4 text-lg leading-8 text-slate-700">
-            The Lost &amp; Found board is the one part of the old Sluglines forum that carries over. It is not open
-            yet — when it is, anyone will be able to read it without an account, and reporting or claiming an item
-            will need one.
+            The Lost &amp; Found board is the one part of the old Sluglines forum that carries over. The database
+            behind it is live — reporting, claiming, and reuniting items are all built — but there is no page here
+            yet to read a listing or file one. When there is, anyone will be able to read it without an account, and
+            reporting or claiming an item will need one.
           </p>
 
           <div className="mt-6 rounded-lg border border-stone-200 bg-white p-5">

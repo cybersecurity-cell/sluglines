@@ -26,9 +26,13 @@ export default function RecentPostsSection() {
         <div className="mb-6 flex flex-col gap-2 md:flex-row md:items-end md:justify-between">
           <div>
             <p className="mb-2 font-mono text-xs font-semibold uppercase tracking-[0.2em] text-slate-500">
-              Archive &middot; commuter notices
+              From the archive
             </p>
-            <h2 className="h-display text-2xl text-[#17202A]">Route changes, Metro work, and HOV updates</h2>
+            <h2 className="h-display text-2xl text-[#17202A]">Past route changes, Metro work, and HOV updates</h2>
+            <p className="mt-1 text-sm text-slate-500">
+              Posts from the retired Sluglines blog, kept for reference. Dates are when each post was
+              originally published — none of this is current.
+            </p>
           </div>
           <Link href="/blog" className="text-sm font-bold text-[#2E7D46] hover:text-[#1f5c33]">
             View archive

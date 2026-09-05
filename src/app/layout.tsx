@@ -72,36 +72,27 @@ export default function RootLayout({
                   <li><Link href="/app" className="hover:text-white transition-colors">APP</Link></li>
                   <li><Link href="/blog" className="hover:text-white transition-colors">BLOG</Link></li>
                   <li><Link href="/news" className="hover:text-white transition-colors">NEWS</Link></li>
-                  <li><a href="/wp-login.php" className="hover:text-white transition-colors">LOGIN</a></li>
-                  <li><a href="/wp-login.php?action=register" className="hover:text-white transition-colors">REGISTER</a></li>
+                  <li><Link href="/login" className="hover:text-white transition-colors">LOGIN</Link></li>
+                  <li><Link href="/login" className="hover:text-white transition-colors">REGISTER</Link></li>
                 </ul>
               </div>
               <div>
-                <h2 className="text-white font-semibold text-sm mb-4" style={{ fontFamily: 'var(--font-syne), sans-serif' }}>Search</h2>
+                <h2 className="text-white font-semibold text-sm mb-4" style={{ fontFamily: 'var(--font-syne), sans-serif' }}>Find a spot</h2>
                 {/*
-                  The search control carries the §10 accent (`#2E7D46`, white on
-                  it is 5.07:1) rather than the retired sky brand, and both
-                  controls are 44px tall — this footer is the one place a
-                  signed-out commuter types on a phone. The field's border and
-                  ground come from the dark-shell tokens the footer already sits
-                  on, so it stays one surface rather than a slate patch on it.
+                  This used to be a `<form action="/" name="s">` left over from
+                  the WordPress theme; `/?s=x` returns 200 and ignores the query
+                  entirely. `/spots` runs the real filter
+                  (`src/lib/spot-search.ts`), so this links there instead of
+                  re-implementing a second, working search box. The §10 accent
+                  (`#2E7D46`, white on it is 5.07:1) and the 44px tap target
+                  carry over from the control this replaced.
                 */}
-                <form action="/" className="mb-6 flex gap-2">
-                  <label className="sr-only" htmlFor="footer-search">Search for:</label>
-                  <input
-                    id="footer-search"
-                    name="s"
-                    type="search"
-                    className="min-h-[44px] min-w-0 flex-1 rounded-md border px-3 py-2 text-sm text-white"
-                    style={{ borderColor: 'var(--border)', background: 'var(--bg)' }}
-                  />
-                  <button
-                    className="min-h-[44px] rounded-md bg-[#2E7D46] px-4 py-2 text-sm font-bold text-white transition-colors hover:bg-[#245F37]"
-                    type="submit"
-                  >
-                    Search
-                  </button>
-                </form>
+                <Link
+                  href="/spots"
+                  className="mb-6 inline-flex min-h-[44px] items-center justify-center rounded-md bg-[#2E7D46] px-4 py-2 text-sm font-bold text-white transition-colors hover:bg-[#245F37]"
+                >
+                  Search pickup locations
+                </Link>
                 <h2 className="text-white font-semibold text-sm mb-4" style={{ fontFamily: 'var(--font-syne), sans-serif' }}>Social media</h2>
                 <ul className="space-y-2.5 text-sm" style={{ color: 'var(--muted)' }}>
                   <li><a href="http://facebook.com/sluglines" target="_blank" rel="noopener noreferrer" className="hover:text-white transition-colors">Facebook</a></li>

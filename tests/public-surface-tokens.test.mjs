@@ -205,21 +205,21 @@ assert.match(navbar, /min-h-\[44px\]/, 'nav items are 44px tall')
 assert.match(navbar, /h-11 w-11/, 'the mobile menu toggle is 44px square')
 assert.equal(/\bpy-2\.5\b/.test(navbar), false, 'py-2.5 pills are 40px — under the §10 target')
 
-// The hero CTAs and the footer search, which are the only other public controls.
+// The hero CTAs and the footer's spot-search link, which are the only other public controls.
 assert.equal((hero.match(/min-h-\[44px\]/g) || []).length, 2, 'both hero CTAs are 44px tall')
 assert.equal(
   (code['src/app/layout.tsx'].match(/min-h-\[44px\]/g) || []).length,
-  2,
-  'the footer search field and button are both 44px tall'
+  1,
+  'the footer\'s "Search pickup locations" link is 44px tall'
 )
 
 // --- copy that depends on data must be guarded ------------------------------
 
-// InfoModuleGrid's heading says "Four things worth knowing" and its layout
-// gives the first module a 3-row feature cell beside three single-row cells.
-// Both are true of four modules and of no other number.
-assert.equal(RESOURCE_MODULES.length, 4, 'InfoModuleGrid\'s heading and grid both assume four modules')
-assert.match(code['src/components/InfoModuleGrid.tsx'], /Four things worth knowing/)
+// InfoModuleGrid's heading says "Three things worth knowing" and its layout
+// gives the first module a 2-row feature cell beside two single-row cells.
+// Both are true of three modules and of no other number.
+assert.equal(RESOURCE_MODULES.length, 3, 'InfoModuleGrid\'s heading and grid both assume three modules')
+assert.match(code['src/components/InfoModuleGrid.tsx'], /Three things worth knowing/)
 
 // --- the archive list does not print the same title three times -------------
 
