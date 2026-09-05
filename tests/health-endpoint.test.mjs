@@ -71,4 +71,64 @@ for (const forbidden of ['members', 'presence_checkins', 'offers', 'reservations
   )
 }
 
-console.log('health endpoint: 503 on failure, no-store, deployment identified, no synthesised timestamps')
+// --- the rateLimiter check (#117): the service-role path is finally observed -
+//
+// This is the one check that constructs the service-role client rather than
+// the anonymous one, and the one thing worth pinning is that it is a real
+// `checks` entry — able to move the status line to 503 — not a side note like
+// `scheduledJobs` above.
+assert.match(code, /createServiceClient/, 'it exercises the service-role client, not just the anonymous one')
+assert.match(code, /from '@\/lib\/supabase\/service'/, 'the service client comes from the shared module, not a local reimplementation')
+assert.match(code, /checks\.rateLimiter\s*=/, 'the result is one of the checks that decide the status line')
+assert.match(code, /\.rpc\('rate_limit_hit'/, 'it calls the same RPC durable-rate-limit.ts calls')
+assert.match(code, /ServiceRoleKeyMissingError/, 'it distinguishes "key unset" from "key present but RPC failed"')
+assert.match(code, /SUPABASE_SERVICE_ROLE_KEY is unset/, 'the key-absent path names the diagnostic issue #117 needs')
+
+const rateLimiterSection = code.slice(code.indexOf('HEALTH_PROBE_BUCKET_KEY'), code.indexOf('let scheduledJobs'))
+assert.ok(rateLimiterSection.length > 0, 'the rate limiter check block must exist between the offer check and the sweeps block')
+assert.equal(
+  /error\.message/.test(rateLimiterSection),
+  false,
+  'a service-role RPC or thrown error must never surface .message here — the public, unauthenticated response must carry no connection detail'
+)
+assert.match(rateLimiterSection, /error\.code/, 'an RPC error surfaces its sqlstate/code, never its message')
+assert.match(rateLimiterSection, /error\.constructor\.name/, 'a thrown error surfaces its class, never its message')
+assert.equal(
+  /process\.env\.SUPABASE_SERVICE_ROLE_KEY/.test(code),
+  false,
+  'the route must never touch the raw env var itself — only createServiceClient() does'
+)
+
+// --- the key-absent path is a catchable, diagnostic error, not a raw throw --
+//
+// `route.ts` cannot be executed here (it needs `next/headers`), but
+// `createServiceClient()` has no such dependency, so its documented behaviour
+// — the exact behaviour the health check's catch block depends on — is
+// verified directly: a missing key is a typed, catchable error naming the
+// variable, not an unhandled throw from deep inside `@supabase/supabase-js`.
+{
+  const { createServiceClient, ServiceRoleKeyMissingError } = await import('../src/lib/supabase/service.ts')
+  const original = process.env.SUPABASE_SERVICE_ROLE_KEY
+  delete process.env.SUPABASE_SERVICE_ROLE_KEY
+
+  try {
+    assert.throws(
+      () => createServiceClient(),
+      ServiceRoleKeyMissingError,
+      'a missing SUPABASE_SERVICE_ROLE_KEY must throw this named, catchable error'
+    )
+
+    try {
+      createServiceClient()
+      assert.fail('createServiceClient() must throw when the key is unset')
+    } catch (error) {
+      assert.ok(error instanceof ServiceRoleKeyMissingError)
+      assert.match(error.message, /SUPABASE_SERVICE_ROLE_KEY/, 'the diagnostic must name the unset variable')
+      assert.doesNotMatch(error.message, /^SUPABASE_SERVICE_ROLE_KEY=.+/, 'the message names the variable, never a value')
+    }
+  } finally {
+    if (original !== undefined) process.env.SUPABASE_SERVICE_ROLE_KEY = original
+  }
+}
+
+console.log('health endpoint: 503 on failure, no-store, deployment identified, no synthesised timestamps, service-role rate limiter observed')

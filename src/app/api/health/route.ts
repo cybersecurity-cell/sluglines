@@ -9,6 +9,7 @@ import {
   summariseScheduledJobs,
 } from '@/lib/domain/scheduled-jobs'
 import { createClient } from '@/lib/supabase/server'
+import { createServiceClient, ServiceRoleKeyMissingError } from '@/lib/supabase/service'
 
 /**
  * `GET /api/health` — the endpoint the external uptime check watches (issue #21).
@@ -93,6 +94,65 @@ export async function GET() {
       detail: `unreachable: ${error instanceof Error ? error.message : 'unknown'}`,
       latencyMs: Date.now() - offersStartedAt,
     }
+  }
+
+  // --- the durable OTP rate limiter, through the service-role path issue #117
+  // found missing in production -----------------------------------------------
+  //
+  // Every check above uses the anonymous client a visitor uses. This is the
+  // only one that constructs the service-role client (`lib/supabase/service.ts`),
+  // because that is the one thing worth proving: `durable-rate-limit.ts` calls
+  // `rate_limit_hit()` through exactly this path, and if
+  // `SUPABASE_SERVICE_ROLE_KEY` is unset — production's actual state as of #117
+  // — that limiter's own RPC error is swallowed and it fails OPEN
+  // (`durable-rate-limit.ts`'s header explains why that default is right for a
+  // *transient* failure). A permanent misconfiguration is a different thing and
+  // deserves to move the status line, which is why this check, unlike
+  // `scheduledJobs` below, is one of `checks`.
+  //
+  // The bucket key is a fixed, human-readable literal, never hashed: real
+  // buckets (`ip:...`, `phone:...`) are always 64-hex-char SHA-256 digests
+  // (`durable-rate-limit.ts`'s `hashKey`), so this key cannot collide with one
+  // by construction. `p_max` is large enough that no plausible health-check
+  // cadence — even once a second, far more often than issue #21's monitor runs
+  // — could exhaust it inside the window, so this probe can never trip its own
+  // limit or spend a real caller's budget.
+  const rateLimiterStartedAt = Date.now()
+  const HEALTH_PROBE_BUCKET_KEY = 'health-check:service-role-probe'
+  const HEALTH_PROBE_WINDOW_MS = 24 * 60 * 60 * 1000
+  const HEALTH_PROBE_MAX = 1_000_000
+  try {
+    const serviceClient = createServiceClient()
+    const { error } = await serviceClient.rpc('rate_limit_hit', {
+      p_key: HEALTH_PROBE_BUCKET_KEY,
+      p_window_ms: HEALTH_PROBE_WINDOW_MS,
+      p_max: HEALTH_PROBE_MAX,
+      p_now: new Date(rateLimiterStartedAt).toISOString(),
+    })
+
+    checks.rateLimiter = {
+      ok: !error,
+      detail: error
+        ? `rate_limit_hit failed: ${error.code ?? 'no sqlstate'}`
+        : 'rate_limit_hit reachable via the service-role client',
+      latencyMs: Date.now() - rateLimiterStartedAt,
+    }
+  } catch (error) {
+    checks.rateLimiter =
+      error instanceof ServiceRoleKeyMissingError
+        ? {
+            ok: false,
+            detail: 'SUPABASE_SERVICE_ROLE_KEY is unset: the durable OTP rate limiter cannot run (#117)',
+            latencyMs: Date.now() - rateLimiterStartedAt,
+          }
+        : {
+            ok: false,
+            // The error's class, never its message or the key: a thrown
+            // network/auth error's message is not something this public,
+            // unauthenticated endpoint should echo back.
+            detail: `service client threw: ${error instanceof Error ? error.constructor.name : 'unknown'}`,
+            latencyMs: Date.now() - rateLimiterStartedAt,
+          }
   }
 
   // --- the sweeps, which nothing else in the product can observe -------------
