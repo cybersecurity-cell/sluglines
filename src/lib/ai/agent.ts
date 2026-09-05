@@ -5,6 +5,7 @@ import { resolveModel } from './model-router.ts'
 import { CALLABLE_TOOLS } from './tools.ts'
 import { callThroughGate, type IntentEnvelope, type TaskBudget } from './tool-gate.ts'
 import { GLOBAL_DAILY_TURN_CAP, MEMBER_DAILY_TURN_CAP, PER_TURN_COST_CEILING_USD, estimateCostUsd } from './cost.ts'
+import { redactPii } from '../domain/phone.ts'
 
 const SKILL = 'ride.assistant'
 const PROMPT_VERSION = '2026-09-02.1'
@@ -129,7 +130,7 @@ export async function runAgentTurn({
       model_class: 'none',
       model: 'none',
       effort: 'none',
-      user_message: userMessage.slice(0, 4000),
+      user_message: redactPii(userMessage.slice(0, 4000)),
       agent_message: reply,
       capacity_denied: true,
       latency_ms: Date.now() - startedAt,
@@ -151,7 +152,7 @@ export async function runAgentTurn({
       model_class: MODEL_CLASS,
       model: route.model,
       effort: route.effort,
-      user_message: userMessage.slice(0, 4000),
+      user_message: redactPii(userMessage.slice(0, 4000)),
     })
     .select('id')
     .single()
