@@ -14,7 +14,6 @@ const KICKERS: Record<string, string> = {
   'Slug Pickup': 'Find the line',
   'Rules & Etiquette': 'Know the etiquette',
   'Blog & News': 'Follow commuter updates',
-  'Mobile App': 'Use the board when it is live',
 }
 
 export default function InfoModuleGrid() {
@@ -35,17 +34,17 @@ export default function InfoModuleGrid() {
           <p className="mb-2 font-mono text-xs font-semibold uppercase tracking-[0.2em] text-[#2E7D46]">
             Around the commute
           </p>
-          <h2 className="h-display text-3xl text-[#17202A]">Four things worth knowing</h2>
+          <h2 className="h-display text-3xl text-[#17202A]">Three things worth knowing</h2>
           <p className="mt-2 text-slate-600">
             Sluglines is a reference first: where lines run, how they work, and what is changing.
           </p>
         </div>
 
-        <div className="grid grid-cols-1 gap-5 lg:grid-cols-12 lg:grid-rows-3">
+        <div className="grid grid-cols-1 gap-5 lg:grid-cols-12 lg:grid-rows-2">
           {featured && (
             <Link
               href={featured.href}
-              className="group flex flex-col justify-between rounded-lg bg-[#17202A] p-7 text-white transition-colors hover:bg-[#0f151d] lg:col-span-7 lg:row-span-3"
+              className="group flex flex-col justify-between rounded-lg bg-[#17202A] p-7 text-white transition-colors hover:bg-[#0f151d] lg:col-span-7 lg:row-span-2"
             >
               <div>
                 <p className="font-mono text-xs font-semibold uppercase tracking-[0.2em] text-[#7bc994]">
