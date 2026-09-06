@@ -5502,3 +5502,78 @@ thing the edge placement would have bought — a single choke point ahead of eve
 it is being given up knowingly, not overlooked.
 
 **Status:** ADOPTED.
+
+---
+
+## D-81 — C3's instrument is a provider-side billing/usage alert, not the §13 `manual_metrics` path. Issue #119
+
+**Date:** 2026-09-05
+
+### The decision
+
+`Docs/costs.md` C3 sets an alarm threshold of 500 SMS sends/day. The instrument that watches that
+threshold is a **provider-side billing/usage alert configured at the SMS provider account** — not
+the rev. 5.3 §13 path of `manual_metrics.sms_sends` joining `metrics_weekly` for display on a
+moderator dashboard. The `manual_metrics`/`metrics_weekly`/moderator-dashboard machinery is **not
+built for this cap** and this entry does not open building it.
+
+### The evidence that there is no instrument today
+
+- `manual_metrics` exists in this repo only as a comment —
+  `supabase/migrations/0001_rebuild_foundation.sql:26` lists it alongside `product_events` and
+  `metrics_weekly` as a future §8 M10 concern, not as a table. There is no migration that creates it.
+- D-11 item 1 already assigned the real work — `0025_product_events.sql` (+ `manual_metrics`,
+  `metrics_weekly`) — **DEFERRED**, on the grounds that numbering a migration `0025` would imply a
+  sequence that did not exist yet in this repo. That reasoning no longer even applies unmodified:
+  the ordinal is now taken by a different, shipped file, `0025_lock_down_definer_functions.sql`
+  (D-74/D-77, applied to production). Reusing D-11's plan would require renumbering past `0025`
+  under a name that already means something else on production.
+- `metrics_weekly` does not exist anywhere in this repo — no migration, no schema reference outside
+  `Docs/consolidated-architecture.md`'s own description of the never-built table.
+- There is no `/moderator` route under `src/app/` — the string "moderator" appears only in
+  `src/app/dashboard/page.tsx` and `src/app/api/agent/route.ts` as ordinary prose/identifiers, not as
+  a route segment. rev. 5.3 §13's "alarm rows on the moderator dashboard" has no dashboard to put a
+  row on.
+
+### The rejected alternative, and why
+
+Building `manual_metrics` + `metrics_weekly` + a moderator-facing surface to display one weekly
+integer is a large amount of schema, RLS and UI machinery for a single number during a pilot with no
+SMS provider integrated yet (C3's own Measurement row in `Docs/costs.md` has said this since D-9).
+Being in-repo, that machinery is also something a bug or a bad migration in *this* repo could break
+or silence without anyone noticing until the weekly review runs. A provider-side account alert needs
+no code here at all: it lives at the SMS provider, fires independent of anything this repo's next
+commit does, and cannot be defeated by a regression in `sluglines`. For a threshold whose entire job
+is catching abuse of a public endpoint, an instrument outside the abuse surface is the stronger
+property, not just the cheaper one.
+
+### Why C3 is treated differently from C1/C2
+
+C1 and C2 are both model-spend alarms, and model spend already has a hard backstop: C4
+(`src/lib/ai/cost.ts`'s `PER_TURN_COST_CEILING_USD`, enforced mid-loop by `src/lib/ai/agent.ts`, D-65)
+stops a runaway turn before it can spend past a fixed ceiling, so an unmonitored C1/C2 degrades
+gracefully to "found out at invoice time" rather than to unbounded spend. C3 has no such backstop.
+`POST /api/auth/send-otp` is a public, unauthenticated endpoint that spends real money — an SMS
+send — per request, gated only by the §8 M2 abuse controls (resend cooldown, verify-attempt caps,
+per-IP daily send cap, CAPTCHA) that `Docs/costs.md`'s C3 note already describes as bounding the
+abuse rather than eliminating it. §14 risk 11 (SMS-pumping) names this as an automated,
+financially-motivated attack, not a hypothetical. A cap that bounds a live, adversarial, per-request
+cost with no hard stop behind it is exactly the one that should not sit on an unverified "PENDING"
+instrument indefinitely — hence recording the instrument now, even before it is configured.
+
+### What this entry does not claim
+
+**This is a documentation decision, not a working alarm.** No SMS provider is integrated in this
+repo yet, so there is nothing to configure the alert against, and configuring the alert and
+test-firing it are owner actions at an external provider account — neither can be done from a
+session in this repo. C3 is not enforced, wired, or done by this entry. Nothing under `src/`,
+`supabase/`, or `tests/` changes.
+
+**Status:** PENDING. The decision made here is *which* instrument C3 uses, not that the instrument
+exists. This entry moves to DONE when the provider-side alert is configured at 500 sends/day and has
+been test-fired, with that evidence (date, provider, what was observed) recorded on issue #119 —
+per `AGENTS.md`'s Definition of Done, an owner-only check that stays open until someone states they
+performed it. Issue #119 must close **before or with** issue #52, never after: #52 is what gives
+`POST /api/auth/send-otp` the ability to send a real SMS at all (this repo has no provider wired in
+yet), and an endpoint that can spend money without any account-level alarm watching it is the
+precise gap this entry exists to close before it opens.
