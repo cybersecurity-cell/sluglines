@@ -3,6 +3,7 @@
 import { useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { otpError } from '@/lib/api/otp-http.ts'
+import { withNext } from '@/lib/domain/auth-return.ts'
 
 /** A7: the client's own last-resort copy when a response carries no parseable
  * JSON body at all (a raw framework error page, or the fetch itself failing) —
@@ -26,8 +27,14 @@ const FALLBACK_MESSAGE = otpError('unavailable').error.message
  * anti-enumeration requirement means this screen must read the same whether
  * or not the number has ever signed in before — phone auth has no separate
  * "sign up" branch for it to leak.
+ *
+ * The phone number no longer travels to `/verify` in the query string (issue
+ * #136): `POST /api/auth/send-otp` sets a short-lived httpOnly cookie on
+ * success and `/verify` reads it server-side, so the number stays out of
+ * browser history, referrers and request logs. Only `next` is carried in the
+ * URL, and it is a path, not a person.
  */
-export default function LoginForm() {
+export default function LoginForm({ next }: { next?: string }) {
   const router = useRouter()
   const [phone, setPhone] = useState('')
   const [pending, setPending] = useState(false)
@@ -52,7 +59,7 @@ export default function LoginForm() {
         return
       }
 
-      router.push(`/verify?phone=${encodeURIComponent(phone)}`)
+      router.push(withNext('/verify', next))
     } catch {
       setError(FALLBACK_MESSAGE)
       setPending(false)
@@ -75,7 +82,7 @@ export default function LoginForm() {
           placeholder="(555) 555-0100"
           value={phone}
           onChange={(event) => setPhone(event.target.value)}
-          className="mt-2 w-full rounded-lg border border-slate-300 px-3 py-2 text-base text-slate-950 focus:border-sky-600 focus:outline-none focus:ring-2 focus:ring-sky-200"
+          className="mt-2 w-full rounded-lg border border-slate-500 px-3 py-2 text-base text-slate-950 focus:border-sky-600 focus:outline-none focus:ring-2 focus:ring-sky-600"
         />
       </div>
 

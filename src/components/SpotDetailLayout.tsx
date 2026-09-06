@@ -2,19 +2,32 @@ import Link from 'next/link'
 import type { ReactNode } from 'react'
 import { ArrowLeft, ExternalLink, MapPinned, Navigation, Users } from 'lucide-react'
 import CommunityLinksCard from '@/components/CommunityLinksCard'
+import SpotCheckInCard from '@/components/SpotCheckInCard'
 import SpotLiveCounts from '@/components/SpotLiveCounts'
 import SpotPhoto from '@/components/SpotPhoto'
 import SpotQuickFacts from '@/components/SpotQuickFacts'
 import { getPrimaryFacebookUrlForSpot } from '@/lib/community-channels'
 import { isSafeExternalLinkUrl } from '@/lib/domain/locations'
+import type { MemberPresence } from '@/lib/domain/fast-board'
 import type { PublicCountsAvailability, PublicSpotCounts } from '@/lib/domain/public-counts'
 import type { PublicLocation } from '@/lib/public-directory'
+import type { CheckInOutcome, CheckOutOutcome } from '@/app/spots/actions'
 
 interface SpotDetailLayoutProps {
   location: PublicLocation
   counts: PublicSpotCounts
   availability: PublicCountsAvailability
+  /**
+   * The viewer's own presence, for the check-in card (issue #135). Optional so
+   * a caller that did not read it gets the honest `unavailable` card, never a
+   * fabricated "not checked in".
+   */
+  presence?: MemberPresence
+  checkIn?: CheckInOutcome
+  checkOut?: CheckOutOutcome
 }
+
+const PRESENCE_NOT_READ: MemberPresence = { state: 'unavailable', reason: 'presence not read by this caller' }
 
 /**
  * The `/spots/[slug]` card. It takes one `PublicLocation` — previously it took a
@@ -25,7 +38,14 @@ interface SpotDetailLayoutProps {
  * happens once, in `lib/public-directory.ts`, where it can say which source
  * answered.
  */
-export default function SpotDetailLayout({ location, counts, availability }: SpotDetailLayoutProps) {
+export default function SpotDetailLayout({
+  location,
+  counts,
+  availability,
+  presence = PRESENCE_NOT_READ,
+  checkIn,
+  checkOut,
+}: SpotDetailLayoutProps) {
   // Four legacy-only spots publish no coordinates (Docs/DECISIONS.md D-31); a
   // maps link built from `null,null` would land in the Gulf of Guinea, so those
   // fall back to a name search.
@@ -48,7 +68,8 @@ export default function SpotDetailLayout({ location, counts, availability }: Spo
         </Link>
 
         <div className="grid grid-cols-1 gap-6 lg:grid-cols-[minmax(0,1fr)_360px]">
-          <main className="space-y-5">
+          {/* Not a <main>: the root layout already has one, and a nested landmark is an axe finding (issue #141). */}
+          <div className="space-y-5">
             <section className="rounded-lg border border-stone-200 bg-white">
               <div className="border-b border-stone-200 px-5 py-4">
                 <div className="flex flex-wrap gap-2">
@@ -155,10 +176,22 @@ export default function SpotDetailLayout({ location, counts, availability }: Spo
                 </div>
               )}
             </section>
-          </main>
+          </div>
 
           <aside className="space-y-4">
             <SpotPhoto image={location.image} spotName={location.name} />
+            <SpotCheckInCard
+              spot={{
+                slug: location.slug,
+                routeSlug: location.routeSlug,
+                name: location.name,
+                direction: location.direction,
+                isActive: location.isActive,
+              }}
+              presence={presence}
+              checkIn={checkIn}
+              checkOut={checkOut}
+            />
             <SpotLiveCounts
               spotName={location.name}
               counts={counts}

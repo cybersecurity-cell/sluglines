@@ -6,6 +6,8 @@ interface OnboardingFormProps {
   currentLocationId: string | null
   homeSpots: HomeSpotOption[]
   failed: boolean
+  /** The safe return path carried from `/login`; the action honours it (issue #136). */
+  next?: string
 }
 
 /**
@@ -25,11 +27,13 @@ export default function OnboardingForm({
   currentLocationId,
   homeSpots,
   failed,
+  next,
 }: OnboardingFormProps) {
   const groups = groupByCorridorDirection(homeSpots)
 
   return (
     <form action={completeOnboarding} className="space-y-6">
+      {next && <input type="hidden" name="next" value={next} />}
       {failed && (
         <p role="alert" className="rounded-lg border border-red-200 bg-red-50 p-3 text-sm font-semibold text-red-900">
           That did not save. Check the name below and try again.
@@ -49,7 +53,7 @@ export default function OnboardingForm({
           minLength={1}
           maxLength={40}
           defaultValue={currentDisplayName}
-          className="mt-2 w-full rounded-lg border border-slate-300 px-3 py-2 text-base text-slate-950 focus:border-sky-600 focus:outline-none focus:ring-2 focus:ring-sky-200"
+          className="mt-2 w-full rounded-lg border border-slate-500 px-3 py-2 text-base text-slate-950 focus:border-sky-600 focus:outline-none focus:ring-2 focus:ring-sky-600"
         />
       </div>
 
@@ -65,7 +69,7 @@ export default function OnboardingForm({
             id="location_id"
             name="location_id"
             defaultValue={currentLocationId ?? ''}
-            className="mt-2 w-full rounded-lg border border-slate-300 px-3 py-2 text-base text-slate-950 focus:border-sky-600 focus:outline-none focus:ring-2 focus:ring-sky-200"
+            className="mt-2 w-full rounded-lg border border-slate-500 px-3 py-2 text-base text-slate-950 focus:border-sky-600 focus:outline-none focus:ring-2 focus:ring-sky-600"
           >
             <option value="">Not now</option>
             {groups.map((group) => (

@@ -17,6 +17,7 @@ import {
   NO_PRESENCE,
   PRESENCE_CHECKIN_COLUMNS,
   PRESENCE_CLEAR_FUNCTION,
+  PRESENCE_CHECKIN_FUNCTION,
   SIGNED_OUT_PRESENCE,
   activeFastBoardRows,
   buildFastBoard,
@@ -271,6 +272,56 @@ assert.match(panel, /action=\{clearPresence\}/, 'the button is a form submit, so
 for (const [label, source] of [['action', action], ['panel', panel]]) {
   assert.equal(/\.delete\(\)/.test(stripComments(source)), false, `${label}: no direct table write`)
 }
+
+// --- wiring: check-in goes through the SECURITY DEFINER writer, from the spot page (issue #135)
+
+const spotActions = read('src/app/spots/actions.ts')
+const checkInCard = read('src/components/SpotCheckInCard.tsx')
+const spotLayout = read('src/components/SpotDetailLayout.tsx')
+const spotPage = read('src/app/spots/[slug]/page.tsx')
+const boardPage = read('src/app/board/page.tsx')
+const navbar = read('src/components/Navbar.tsx')
+
+assert.equal(PRESENCE_CHECKIN_FUNCTION, 'presence_checkin', 'the 0001 writer, by its published name')
+assert.match(spotActions, /'use server'/, 'check-in runs on the server, not through a browser Supabase client')
+assert.match(spotActions, /PRESENCE_CHECKIN_FUNCTION/, 'check-in calls the 0001 writer by its published name')
+assert.match(spotActions, /PRESENCE_CLEAR_FUNCTION/, 'check-out from the spot page calls the same writer the dashboard does')
+assert.match(spotActions, /p_location_id/, 'the writer takes the spot id')
+assert.match(spotActions, /p_direction/, "and the spot's own direction")
+assert.match(
+  spotActions,
+  /\.from\('locations'\)\.select\('id'\)\.eq\('slug'/,
+  'the id is resolved by slug through the caller\'s own client (locations_select_active scopes it), never guessed'
+)
+assert.ok(
+  spotActions.indexOf('auth.getUser()') < spotActions.indexOf(".from('locations')"),
+  'the session check runs before any read'
+)
+assert.match(spotActions, /redirect\(`\/login\?next=\$\{encodeURIComponent\(back\)\}`\)/, 'a signed-out submit goes to sign-in with the spot as `next`')
+assert.equal(/p_member_id|p_actor|p_user_id/.test(spotActions), false, 'the action never names the actor; auth.uid() decides')
+for (const [label, source] of [['spot actions', spotActions], ['check-in card', checkInCard]]) {
+  assert.equal(/\.insert\(|\.upsert\(|\.delete\(\)/.test(stripComments(source)), false, `${label}: no direct table write`)
+}
+assert.match(checkInCard, /action=\{checkInAtSpot\}/, 'the check-in button is a form submit, so it works without JS')
+assert.match(checkInCard, /action=\{checkOutFromSpot\}/, 'and so is check-out from the spot page')
+assert.match(checkInCard, /name="direction" value=\{direction\}/, "the form carries the spot's own direction")
+assert.match(checkInCard, /toPresenceDirection\(spot\.direction\)/, 'lower-cased for the table, from the directory\'s capitalisation')
+// The four presence states are four states here too: no fabricated "not checked in".
+for (const state of ["'signed-out'", "'unavailable'", "'checked-in'"]) {
+  assert.ok(checkInCard.includes(state), `the card must handle presence state ${state} explicitly`)
+}
+assert.match(spotLayout, /<SpotCheckInCard/, 'the spot page renders the check-in control')
+assert.match(spotPage, /getMemberPresence\(\)/, 'the spot page reads the viewer\'s presence for the card')
+assert.match(spotPage, /force-dynamic/, 'a page carrying a per-viewer card cannot be cached')
+
+// The circle is broken: /board's empty state now points at the spot pages,
+// where the control is, not at /dashboard, which never had one.
+assert.match(boardPage, /href="\/spots"[^>]*>\s*Check in at your spot/, "/board's empty state sends riders to the spot pages to check in")
+assert.equal(/href="\/dashboard"[^>]*>\s*Check in\b/.test(boardPage), false, '/board no longer sends riders to /dashboard to check in')
+
+// And the Board is reachable from the nav, with a sign-in control beside it.
+assert.match(navbar, /href="\/login"/, 'the nav exposes sign-in')
+assert.match(navbar, /Sign in/, 'labelled as such')
 
 // The Supabase browser client is 62 kB of the dashboard's first load, shipped to
 // parse one button press. It stays off this page.

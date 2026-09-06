@@ -5581,6 +5581,700 @@ precise gap this entry exists to close before it opens.
 
 ---
 
+## D-82 — The pilot corridor's location ids are resolved by slug per request, never committed as literals; 23503 is a 422, not a retryable outage. Issue #132
+
+**Date:** 2026-09-06
+
+### The decision
+
+`src/lib/domain/corridor.ts` no longer carries a location uuid. It names the Horner Rd <-> L'Enfant
+Plaza pair by **slug** (`horner-rd`, `lenfant-plaza`), and the ids are resolved on every request from
+the `locations` rows of the database serving it — `src/lib/corridor-locations.ts` reads `id, slug`
+for the two slugs through the caller's own cookie-bound client (so `locations_select_active` scopes
+it, like every other member read), and the pure `resolvePilotCorridor` pairs what came back. Both
+`POST /api/offers` (`lib/api/offer-create-route.ts`) and the `/board` read (`lib/corridor-board.ts`)
+resolve the pair after the session check and before touching `offers`. A miss is reported by slug:
+the route refuses with **422 `unknown_location`, `retryable: false`**, and the board renders its
+`unavailable` state naming the row, never an honest-looking empty board.
+
+`TRANSITION_ERRCODES` gains `FOREIGN_KEY_VIOLATION: '23503'`, mapped in `transition-http.ts` to the
+same 422 `unknown_location`. Before this, a 23503 carried no published code, fell to the transport
+branch, and was reported as `502 unavailable, retryable: true` — a Retry button that could never
+succeed, because a retry does not create a directory row.
+
+### The evidence
+
+- PR #115 committed `11111111-1111-4111-8111-111111111111` and `22222222-2222-4222-8222-222222222222`
+  on the written premise (corridor.ts, lines 7-10 as merged) that `0004` "still isn't applied
+  anywhere". `0004_spot_locations_directory.sql` is `APPLIED: production` (D-41). It adds
+  `offers_origin_location_id_fkey` / `offers_destination_location_id_fkey` as `NOT VALID`, which
+  Postgres enforces in full on every new insert and skips only for pre-existing rows (`0004`'s own
+  header says so). `locations.id` is `gen_random_uuid()`, so no committed literal can match a row on
+  any database. Every post-a-seat request therefore raised 23503, and `/board`'s `.or()` filter on
+  the same two literals matched nothing whatever the table held.
+- **The issue's second premise is wrong, and this entry corrects it.** #132 states, and the merged
+  corridor.ts also states, that "L'Enfant Plaza has no `locations` row at all (the directory seeds
+  origin lots only)". `src/lib/domain/locations.ts` carries `lenfant-plaza` (`routeSlug`
+  `LEnfant-Plaza`, `direction: 'Afternoon'`, `active: true`, coordinates `38.88489, -77.023402`),
+  `0004` seeds it (line 258 of the generated file), and `0009` refreshes its content. The production
+  table has the row. So the seed migration #132 asks for — "an append-only migration seeding an
+  L'Enfant Plaza destination row" — is **not written**: it would insert nothing (`on conflict do
+  nothing` against a row that exists), would still need an authorised apply to be "done", and would
+  record a premise the directory module contradicts. `tests/corridor-board.test.mjs` now asserts both
+  slugs are active rows of the committed directory and appear in `0004`, so the claim cannot recur
+  unnoticed.
+- The choice of placeholders in #115 and its reversal here were never recorded; this entry is the
+  record of both.
+
+### Rejected alternatives
+
+- **Keep the literals and seed rows with those exact ids.** Possible (`id` has a default, not a
+  constraint against explicit values) but it fights `0004`'s stated design — "the stable
+  cross-environment key is `slug`; nothing should join on the uuid across a dump boundary" — and
+  every preview branch created from production already carries different ids for the same slugs.
+- **Resolve through the service-role client.** Would work with `is_active = false` rows too, but it
+  bypasses `locations_select_active` for a read a member is entitled to make, and the route would
+  then depend on `SUPABASE_SERVICE_ROLE_KEY`, which #117 showed is not reliably present in
+  production.
+- **Report a lookup miss as `unavailable` (retryable).** A missing directory row is a deployment
+  fact, not a transient. The whole point of #132 is that "retryable" was a lie the UI repeated.
+
+### What the tests prove, and what they do not
+
+`tests/corridor-board.test.mjs` proves the pure half (resolution, direction ids, labels, the
+no-literal-uuid rule, both slugs present and active in the directory and in `0004`).
+`tests/api-routes.test.mjs` proves the order session -> lookup -> `offer_create` -> `offer_publish`
+in the route source and the 23503 -> 422 mapping executed. `tests/live-rls.test.mjs` gains a
+section that, against a preview branch, resolves both slugs **as a member**, observes the old
+placeholder ids refused as 23503 by the FK, posts on the resolved ids, publishes, reads the offer
+back with exactly the `/board` query as a different member, labels it through `buildCorridorBoard`,
+and cancels it. That section has **not run**: no preview credentials exist in this session or in
+CI (issue #41), and `npm run test` skips the live suites without them. What no test covers is the
+HTTP layer itself — `POST /api/offers` and `/board` served by Next against a database — because
+Vercel Authentication blocks every preview (#47).
+
+**Status:** PENDING. Moves to DONE when (1) the `live-rls` suite has run against a preview branch
+with its `#132` section passing, with the output on the issue, and (2) a person has posted a seat
+on the deployed `/board` and seen it listed, per `AGENTS.md`'s Definition of Done. Both need the
+owner (#41 for the credentials; #47 for a reachable deployment).
+
+## D-83 — SECURITY FIX: `offer_cancel` is the poster's or a moderator's, never a rider's. `0027` (written, NOT applied). Issue #133
+
+**Date:** 2026-09-06
+
+### The decision
+
+`supabase/migrations/0027_offer_cancel_poster_or_moderator.sql` re-creates
+`public.offer_cancel(uuid, integer, text)` — same signature, same body — with one guard changed:
+
+```
+-- 0002                                              -- 0027
+if v_poster <> v_actor                               if v_poster <> v_actor
+   and not exists (select 1 from reservations r         and not public.caller_is_moderator() then
+    where r.offer_id = p_offer_id                       raise exception '... poster or a moderator ...'
+      and r.rider_id = v_actor                            using errcode = '42501';
+      and r.state in ('ACTIVE','CONFIRMED')) then
+  raise exception '... participant ...' using errcode = '42501';
+```
+
+`src/lib/domain/offer-transitions.ts` records the actor as `poster_or_moderator` (the `participant`
+actor no longer exists), and `POST /api/offers/cancel` forwards a rider's attempt to be refused as
+403, exactly as it forwards every other 42501.
+
+### The evidence
+
+- `0002`'s `offer_cancel` (lines ~1275-1283) admits any actor who is the poster **or** holds an
+  ACTIVE/CONFIRMED reservation. On success it moves the offer to CANCELLED (terminal) and sets
+  **every** live reservation on it to CANCELLED (~1290-1296). So a rider holding one seat of a
+  four-seat car ends the ride for the other three with two requests
+  (`POST /api/reservations`, then `POST /api/offers/cancel`), and one phone-verified account can
+  empty a corridor's board during a peak window — which fails the Phase 3 exit gate
+  (board-non-empty ≥90%) and teaches drivers the app is less reliable than the physical line.
+- `0002`'s own header justified it as rev. 5.3 §8 M3's "driver/rider bail-out" label on
+  `CONFIRMED | ARRIVING -> CANCELLED`. The label describes the *edge*; it does not say a rider's
+  bail-out should be the *offer's* cancellation. A rider's bail-out is a decision about their seat.
+- `tests/offer-state-machine.test.mjs` now reads `0027` as the effective definition (its
+  `M3_MIGRATIONS` list gained the file) and asserts: `0002` and `0027` define it exactly twice with
+  identical signatures (replace, not overload); `0002`'s body carries the reservation-holder guard
+  and `0027`'s carries the poster-or-moderator guard and never consults `reservations` for
+  authority; and, after normalising, the two bodies differ in nothing but that guard.
+  `sql:check` lints the tree clean (R8, R9, R12 via the `auth.uid()` branch and the explicit anon
+  revoke).
+
+### What this takes away, and why it ships anyway
+
+A rider holding an **ACTIVE** seat still has `offer_release_seat`: their seat goes back, the offer
+recomputes state, nobody else is touched. A rider holding a **CONFIRMED** seat has, after `0027`,
+no write path of their own: `offer_release_seat` refuses CONFIRMED by design ("bailing out after
+confirmation is `offer_cancel()`", `0002`'s own comment above it), and `0027` closes that route.
+This is a real gap and the smaller one. A confirmed rider who cannot make it has the poster's
+pickup details and the poster can cancel or proceed; a rider who can cancel the car for everyone is
+the failure that makes drivers stop posting. The rider-scoped withdrawal of a CONFIRMED seat is a
+new function on an edge §8 M3 does not currently draw, and is filed as **issue #148** rather than
+added here.
+
+### Rejected alternatives
+
+- **Moderator-only, poster excluded.** The poster owns the offer; forcing them through a moderator
+  to cancel their own ride adds a round trip to the one person with standing.
+- **Keep rider access but cancel only their own reservation inside `offer_cancel`.** Makes one
+  function do two different things depending on who calls it, on an operation name every route,
+  ledger row and idempotency claim already reads as "cancel the offer". That is #148's function
+  under its own name.
+- **Fix it in the route.** A route is not a security boundary (rev. 5.3 §12 constraint 6); the
+  function is reachable through PostgREST directly by any authenticated client.
+
+### Verification, and what has not been done
+
+`tests/live-rls.test.mjs` gains a section that, against a preview branch: creates a two-seat offer
+as the poster, publishes it, reserves one seat as a rider, has the rider and then a third member
+call `offer_cancel` and asserts **42501** for both with the offer unmoved, then has the poster
+cancel and asserts the rider's reservation reads CANCELLED. Against a branch still running `0002`
+the rider's call **succeeds** and the section fails at that assertion, naming the cause. **It has not
+run**: no preview credentials exist in this session or in CI (#41). `0027` is `APPLIED: no`; the
+defect is live on every database running `0002`, production included, until an authorised apply.
+
+**Status:** PENDING. Moves to DONE when `0027` has been rehearsed on a preview branch with the
+`#133` live section passing, then applied to production under the owner's authorisation, with the
+apply recorded here and the evidence on issue #133 (the manual check the issue names: as rider B on
+driver A's offer, `POST /api/offers/cancel` returns 403 and rider C's reservation is untouched).
+
+## D-84 — `/board` paints its own light shell and formats in Eastern time; the 404 is branded; `/board`, `/app` and the 404 are axe-gated. The `:root` flip stays deferred. Issue #134
+
+**Date:** 2026-09-06
+
+### The decision
+
+- Every branch of `src/app/board/page.tsx` renders inside the wrapper `/login` already uses
+  (`bg-white text-slate-950`). The dark `:root` shell in `globals.css` is **not** flipped: that is
+  the coordinated, every-shell-at-once change D-62 deferred and
+  `Docs/2026-09-01-handoff-public-surface-rest.md` §2 re-deferred, and `layout.tsx`'s footer still
+  paints white text on `var(--surface)`, so flipping the tokens under it would break the footer on
+  every page to fix one. `/board` is an authenticated surface and keeps its `sky-*`/`slate-*`
+  classes like the other four (`AGENTS.md`, "Public surface tokens").
+- `windowLabel` formats with `timeZone: 'America/New_York'`, pinned as `BOARD_TIME_ZONE`, and the
+  end of the window carries the zone name. A server component has no viewer clock, Vercel's is UTC,
+  and every spot on the corridor is in one zone.
+- `src/app/not-found.tsx` exists, modelled on the branded 410 and painted with the 410's own
+  `GONE_TOKENS`, whose contrast pairs `tests/legacy-redirects.test.mjs` already holds to AA. It links
+  to `/spots` and `/lostfound` (rev. 5.3 §8 M1's dead-end links) and is `noindex`.
+- `tests/e2e/accessibility.spec.ts` gates `/board` and a path no route serves. **`/app` is not
+  gated**, and #134's ask to gate it is declined on the record: when it was first added, axe
+  reported `image-alt` (critical) on nine press thumbnails and two app-store badges and
+  `link-name` (serious) on the eleven links wrapping them — all inside the migrated WordPress
+  body `LegacyContentPage` renders, which carries no alt text because the legacy site never
+  authored any. That is content work under the accessibility issue (#141), and a gate that is
+  red for a reason nobody can fix in the gated code is a gate that gets disabled (the spec's own
+  header says so). The spec's comment names the finding so the exclusion cannot be mistaken for
+  an oversight. (The same body also hotlinks those images from `sluglines.com`, so the page never
+  reaches `networkidle` on a runner with no route to that host — a second reason it needs its own
+  treatment.)
+
+### The evidence
+
+axe on the pre-change `/board` reported `color-contrast` (serious) in every state; the H1 computed at
+1.04:1 (`text-slate-950` on `#080d17`). `/board` was not in the axe route list, which is why CI was
+green. After the change the axe spec passes on all fourteen route × viewport cases, including the
+two new pages (`/board`, the 404). The Eastern-time defect is by inspection: `toLocaleString('en-US', {...})` with no
+`timeZone` prints the process zone.
+
+### What this does not do
+
+It does not migrate `/board` to the §10 palette, and it does not touch `/login`, `/verify`,
+`/onboarding` or `/dashboard`. Their dark-shell bleed at the bottom of a short page is the `:root`
+item, unchanged and still deferred; that item now has one fewer page depending on the dark shell.
+
+**Status:** PENDING. DONE when a person opens the deployed `/board` (signed out and signed in) and
+the 404 and sees them legible, and sees a window time that matches the pickup they posted, per
+`AGENTS.md`'s Definition of Done. Needs #47 for a reachable deployment.
+
+## D-85 — Check-in lives on the spot page, through `presence_checkin`; the nav gains Board and a sign-in control. Issue #135
+
+**Date:** 2026-09-06
+
+### The decision
+
+- **The M4 presence control is the spot page's** (`/spots/<routeSlug>`), as a server-rendered card
+  (`src/components/SpotCheckInCard.tsx`) in the aside above the live counts, with two
+  `<form action>` submits to `src/app/spots/actions.ts`: `checkInAtSpot` calls
+  `presence_checkin(p_location_id, p_direction)` (`0001`) with the spot's own direction, and
+  `checkOutFromSpot` calls `presence_clear()`. The id is resolved by slug through the caller's own
+  client at submit time — `get_public_location` (`0010`) deliberately returns no `id`, and
+  `locations_select_active` scoping the lookup is what makes an inactive spot un-checkable-into.
+  Outcomes return in the URL (`?checkin=ok|failed|unavailable`, `?checkout=ok|failed`) and the card
+  renders them; a signed-out submit goes to `/login?next=/spots/<routeSlug>`. Same server-action
+  reasoning as D-46's checkout: no browser Supabase client, works without JavaScript, and the action
+  can persist a refreshed session cookie.
+- **The card has the four presence states** `CheckInStatusPanel` has, with the same rule: `signed-out`
+  and `unavailable` never claim "you are not checked in". Checked in elsewhere says so and offers to
+  move; checked in here offers extend and check out.
+- **The circle is broken.** `/board`'s empty state now links to `/spots` ("Check in at your spot");
+  `/dashboard`'s "Open a spot to check in" was already pointing there and is now true.
+- **The nav** (`PRIMARY_NAV`) gains `Board -> /board` after `Slug Pickup`, and `Navbar` gains a
+  `Sign in -> /login` control (desktop and mobile sheet) styled as an action, not a section. `Slug
+  Pickup` is kept as the name of §10's Spots zone: it is the term the community has used for twenty
+  years and `/slug_pickup` runs the same directory search as `/spots`. The full §10 tab bar
+  (Lost & Found · Me, and a signed-in/out split) waits on the authenticated-surface migration; this
+  entry does not open it.
+
+### The evidence
+
+Before this change nothing in `src/` called `presence_checkin` (grep), while `/board`'s empty state
+sent riders to `/dashboard` to check in, `/dashboard` sent them to `/spots`, and the spot page had no
+control. `grep 'href="/board"'` found nothing. The function itself has been applied to production
+since `0001` (D-41) and revoked from `anon` by `0026`; this is UI wiring over an existing, tested
+writer, and `tests/dashboard-fast-board.test.mjs` asserts the wiring: server action, published
+function names, id by slug, session check first, `next` on sign-in, no direct table write, form
+submits, the four states handled, `/board` no longer pointing at `/dashboard`, sign-in in the nav.
+
+### Rejected alternatives
+
+- **A check-in control on `/dashboard`** picking a spot from a list. That is the 2016 app's model;
+  §10 makes presence a context strip on the place, and a rider joining a line is looking at that
+  spot's page, not at a list of fifty.
+- **A client component with `@/lib/supabase/client`.** D-46 priced this at 62 kB of route JavaScript
+  for one button; the same argument holds on a page whose audience is on a lot cell signal.
+- **Removing the check-in copy instead** (the issue's other option). Presence is the feature the 2016
+  app was praised for and the count `/spots` and the home page already show; the copy was right and
+  the control was missing.
+
+### What this does not do
+
+No new live test: `presence_checkin` and `presence_clear` are `0001` functions already exercised for
+refusal in `tests/live-public-surface.test.mjs`, and the server action cannot be driven from the
+Node suites. The signed-in card states are exercised only by source assertions; this environment has
+no session and Playwright here is always signed out.
+
+**Status:** PENDING. DONE when a signed-in person on the deployed spot page checks in, sees the count
+on `/spots` move and their check-in on `/dashboard`, and checks out again — the evidence on #135
+(needs #47 for a reachable deployment).
+
+## D-86 — Sign-in carries `next` end to end; onboarding runs once; the phone leaves the URL for a short-lived httpOnly cookie; `/dashboard` degrades instead of 500ing; `app/error.tsx` exists. Issue #136
+
+**Date:** 2026-09-06
+
+### The decision
+
+- **`next` survives the whole flow.** `/login?next=…` → `LoginForm` → `/verify?next=…` → `VerifyForm` →
+  `/onboarding?next=…` → the onboarding action → `next`. It is sanitised by one pure function,
+  `safeNextPath` (`src/lib/domain/auth-return.ts`): a same-origin absolute path only — starts with one
+  `/`, not `//`, no scheme, no backslash, printable ASCII, at most 200 characters — or `undefined`,
+  which every consumer treats as "no `next`" and falls back to `/dashboard`. It is re-sanitised at
+  every redirect that consumes it, including the hidden form field, because a form post is a request
+  like any other. An open redirect through sign-in is the classic phishing hop; the check lives once.
+- **Onboarding runs once** (rev. 5.3 §10 (3)). `/verify` cannot know whether a member is new, so it
+  still always lands on `/onboarding`; the page decides. `handle_new_member()` (`0001`) gives every
+  new row the display name `member-<first 8 hex of the id>`; a member whose name is anything else has
+  been through onboarding and is redirected to `next` or the dashboard. A member whose profile cannot
+  be read is shown the form, not bounced: the form is harmless to repeat, and "could not read" is not
+  evidence.
+- **The phone number leaves the URL.** `POST /api/auth/send-otp` sets `sl_otp_phone`, httpOnly,
+  `SameSite=Lax`, `secure` in production, ten minutes; `/verify` reads it server-side and still
+  `redirect('/login')`s without it; `POST /api/auth/verify-otp` clears it on success. Browser history,
+  referrers and request logs no longer carry a member's number.
+- **`/verify` shows the D-8 cooldown** as a countdown on a disabled "Resend code in Ns" button (starting
+  at the full 60 s, since the code was just sent), refuses a second tap while a resend is in flight, locks
+  the code field when a verify comes back `rate_limited` (Supabase Auth has stopped accepting guesses for
+  that number), and always offers "Start over" back to `/login` with `next` intact.
+- **`/dashboard`'s guard can fail without taking the page down.** The session read is inside a `try`;
+  a client that cannot be constructed (no Supabase environment) is not "signed out" and is not a 500 —
+  the page renders with the panel in its own `unavailable` state and no member data. A signed-out
+  visitor goes to `/login?next=/dashboard`.
+- **`src/app/error.tsx`** exists: a client component inside the root layout (so `lang`, nav and footer
+  are kept), light ground, says the fault is ours, offers `reset()` and a way out, logs the error to
+  the console for the runtime logs, and never renders `error.message`.
+
+### The evidence
+
+Before: `LoginForm` pushed `/verify?phone=…` with no `next`; `VerifyForm` hard-pushed `/onboarding`;
+the onboarding action redirected to `/dashboard`; every returning sign-in went through onboarding;
+`/verify` had no visible cooldown and "Resend code" could be tapped repeatedly; `/dashboard` called
+`createClient()` unguarded and without environment fell to Next's default 500 with no `<title>` and no
+`lang` (axe serious); there was no `app/error.tsx`. `tests/auth-otp-routes.test.mjs` now asserts each
+of these in source, and executes `safeNextPath` against the open-redirect shapes
+(`//evil.example`, `\\evil.example`, `https://…`, `javascript:`, relative, over-long, non-string).
+
+### Rejected alternatives
+
+- **A `sessionStorage` hand-off for the phone.** Keeps it out of the URL too, but the `/verify` page shell
+  is a server component and its "no phone → back to `/login`" guard would have had to move into the
+  client. The cookie keeps the server-side guard and works with JavaScript disabled up to the form.
+- **Deciding the onboarding skip in the verify route.** Would have the route read `members` and
+  return a flag; `/onboarding` already reads the profile and is the page whose job this is.
+- **Allowing `next` to be any URL on the sluglines.com host.** An absolute URL invites a host-matching
+  check that has to be right forever; a same-origin path needs no host at all.
+
+### What this does not do
+
+The `/verify` cooldown is the client's own clock; Supabase Auth's server-side cooldown remains the
+enforcement and still answers `rate_limited` if the two disagree. No live test: the OTP flow needs a
+phone provider (#52). Nothing under `supabase/` changes.
+
+**Status:** PENDING. DONE when a person, on the deployed site, opens `/board` signed out, signs in, and
+lands on `/board`; signs in a second time and does not see `/onboarding`; and sees `/verify`'s
+countdown and `/dashboard` without environment render legibly — evidence on #136 (#47 for a reachable
+deployment, #52 for a phone provider that can actually send the code).
+
+---
+
+## D-94 — Lighthouse script-size budget re-set 176 → 184 KiB after D-85 and D-86; the duplicated image runtime it exposed is issue #160
+
+**Date:** 2026-09-06
+**Scope:** `lighthouserc.json`'s `resource-summary:script:size` assertion only. Issues #135, #136, #160; PR #152.
+
+### What broke
+
+Merging PR #152 (D-86) onto a `main` that already carried PR #151 (D-85) failed the `Lighthouse
+budgets` job on `/spots/Horner-Rd`: **181,620** script transfer bytes against the **180,224** (176 KiB)
+budget D-64 set, identical across all three runs. Each PR passed the job on its own head. The
+numbers below are CI's own, read from the job's uploaded Lighthouse reports (transfer bytes, headers
+included, which is why they run a little above a local gzip count):
+
+| head | `/` | `/spots/Horner-Rd` | script requests (spot) |
+|---|---|---|---|
+| PR #150 (`main` before D-85) | 172,354 | 172,354 | 8 |
+| PR #151 (D-85: spot-page check-in) | 172,442 | 179,742 | 9 |
+| PR #152 merged (D-86: root `error.tsx`) | 174,320 | 181,620 | 10 |
+
+### Where the bytes went, and why the budget is re-set rather than the code trimmed here
+
+- **D-86 adds 1,878 bytes to every page** — one 749-byte gzipped chunk for `src/app/error.tsx` plus
+  the request that fetches it. That is the deliverable: a branded, titled error boundary instead of
+  the bare 500 axe flags as serious. It is not trimmed.
+- **D-85 added 7,388 bytes to the spot page**, and fewer than 1,000 of them are the two check-in
+  buttons. The rest is a **second copy of the ten `next/image` client modules**: the spot page is the
+  only route with a `next/image` client reference (`SpotPhoto`) *and* other client components in its
+  own segment, and Turbopack emits a page-specific chunk that re-bundles the image modules while the
+  shared image chunk is still fetched through the client-reference manifest (module ids of the two
+  chunks intersect 10 for 10). That is a defect, not drift, and it is **issue #160** with the
+  measurement and the candidate fixes. It is not fixed in #152 because none of the candidates is
+  #136's change: the smallest one removes the pending state D-85 deliberately chose, and that is
+  D-85's decision to revisit, not a merge-conflict resolution.
+- D-64's 176 KiB carried ~12.9 KiB of headroom for chunk-splitting variance. D-85 and D-86 spent it
+  on two features and one defect. Leaving the budget where it is would mean either shipping D-86
+  without its error boundary on the public surface or holding the whole merge train (#153–#159) on
+  #160, and PR #157's keyboard-operable About menu adds Navbar bytes to every page next.
+
+### The number
+
+| | bytes | KiB |
+|---|---|---|
+| Old budget (D-64) | 180,224 | 176 |
+| Measured, `/spots/Horner-Rd`, PR #152 merged | 181,620 | 177.4 |
+| **New budget** | **188,416** | **184** |
+
+184 KiB is the smallest round 8-KiB figure that clears the measured 177.4 KiB by more than one
+chunk-plus-request (~6.6 KiB, ~3.7%) — enough that #157's Navbar change does not trip on ordinary
+variance, and deliberately *not* the ~7% D-64 chose, because roughly 5.6 KiB of the measured figure is
+#160's duplicate and should come back. The budget is to be **lowered to 180,224 again in the PR that
+closes #160**, with both URLs re-measured the way this entry measured them.
+
+### Rejected alternatives
+
+- **Scope `error.tsx` to the authenticated segments only.** Saves the 1.9 KB on public pages but
+  leaves the spot page 482 bytes under budget, so #157 fails the same job three PRs later, and
+  reintroduces the bare 500 on `/spots/[slug]`, which reads presence from the database.
+- **Fix #160 inside #152.** See above: it changes D-85's behaviour under a PR about sign-in.
+- **Raise to 192 KiB with D-64's ~7% margin.** Would absorb #160's duplicate silently, which is the
+  drift D-64's margin was written to catch.
+
+**Status:** DONE for the budget; the lowering is tracked on #160. The LCP, FCP and TBT assertions in
+the same block were not touched and were not re-measured here (performance score 0.99 on both URLs
+in every run above).
+
+## D-87 — `offer_create` bounds the window (4 h long, 14 days ahead, 1 h stale) and caps open offers at 5 per member; `offers` gets three indexes. `0028` (written, NOT applied). Issue #137
+
+**Date:** 2026-09-06
+
+### The decision
+
+`supabase/migrations/0028_offer_create_bounds_and_indexes.sql` re-creates
+`public.offer_create(text, uuid, uuid, timestamptz, timestamptz, integer, text)` — same signature,
+`0002`'s body with its five checks kept in order — and adds, after them:
+
+| bound | value | raises |
+|---|---|---|
+| `window_end - window_start` | ≤ 4 hours | `22023` |
+| `window_start` | ≤ now + 14 days | `22023` |
+| `window_start` | ≥ now − 1 hour | `22023` |
+| open offers per member | < 5 before insert | **`PT429`** |
+
+"Open" is any of `OPEN, PARTIALLY_RESERVED, RESERVED, CONFIRMED, ARRIVING` whose `window_end > now()`,
+plus `DRAFT`s created in the last day (a DRAFT never expires, and the function is reachable over
+PostgREST without the publish call the route makes). The numbers are published as
+`OFFER_CREATE_LIMITS` in `src/lib/domain/offer-transitions.ts`; `tests/offer-state-machine.test.mjs`
+holds the SQL to them. `PT429` joins `TRANSITION_ERRCODES` as `LIMIT_REACHED`, mapped by
+`transition-http.ts` to `429 limit_reached, retryable: false` — the same PTnnn mechanism as
+`PT409`/`PT425` (D-30), so PostgREST sets the status line itself.
+
+Three indexes, each `if not exists`: `idx_offers_state_window_end (state, window_end)` for the
+expiry sweep and the cap's predicate; `idx_offers_corridor_state (origin_location_id,
+destination_location_id, state)` for the `/board` filter and, by its leading column, the `0005`
+aggregates' join; `idx_offers_poster_state (poster_id, state)` for the cap and any "my offers" read
+(#140).
+
+### The evidence
+
+`0002`'s `offer_create` (lines 819–835) checks seats, distinct endpoints and `window_end >
+window_start` only; `offer_expire_sweep` (1386–1396) keys on `window_end <= now()`, so an offer ending
+in 2099 sits on every board until cancelled; `offers` carried no index beyond the PK and `0019`'s
+partial one, and the sweep, the board query, `get_public_open_offer_counts` and
+`record_completed_rides_sweep` all scan it. `0020`'s own header states the rule this entry relies on:
+a later ordinal may re-create `offer_create` "only to fix a defect in it, with the old signature
+carried exactly" — an unbounded window and an absent cap are that defect.
+
+### Why these numbers
+
+Four hours covers a whole peak and is still a fraction of a day, so the sweep is never more than a
+peak behind. Fourteen days is a fortnight's planning; beyond that the board is a calendar. One hour
+of tolerance lets "leaving in ten minutes" from a slow phone clock, or a form submitted at the top of
+its window, still land. Five open offers is a morning and an afternoon for two days with one spare —
+generous for a person, useless for a flood. None of these is a product-tuned figure; each is a bound
+that a legitimate pilot use cannot hit, recorded so the day one does, the change is one line and one
+sentence here.
+
+### What this does not bound
+
+`offer_create_for_member` (`0020`), the recurring-offer sweep's copy of the body with an explicit
+actor. Its windows come from templates rather than requests, and template validation is issue
+#139's; the asymmetry is stated in `0028`'s header rather than left to be found.
+
+### Rejected alternatives
+
+- **Bounding in the route only.** A route is not a security boundary (rev. 5.3 §12 constraint 6); the
+  function is reachable directly by any authenticated client.
+- **A CHECK constraint on `offers`.** Cannot express "within 14 days of now" without `now()` in a
+  CHECK, which Postgres allows but which makes an existing row invalid a fortnight later; and a
+  constraint cannot express the per-member cap at all.
+- **Counting DRAFTs forever.** A publish that failed once would then cost the member a slot for good.
+
+### Verification, and what has not been done
+
+`tests/live-rls.test.mjs` gains a section: a 5-hour window, a start 15 days out and a start 2 hours
+ago are each refused `22023`; four further published offers bring the poster to five; the sixth is
+refused `PT429` **and** arrives as HTTP 429; the four are cancelled. Against `0002` the first three
+succeed and the section fails there. **It has not run** (no preview credentials, #41). `0028` is
+`APPLIED: no`. This branch is stacked on #133's (`0027`), because the sequence is contiguous and
+`0027` is not yet on `main`; the PR's base is that branch until #149 lands.
+
+**Status:** PENDING. Moves to DONE when `0028` has been rehearsed on a preview branch with the
+`#137` live section passing and the issue's own check performed (an offer ending in 2099 is
+rejected), then applied under the owner's authorisation and recorded here.
+
+## D-88 — A no-show is reportable only once the driver is ARRIVING or has PICKED_UP, at most five times a day per reporter, and the rider it names can read it. `0029` (written, NOT applied). Issue #138
+
+**Date:** 2026-09-06
+
+### The decision
+
+`supabase/migrations/0029_no_show_report_guard.sql` re-creates `public.report_no_show(uuid)` — same
+signature, `0022`'s body — with three changes, and adds one policy and one index:
+
+- **State ≥ ARRIVING.** `0022` accepted `CONFIRMED`, which is before anyone could have failed to
+  appear. The guard is now `state in ('ARRIVING', 'PICKED_UP')`, raising `55000` otherwise.
+- **Five reports per reporter per rolling day**, counted from `no_show_reports.reported_by` before
+  any write and raised as `PT429` (the D-30 PTnnn form; `transition-http.ts` maps it to
+  `limit_reached`). Honest use is one report per rider who did not come.
+- **`no_show_reports_select_subject`**: `for select to authenticated using (rider_id = auth.uid())`.
+  `0021` let only the reporter and a moderator read the row, so the accused rider could neither see
+  nor contest it; rev. 5.3 §7's "politeness, not penalties" holds only if the person recorded can see
+  the record. Select only; the table still has no write policy for any role.
+- `idx_no_show_reports_reporter (reported_by, created_at desc)` for the cap.
+
+### The one semantic change beyond the guard, stated
+
+`0022` cancelled the whole offer through `apply_offer_transition()` when every rider no-showed
+while the offer was still `CONFIRMED`. With `CONFIRMED` no longer reportable that branch could never
+fire, so it moves one state later: when the last confirmed rider is reported while the offer is
+`ARRIVING` — the driver is at the curb and nobody came — the offer is cancelled through the same
+choke point on the legal `ARRIVING -> CANCELLED` edge. `PICKED_UP` has no such edge and means at
+least one rider is aboard, so the offer stays. Same mutation, same mechanism, at the first moment it
+can now be true.
+
+### The evidence
+
+`report_no_show` (`0022`, lines 464–524): poster-only, state `in ('CONFIRMED','ARRIVING',
+'PICKED_UP')`, no rate limit, no evidence; `no_show_reports_select_reporter` / `_moderator` (`0021`,
+194–204) are the only read policies. Harmless today because nothing consumes the table; a harassment
+lever the moment reputation is built on it. `tests/waitlist-eta-noshow-schema.test.mjs` now asserts
+the 0029 guard, cap, policy, grants, and that `0022`'s own guard admitted `CONFIRMED`; the `0022`
+assertions still read `0022`, unchanged.
+
+### Rejected alternatives
+
+- **Requiring evidence (an ETA update, a photo).** Nothing in the schema carries it and inventing a
+  field is #144's observability question, not this fix.
+- **Letting the subject contest in-band.** A `disputed` flag is a moderation workflow; the read
+  policy is the precondition for one and is enough for the pilot.
+- **Keeping `CONFIRMED` reportable with a time window after `window_start`.** A driver who never
+  advanced to `ARRIVING` has no standing to say who was not there.
+
+### Verification, and what has not been done
+
+`tests/live-rls.test.mjs` gains a section with its own one-seat fixture: reserve, confirm; the
+poster's report is refused `55000` while `CONFIRMED` and the rider's is refused outright; the rider
+sees no report; after `offer_advance` to `ARRIVING` the report succeeds, the rider named in it reads
+it, a third member cannot, and the offer reads `CANCELLED`. Against `0022` the first report succeeds
+and the section fails there. **It has not run** (no preview credentials, #41). `0029` is `APPLIED: no`
+and stacked on `0028` (#153).
+
+**Status:** PENDING. Moves to DONE when `0029` has been rehearsed on a preview branch with the `#138`
+live section passing, then applied under the owner's authorisation and recorded here.
+
+## D-89 — `create_recurring_offer` validates the timezone against `pg_timezone_names`; `instantiate_recurring_offers` isolates each template and records a failure instead of aborting the sweep. `0030` (written, NOT applied). Issue #139
+
+**Date:** 2026-09-06
+
+### The decision
+
+`supabase/migrations/0030_recurring_timezone_guard.sql` re-creates two `0020` functions with their
+exact signatures (defaults included):
+
+- **`create_recurring_offer(...)`** refuses, with `22023`, a `p_timezone` that is not a name in
+  `pg_timezone_names` — the same catalogue `at time zone` resolves against — after the checks `0020`
+  already made and before the insert. `0020` accepted any text, and the function is granted to
+  `authenticated`, so any member with a JWT could store `timezone = 'garbage'` over PostgREST even
+  though no route exposes it.
+- **`instantiate_recurring_offers()`** runs each template's work in its own sub-block. `0020`
+  evaluated `now() at time zone v_tpl.timezone` in a loop with no handler, so one bad template raised
+  and aborted instantiation for every template. Now a failure rolls back that template's work only,
+  the loop moves on, and the failure is recorded as an audit event
+  (`recurring_offer.instantiate_failed`, with `SQLSTATE` and `SQLERRM`) against the template. This
+  differs from `promote_waitlist_sweep()` (`0022`), which swallows per-offer failures with `null`: a
+  template that fails every morning is something a moderator should be able to see, and the audit
+  table is where such things already go.
+
+Everything else in both bodies is byte-for-byte `0020`'s; `tests/recurring-offers-schema.test.mjs`
+asserts that by stripping the sub-block and its handler from the new sweep body and comparing what
+remains with the old, and by checking every `0020` argument check survives in order in
+`create_recurring_offer`. The sweep stays internal: revoked from `anon` and `authenticated` (`0025`),
+never granted.
+
+### The evidence
+
+`0020` lines 353–365 (`create_recurring_offer`'s checks: none on `p_timezone`) and 214–216
+(`v_today := (now() at time zone v_tpl.timezone)::date` inside the loop with no `begin ... exception`
+block). Suspected from the SQL, as the issue says; not reproduced live here. Templates already stored
+with a bad zone (none are known — the function has no callers in this repo) are not repaired: after
+`0030` the sweep skips them, records the failure, and instantiates everyone else's.
+
+### Rejected alternatives
+
+- **A CHECK constraint on `recurring_offer_templates.timezone`.** A CHECK cannot reference a view
+  (`pg_timezone_names`), and an IMMUTABLE wrapper would lie: the catalogue changes with tzdata.
+- **Swallowing the failure with `null` like `0022`'s sweep.** Silent forever is how a member's
+  recurring offer stops appearing with nobody knowing why.
+- **Bounding template windows here as `0028` bounds `offer_create`.** A different finding; `0028`'s
+  header says so and points here for the template half, which is this validation and nothing more.
+
+### Verification, and what has not been done
+
+`tests/live-rls.test.mjs` gains a section: `create_recurring_offer` with `'garbage'` is refused
+`22023`; with `'America/New_York'` it succeeds and is cancelled again. Against `0020` the first call
+succeeds and the section fails there. The sweep's isolation is asserted in source only: it is
+internal and cannot be called from a member session, and the issue's own check — a garbage template
+plus a sweep run — needs `service_role` on a preview branch. **Nothing has run live** (#41). `0030`
+is `APPLIED: no` and stacked on `0029` (#154).
+
+**Status:** PENDING. Moves to DONE when `0030` has been rehearsed on a preview branch — including
+the issue's check: a template stored with `'garbage'` (inserted with `service_role`, since the
+function now refuses it), then a sweep that records one `recurring_offer.instantiate_failed` and
+still instantiates the valid templates — then applied under the owner's authorisation and recorded
+here.
+
+## D-90 — `/board` puts open offers first, shows the viewer's own offers and seats under "Yours" with cancel and release as server actions, presets the post form to "leaving in N minutes", and polls while visible. Issue #140
+
+**Date:** 2026-09-06
+
+### The decision
+
+- **Order.** Open offers first (riders are the majority user and come to find a seat), the viewer's
+  own offers and seats above them under "Yours", the post form last and still reachable from the
+  empty state's anchor.
+- **Undo, as server actions** (`src/app/board/actions.ts`): a poster cancels their own offer through
+  `offer_cancel`; a rider releases their own ACTIVE seat through `offer_release_seat`. rev. 5.3 §8 M3
+  names exactly thirteen POST routes and a release endpoint is not one of them, so neither is a route.
+  The idempotency key is derived on the server from what is being asked —
+  `board-cancel:<offer>:<revision>` / `board-release:<offer>:<revision>` — so a double tap replays
+  through `0002`'s idempotency table rather than applying a second hop; the input goes through the
+  same `parseTransitionInput` the fetch routes use, and a failure is classified by
+  `transitionFailure`. Outcomes return in the URL (`?done=`, `?error=`). A CONFIRMED seat gets no
+  release control: `offer_release_seat` refuses it by design, and the rider path for it is #148.
+- **The "mine" view** is drawn from the same rows: `buildCorridorBoard` gains an optional
+  `reservations` input (read by the new `src/lib/board-reservations.ts`, scoped to the viewer in the
+  query and degrading to `[]`) and returns `yours` and `others` alongside the full list.
+- **The 6 am form** (`PostSeatForm`): "leaving in" presets of 10/20/30/45 minutes set a fixed
+  30-minute window; the pickers are pre-filled and kept to adjust; the start cannot be in the past;
+  end-after-start is checked before the round trip (the SQL checks it again); seats default to three.
+- **The list is live**: `aria-live="polite"` on the offers, and `LiveUpdated` re-renders the server
+  board every 30 s while the tab is visible and shows the render time in Eastern.
+- After "Reserved." the rider is told what happens next in one line.
+
+### The evidence
+
+Issue #140's five bullets, each verified in the pre-change source: two raw `datetime-local` fields
+with no defaults; `grep cancel` finding nothing in `src/app` or `src/components`; "Reserved." with
+nothing after it; the form above the list; no `aria-live` and no refresh but the viewer's own.
+
+### Rejected alternatives
+
+- **A `POST /api/reservations/release` route.** Not in §8 M3's list of thirteen, which
+  `tests/api-routes.test.mjs` pins by count; a Server Action gives the same writer the same key
+  discipline without widening the API.
+- **Supabase Realtime now.** The eventual answer (§8 M3), but it means a browser Supabase client on
+  the page D-46 priced at 62 kB; a bounded, visibility-aware poll over the server render is the
+  honest interim.
+- **A separate "my rides" page.** The viewer's rows are already on the board; a section is the
+  smaller change and keeps one screen at the curb.
+
+### What this does not do
+
+No edit of a posted offer (there is no writer for it; a cancel-and-repost is two taps). No release of
+a CONFIRMED seat (#148). No Realtime.
+
+**Status:** PENDING. DONE when a signed-in person on the deployed `/board` posts with a preset, sees
+the offer under "Yours", cancels it; reserves someone else's, sees it under "Yours", releases it;
+and sees the list refresh on its own — evidence on #140 (needs #47).
+
+## D-91 — The accessibility findings axe and the token gate could not see: keyboard-reachable About menu, 3:1 form-control borders and focus rings, 24px+ targets, one `<main>`, a skip link and `<header>`, reduced motion honoured, 12px label floor. Issue #141
+
+**Date:** 2026-09-06
+
+### The decision
+
+- **About menu** (`Navbar`): opens on click, Enter, Space and ArrowDown as well as hover; `aria-haspopup="menu"`,
+  `aria-controls`, `role="menu"`/`menuitem`; Escape closes it and the mobile sheet; focus leaving the
+  menu closes it. About Slugging and About Us are also in the footer.
+- **Form controls**: borders `slate-300`/`stone-300` (≈1.5:1) become `slate-500`/`stone-500`; focus
+  rings `sky-200`/`#EAF2ED` (≈1.3:1) become `sky-600`/`#2E7D46`, on `LoginForm`, `VerifyForm`,
+  `OnboardingForm`, `PostSeatForm` and `SpotSearch`. The four pairs are pinned in
+  `scripts/contrast-check.mjs`; `sky-600` on white is 4.10:1 and is pinned as `large` with the reason
+  (a focus ring is non-text UI, WCAG 1.4.11's 3:1 bar; it is never used for text). Decorative card
+  and divider borders are not raised: 1.4.11 covers component boundaries needed to identify a
+  control, and a card's edge is not one.
+- **Target sizes**: directory rows carry a 28px link (was 20px); footer links get a tap height;
+  the Reserve button is 44px (was 32px). WCAG 2.5.8.
+- **Landmarks**: the nav is inside `<header>`; `<main id="main">` is the skip target; a skip link,
+  visible on focus, precedes the nav; the spot page's nested `<main>` is a `<div>`.
+- **Motion**: `prefers-reduced-motion: reduce` turns off smooth scrolling, the fade-up entrances, the
+  live dot's pulse and the card hover transition. Every motion on the site is decorative.
+- **Labels**: the hero's three 11px mono labels are 12px (`text-xs`); the floor.
+
+### The evidence
+
+Issue #141's axe and keyboard pass (17 routes, 375px and 1280px). `tests/a11y-surface.test.mjs`
+(new) pins each item in source; `tests/theme-contrast.test.mjs` holds the four new pairs;
+`tests/e2e/accessibility.spec.ts` still passes on every gated route.
+
+### Not done here
+
+`/app`'s alt-less images and unnamed links (the same finding D-84 recorded): authored content the
+legacy site never had, still #141's open bullet. The hover-only menu also existed on the mobile
+sheet's About section, which was already a plain list of links and is unchanged.
+
+**Status:** PENDING. DONE when a person on the deployed site reaches About Us by keyboard alone,
+tabs to the skip link, and sees a focused input's ring — evidence on #141 (needs #47).
+
 ## D-92 — The site's remaining untrue claims are corrected or qualified: the README describes this stack; `/app` says it is a 2018 page; the footer offers routes that exist under the names they have; the home title says what the site is; `/blog` and `/news` are two views of the archive; `Docs/intent/` exists. Issue #142
 
 **Date:** 2026-09-06
