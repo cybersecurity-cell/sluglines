@@ -1,6 +1,7 @@
 'use server'
 
 import { redirect } from 'next/navigation'
+import { safeNextPath, signedInDestination, withNext } from '@/lib/domain/auth-return'
 import { createClient } from '@/lib/supabase/server'
 
 /**
@@ -24,6 +25,9 @@ import { createClient } from '@/lib/supabase/server'
 export async function completeOnboarding(formData: FormData) {
   const displayName = String(formData.get('display_name') ?? '')
   const locationId = formData.get('location_id')
+  // Re-sanitised here, not trusted from the hidden field: a form post is a
+  // request like any other (issue #136).
+  const next = safeNextPath(formData.get('next'))
 
   let failed = false
 
@@ -41,5 +45,5 @@ export async function completeOnboarding(formData: FormData) {
     failed = true
   }
 
-  redirect(failed ? '/onboarding?onboarding=failed' : '/dashboard')
+  redirect(failed ? withNext('/onboarding?onboarding=failed', next) : signedInDestination(next))
 }

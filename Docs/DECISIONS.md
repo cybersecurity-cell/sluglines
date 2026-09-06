@@ -5577,3 +5577,72 @@ performed it. Issue #119 must close **before or with** issue #52, never after: #
 `POST /api/auth/send-otp` the ability to send a real SMS at all (this repo has no provider wired in
 yet), and an endpoint that can spend money without any account-level alarm watching it is the
 precise gap this entry exists to close before it opens.
+
+
+---
+
+## D-86 — Sign-in carries `next` end to end; onboarding runs once; the phone leaves the URL for a short-lived httpOnly cookie; `/dashboard` degrades instead of 500ing; `app/error.tsx` exists. Issue #136
+
+**Date:** 2026-09-06
+
+### The decision
+
+- **`next` survives the whole flow.** `/login?next=…` → `LoginForm` → `/verify?next=…` → `VerifyForm` →
+  `/onboarding?next=…` → the onboarding action → `next`. It is sanitised by one pure function,
+  `safeNextPath` (`src/lib/domain/auth-return.ts`): a same-origin absolute path only — starts with one
+  `/`, not `//`, no scheme, no backslash, printable ASCII, at most 200 characters — or `undefined`,
+  which every consumer treats as "no `next`" and falls back to `/dashboard`. It is re-sanitised at
+  every redirect that consumes it, including the hidden form field, because a form post is a request
+  like any other. An open redirect through sign-in is the classic phishing hop; the check lives once.
+- **Onboarding runs once** (rev. 5.3 §10 (3)). `/verify` cannot know whether a member is new, so it
+  still always lands on `/onboarding`; the page decides. `handle_new_member()` (`0001`) gives every
+  new row the display name `member-<first 8 hex of the id>`; a member whose name is anything else has
+  been through onboarding and is redirected to `next` or the dashboard. A member whose profile cannot
+  be read is shown the form, not bounced: the form is harmless to repeat, and "could not read" is not
+  evidence.
+- **The phone number leaves the URL.** `POST /api/auth/send-otp` sets `sl_otp_phone`, httpOnly,
+  `SameSite=Lax`, `secure` in production, ten minutes; `/verify` reads it server-side and still
+  `redirect('/login')`s without it; `POST /api/auth/verify-otp` clears it on success. Browser history,
+  referrers and request logs no longer carry a member's number.
+- **`/verify` shows the D-8 cooldown** as a countdown on a disabled "Resend code in Ns" button (starting
+  at the full 60 s, since the code was just sent), refuses a second tap while a resend is in flight, locks
+  the code field when a verify comes back `rate_limited` (Supabase Auth has stopped accepting guesses for
+  that number), and always offers "Start over" back to `/login` with `next` intact.
+- **`/dashboard`'s guard can fail without taking the page down.** The session read is inside a `try`;
+  a client that cannot be constructed (no Supabase environment) is not "signed out" and is not a 500 —
+  the page renders with the panel in its own `unavailable` state and no member data. A signed-out
+  visitor goes to `/login?next=/dashboard`.
+- **`src/app/error.tsx`** exists: a client component inside the root layout (so `lang`, nav and footer
+  are kept), light ground, says the fault is ours, offers `reset()` and a way out, logs the error to
+  the console for the runtime logs, and never renders `error.message`.
+
+### The evidence
+
+Before: `LoginForm` pushed `/verify?phone=…` with no `next`; `VerifyForm` hard-pushed `/onboarding`;
+the onboarding action redirected to `/dashboard`; every returning sign-in went through onboarding;
+`/verify` had no visible cooldown and "Resend code" could be tapped repeatedly; `/dashboard` called
+`createClient()` unguarded and without environment fell to Next's default 500 with no `<title>` and no
+`lang` (axe serious); there was no `app/error.tsx`. `tests/auth-otp-routes.test.mjs` now asserts each
+of these in source, and executes `safeNextPath` against the open-redirect shapes
+(`//evil.example`, `\\evil.example`, `https://…`, `javascript:`, relative, over-long, non-string).
+
+### Rejected alternatives
+
+- **A `sessionStorage` hand-off for the phone.** Keeps it out of the URL too, but the `/verify` page shell
+  is a server component and its "no phone → back to `/login`" guard would have had to move into the
+  client. The cookie keeps the server-side guard and works with JavaScript disabled up to the form.
+- **Deciding the onboarding skip in the verify route.** Would have the route read `members` and
+  return a flag; `/onboarding` already reads the profile and is the page whose job this is.
+- **Allowing `next` to be any URL on the sluglines.com host.** An absolute URL invites a host-matching
+  check that has to be right forever; a same-origin path needs no host at all.
+
+### What this does not do
+
+The `/verify` cooldown is the client's own clock; Supabase Auth's server-side cooldown remains the
+enforcement and still answers `rate_limited` if the two disagree. No live test: the OTP flow needs a
+phone provider (#52). Nothing under `supabase/` changes.
+
+**Status:** PENDING. DONE when a person, on the deployed site, opens `/board` signed out, signs in, and
+lands on `/board`; signs in a second time and does not see `/onboarding`; and sees `/verify`'s
+countdown and `/dashboard` without environment render legibly — evidence on #136 (#47 for a reachable
+deployment, #52 for a phone provider that can actually send the code).
