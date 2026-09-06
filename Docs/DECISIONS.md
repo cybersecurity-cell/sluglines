@@ -5657,3 +5657,84 @@ Vercel Authentication blocks every preview (#47).
 with its `#132` section passing, with the output on the issue, and (2) a person has posted a seat
 on the deployed `/board` and seen it listed, per `AGENTS.md`'s Definition of Done. Both need the
 owner (#41 for the credentials; #47 for a reachable deployment).
+
+## D-83 — SECURITY FIX: `offer_cancel` is the poster's or a moderator's, never a rider's. `0027` (written, NOT applied). Issue #133
+
+**Date:** 2026-09-06
+
+### The decision
+
+`supabase/migrations/0027_offer_cancel_poster_or_moderator.sql` re-creates
+`public.offer_cancel(uuid, integer, text)` — same signature, same body — with one guard changed:
+
+```
+-- 0002                                              -- 0027
+if v_poster <> v_actor                               if v_poster <> v_actor
+   and not exists (select 1 from reservations r         and not public.caller_is_moderator() then
+    where r.offer_id = p_offer_id                       raise exception '... poster or a moderator ...'
+      and r.rider_id = v_actor                            using errcode = '42501';
+      and r.state in ('ACTIVE','CONFIRMED')) then
+  raise exception '... participant ...' using errcode = '42501';
+```
+
+`src/lib/domain/offer-transitions.ts` records the actor as `poster_or_moderator` (the `participant`
+actor no longer exists), and `POST /api/offers/cancel` forwards a rider's attempt to be refused as
+403, exactly as it forwards every other 42501.
+
+### The evidence
+
+- `0002`'s `offer_cancel` (lines ~1275-1283) admits any actor who is the poster **or** holds an
+  ACTIVE/CONFIRMED reservation. On success it moves the offer to CANCELLED (terminal) and sets
+  **every** live reservation on it to CANCELLED (~1290-1296). So a rider holding one seat of a
+  four-seat car ends the ride for the other three with two requests
+  (`POST /api/reservations`, then `POST /api/offers/cancel`), and one phone-verified account can
+  empty a corridor's board during a peak window — which fails the Phase 3 exit gate
+  (board-non-empty ≥90%) and teaches drivers the app is less reliable than the physical line.
+- `0002`'s own header justified it as rev. 5.3 §8 M3's "driver/rider bail-out" label on
+  `CONFIRMED | ARRIVING -> CANCELLED`. The label describes the *edge*; it does not say a rider's
+  bail-out should be the *offer's* cancellation. A rider's bail-out is a decision about their seat.
+- `tests/offer-state-machine.test.mjs` now reads `0027` as the effective definition (its
+  `M3_MIGRATIONS` list gained the file) and asserts: `0002` and `0027` define it exactly twice with
+  identical signatures (replace, not overload); `0002`'s body carries the reservation-holder guard
+  and `0027`'s carries the poster-or-moderator guard and never consults `reservations` for
+  authority; and, after normalising, the two bodies differ in nothing but that guard.
+  `sql:check` lints the tree clean (R8, R9, R12 via the `auth.uid()` branch and the explicit anon
+  revoke).
+
+### What this takes away, and why it ships anyway
+
+A rider holding an **ACTIVE** seat still has `offer_release_seat`: their seat goes back, the offer
+recomputes state, nobody else is touched. A rider holding a **CONFIRMED** seat has, after `0027`,
+no write path of their own: `offer_release_seat` refuses CONFIRMED by design ("bailing out after
+confirmation is `offer_cancel()`", `0002`'s own comment above it), and `0027` closes that route.
+This is a real gap and the smaller one. A confirmed rider who cannot make it has the poster's
+pickup details and the poster can cancel or proceed; a rider who can cancel the car for everyone is
+the failure that makes drivers stop posting. The rider-scoped withdrawal of a CONFIRMED seat is a
+new function on an edge §8 M3 does not currently draw, and is filed as **issue #148** rather than
+added here.
+
+### Rejected alternatives
+
+- **Moderator-only, poster excluded.** The poster owns the offer; forcing them through a moderator
+  to cancel their own ride adds a round trip to the one person with standing.
+- **Keep rider access but cancel only their own reservation inside `offer_cancel`.** Makes one
+  function do two different things depending on who calls it, on an operation name every route,
+  ledger row and idempotency claim already reads as "cancel the offer". That is #148's function
+  under its own name.
+- **Fix it in the route.** A route is not a security boundary (rev. 5.3 §12 constraint 6); the
+  function is reachable through PostgREST directly by any authenticated client.
+
+### Verification, and what has not been done
+
+`tests/live-rls.test.mjs` gains a section that, against a preview branch: creates a two-seat offer
+as the poster, publishes it, reserves one seat as a rider, has the rider and then a third member
+call `offer_cancel` and asserts **42501** for both with the offer unmoved, then has the poster
+cancel and asserts the rider's reservation reads CANCELLED. Against a branch still running `0002`
+the rider's call **succeeds** and the section fails at that assertion, naming the cause. **It has not
+run**: no preview credentials exist in this session or in CI (#41). `0027` is `APPLIED: no`; the
+defect is live on every database running `0002`, production included, until an authorised apply.
+
+**Status:** PENDING. Moves to DONE when `0027` has been rehearsed on a preview branch with the
+`#133` live section passing, then applied to production under the owner's authorisation, with the
+apply recorded here and the evidence on issue #133 (the manual check the issue names: as rider B on
+driver A's offer, `POST /api/offers/cancel` returns 403 and rider C's reservation is untouched).
