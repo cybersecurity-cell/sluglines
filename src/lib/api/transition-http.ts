@@ -43,6 +43,8 @@ export const TRANSITION_ERROR_KINDS = [
   'not_implemented',
   /** The caller holds the maximum number of open offers (PT429, `0028`). Permanent until they cancel one. */
   'limit_reached',
+  /** A location id the directory on this database does not carry (23503). Permanent; never retried. */
+  'unknown_location',
 ] as const
 
 export type TransitionErrorKind = (typeof TRANSITION_ERROR_KINDS)[number]
@@ -69,6 +71,14 @@ export const TRANSITION_HTTP_STATUS: Readonly<Record<TransitionErrcode, number>>
   [TRANSITION_ERRCODES.NOT_FOUND]: 404,
   /** PostgREST already sets 429 from the PT429 code; this keeps the route's own status line honest too. */
   [TRANSITION_ERRCODES.LIMIT_REACHED]: 429,
+  /**
+   * 422, not 404 and not 502: the request was well-formed and the offer is not
+   * the thing missing — a location row is, on this database. Before this
+   * mapping existed a 23503 fell to the transport branch and was reported as
+   * "unavailable, retryable: true", and the Retry button it produced could
+   * never succeed (issue #132).
+   */
+  [TRANSITION_ERRCODES.FOREIGN_KEY_VIOLATION]: 422,
 }
 
 export const TRANSITION_ERROR_KIND_BY_ERRCODE: Readonly<Record<TransitionErrcode, TransitionErrorKind>> = {
@@ -79,6 +89,7 @@ export const TRANSITION_ERROR_KIND_BY_ERRCODE: Readonly<Record<TransitionErrcode
   [TRANSITION_ERRCODES.FORBIDDEN]: 'forbidden',
   [TRANSITION_ERRCODES.NOT_FOUND]: 'not_found',
   [TRANSITION_ERRCODES.LIMIT_REACHED]: 'limit_reached',
+  [TRANSITION_ERRCODES.FOREIGN_KEY_VIOLATION]: 'unknown_location',
 }
 
 /**
@@ -107,6 +118,7 @@ const MESSAGE_BY_KIND: Readonly<Record<TransitionErrorKind, string>> = {
   unavailable: 'The coordinator is unreachable. Retry with the same idempotency key.',
   not_implemented: 'That endpoint is not available yet.',
   limit_reached: 'You already have the maximum number of open offers. Cancel one before posting another.',
+  unknown_location: 'One of the pickup spots on this corridor is not in the directory yet. Nothing was posted; this is not something a retry can fix.',
 }
 
 /**
@@ -168,6 +180,13 @@ export function transitionFailure(error: unknown): TransitionFailure {
 
 export const UNAUTHENTICATED_STATUS = 401
 export const NOT_IMPLEMENTED_STATUS = 501
+
+/**
+ * The corridor's own rows could not be resolved before any RPC ran — the same
+ * outcome a 23503 reports after one, refused one round trip earlier. Same
+ * status and kind so the client sees one failure, not two, for one cause.
+ */
+export const UNKNOWN_LOCATION_STATUS = TRANSITION_HTTP_STATUS[TRANSITION_ERRCODES.FOREIGN_KEY_VIOLATION]
 
 // -----------------------------------------------------------------------------
 // Request validation
