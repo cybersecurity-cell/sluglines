@@ -37,16 +37,34 @@ import type { CorridorBoardOffer } from '@/lib/domain/board.ts'
  * an offer, release a seat — `app/board/actions.ts`); the post form, the
  * driver's control, is last and reachable from the empty state's anchor.
  * `?done=` / `?error=` carry an action's outcome back through the redirect.
+ *
+ * LIGHT SHELL, AND EASTERN TIME (issue #134)
+ * ---------------------------------------------------------------------------
+ * `globals.css` still paints the legacy dark shell on `:root` (`--bg: #080d17`,
+ * `body { background: var(--bg) }`), and this page set `text-slate-950` with no
+ * ground of its own — axe measured the H1 at 1.04:1 in every state. Every
+ * branch below now renders inside the same light wrapper `/login` uses
+ * (`bg-white text-slate-950`), the pattern the authenticated surfaces share
+ * until the deferred `:root` flip (D-62, `Docs/2026-09-01-handoff-public-
+ * surface-rest.md` §2) lands for every shell at once. `/board` is also an
+ * axe-gated route now (`tests/e2e/accessibility.spec.ts`), which is what would
+ * have caught this.
+ *
+ * `windowLabel` formats in `America/New_York`, explicitly. Vercel's runtime
+ * clock is UTC, and `toLocaleString` with no `timeZone` prints the server's
+ * zone — a 15:50 ET pickup rendered as 19:50 for the only riders this board
+ * serves. The zone is pinned, not read from the viewer: this is a server
+ * component, and every spot on the corridor is in one zone.
  */
 export const dynamic = 'force-dynamic'
+
+/** The one zone every corridor spot is in. A server component has no viewer clock to read. */
+export const BOARD_TIME_ZONE = 'America/New_York'
 
 export const metadata = {
   title: 'Board - Sluglines',
   description: "Post a seat or reserve one on the Horner Rd <-> L'Enfant Plaza corridor.",
 }
-
-/** The one zone every corridor spot is in. A server component has no viewer clock to read. */
-export const BOARD_TIME_ZONE = 'America/New_York'
 
 const DONE_COPY: Record<string, string> = {
   cancelled: 'Your offer is cancelled. Anyone holding a seat on it has been released.',
@@ -68,8 +86,15 @@ function windowLabel(windowStart: string, windowEnd: string): string {
   const format = (value: Date, options: Intl.DateTimeFormatOptions) =>
     Number.isNaN(value.getTime()) ? 'unknown time' : value.toLocaleString('en-US', { timeZone: BOARD_TIME_ZONE, ...options })
   const startLabel = format(start, { weekday: 'short', month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })
+  // The end carries the zone name (EDT/EST) so the reader is never left to
+  // guess whose clock the window is on.
   const endLabel = format(end, { hour: 'numeric', minute: '2-digit', timeZoneName: 'short' })
   return `${startLabel} - ${endLabel}`
+}
+
+/** The light shell every branch renders in — the same wrapper `/login` uses. */
+function BoardShell({ children }: { children: React.ReactNode }) {
+  return <div className="bg-white text-slate-950">{children}</div>
 }
 
 function OfferMeta({ offer }: { offer: CorridorBoardOffer }) {
@@ -97,6 +122,7 @@ export default async function BoardPage({ searchParams }: { searchParams?: Promi
 
   if (read.state === 'signed-out') {
     return (
+      <BoardShell>
       <div className="mx-auto max-w-2xl px-4 py-16 text-center">
         <h1 className="text-3xl font-bold text-slate-950">Sign in to see the board</h1>
         <p className="mt-4 text-slate-700">
@@ -110,11 +136,13 @@ export default async function BoardPage({ searchParams }: { searchParams?: Promi
           Sign in
         </Link>
       </div>
+      </BoardShell>
     )
   }
 
   if (read.state === 'unavailable') {
     return (
+      <BoardShell>
       <div className="mx-auto max-w-2xl px-4 py-16 text-center">
         <h1 className="text-3xl font-bold text-slate-950">Board unavailable</h1>
         <p className="mt-4 text-slate-700">
@@ -122,6 +150,7 @@ export default async function BoardPage({ searchParams }: { searchParams?: Promi
           lost.
         </p>
       </div>
+      </BoardShell>
     )
   }
 
@@ -131,7 +160,7 @@ export default async function BoardPage({ searchParams }: { searchParams?: Promi
     read.viewerId,
     read.rows.map((row) => row.id)
   )
-  const board = buildCorridorBoard(read.rows, { viewerId: read.viewerId, reservations })
+  const board = buildCorridorBoard(read.rows, { viewerId: read.viewerId, corridor: read.corridor, reservations })
   // Formatted here, server-side, in the board's zone: the same clock every
   // window label uses, and nothing for the client to re-derive.
   const renderedLabel = new Date().toLocaleTimeString('en-US', {
@@ -144,6 +173,7 @@ export default async function BoardPage({ searchParams }: { searchParams?: Promi
   const failed = resolvedSearchParams?.error ? (ERROR_COPY[resolvedSearchParams.error] ?? ERROR_COPY.unavailable) : undefined
 
   return (
+    <BoardShell>
     <div className="mx-auto max-w-4xl space-y-8 px-4 py-10">
       <div>
         <h1 className="text-3xl font-bold tracking-tight text-slate-950 md:text-4xl">
@@ -222,8 +252,8 @@ export default async function BoardPage({ searchParams }: { searchParams?: Promi
               {board.empty ? 'No offers for this window yet.' : 'No other offers for this window yet.'}
             </p>
             <p className="mt-2 text-slate-700">
-              <Link href="/dashboard" className="font-bold text-sky-700 underline-offset-2 hover:underline">
-                Check in
+              <Link href="/spots" className="font-bold text-sky-700 underline-offset-2 hover:underline">
+                Check in at your spot
               </Link>{' '}
               so drivers can see you, or{' '}
               <a href="#post-seat-form" className="font-bold text-sky-700 underline-offset-2 hover:underline">
@@ -255,5 +285,6 @@ export default async function BoardPage({ searchParams }: { searchParams?: Promi
         </div>
       </section>
     </div>
+    </BoardShell>
   )
 }

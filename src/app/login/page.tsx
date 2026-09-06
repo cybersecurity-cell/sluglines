@@ -1,6 +1,7 @@
 import LoginForm from '@/components/LoginForm'
 import SignInUnavailable from '@/components/SignInUnavailable'
 import { isPhoneAuthEnabled } from '@/lib/api/phone-auth-availability.ts'
+import { safeNextPath } from '@/lib/domain/auth-return.ts'
 
 /**
  * `/login` — rev. 5.3 §8 M2. Phone entry only; the code goes to `/verify`.
@@ -14,14 +15,21 @@ import { isPhoneAuthEnabled } from '@/lib/api/phone-auth-availability.ts'
  * unavailable state renders — not inside `LoginForm` itself, which would mean
  * a client-side round trip and a flash of the interactive form before it
  * resolves.
+ *
+ * `?next=` (issue #136): the page a signed-out visitor was sent here from —
+ * `/board`, a spot page — is carried through `/verify` and `/onboarding` and
+ * honoured at the end, so a rider who wanted the board lands on the board.
+ * Sanitised here by `safeNextPath` (same-origin path only) and again at every
+ * redirect that consumes it.
  */
 export const metadata = {
   title: 'Sign in - Sluglines',
   description: 'Sign in with your phone number.',
 }
 
-export default async function LoginPage() {
-  const available = await isPhoneAuthEnabled()
+export default async function LoginPage({ searchParams }: { searchParams?: Promise<{ next?: string }> }) {
+  const [available, resolvedSearchParams] = await Promise.all([isPhoneAuthEnabled(), searchParams])
+  const next = safeNextPath(resolvedSearchParams?.next)
 
   return (
     <div className="bg-white text-slate-950">
@@ -37,7 +45,7 @@ export default async function LoginPage() {
         </div>
       </section>
 
-      <div className="mx-auto max-w-xl px-4 py-8">{available ? <LoginForm /> : <SignInUnavailable />}</div>
+      <div className="mx-auto max-w-xl px-4 py-8">{available ? <LoginForm next={next} /> : <SignInUnavailable />}</div>
     </div>
   )
 }

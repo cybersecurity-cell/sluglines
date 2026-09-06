@@ -38,6 +38,7 @@ export {
   IDEMPOTENCY_KEY_MIN_LENGTH,
   IDEMPOTENCY_KEY_MAX_LENGTH,
   TRANSITION_ERRCODES,
+  OFFER_CREATE_LIMITS,
   OFFER_TRANSITION_OPERATIONS,
   RESERVATION_STATES,
   LIVE_RESERVATION_STATES,
@@ -126,6 +127,8 @@ export type { LocationRow, PublicLocation, PublicLocationSource } from './public
 export {
   PRESENCE_CHECKIN_COLUMNS,
   PRESENCE_CLEAR_FUNCTION,
+  PRESENCE_CHECKIN_FUNCTION,
+  toPresenceDirection,
   SIGNED_OUT_PRESENCE,
   NO_PRESENCE,
   isPresenceLive,
@@ -160,20 +163,41 @@ export type { SpotSearchFilters, SpotStatusFilter } from './spot-search.ts'
 export { isE164Phone, isOtpCode, normalizePhone, redactPii } from './phone.ts'
 
 export {
+  DEFAULT_SIGNED_IN_PATH,
+  NEXT_PATH_MAX_LENGTH,
+  OTP_PHONE_COOKIE,
+  OTP_PHONE_COOKIE_MAX_AGE_SECONDS,
+  OTP_RESEND_COOLDOWN_SECONDS,
+  isPlaceholderDisplayName,
+  safeNextPath,
+  signedInDestination,
+  withNext,
+} from './auth-return.ts'
+
+export {
   HORNER_RD,
-  HORNER_RD_LOCATION_ID,
+  HORNER_RD_SLUG,
   LENFANT_PLAZA,
-  LENFANT_PLAZA_LOCATION_ID,
-  PILOT_CORRIDOR_PAIR_LOCATION_IDS,
+  LENFANT_PLAZA_SLUG,
+  PILOT_CORRIDOR_SLUGS,
   CORRIDOR_DIRECTIONS,
   isCorridorDirection,
   corridorLocationsForDirection,
   corridorDirectionOptions,
+  resolvePilotCorridor,
+  corridorLocationIdsForDirection,
   isPilotCorridorPair,
   corridorDirectionLabel,
 } from './corridor.ts'
 
-export type { CorridorDirection, PilotCorridorLocation, CorridorDirectionOption } from './corridor.ts'
+export type {
+  CorridorDirection,
+  PilotCorridorLocation,
+  CorridorDirectionOption,
+  LocationIdRow,
+  ResolvedPilotCorridor,
+  ResolvePilotCorridorResult,
+} from './corridor.ts'
 
 export {
   BOARD_VISIBLE_STATES,
