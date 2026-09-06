@@ -111,8 +111,14 @@ export function isRetryableError(error: unknown): boolean {
 export type TransitionActor =
   | 'poster'
   | 'rider'
-  /** The poster or any rider holding a live reservation (the §8 M3 bail-out). */
-  | 'participant'
+  /**
+   * The poster, or a moderator (`caller_is_moderator()`). `0002` shipped
+   * `offer_cancel` as "participant" — the poster or any rider holding a live
+   * seat — which let one rider cancel the whole offer and every other rider's
+   * reservation; `0027` narrows it (issue #133, D-83). A rider's own bail-out
+   * is `offer_release_seat`, scoped to their seat.
+   */
+  | 'poster_or_moderator'
   /** No session: a sweep run by the scheduler as the function owner. */
   | 'system'
 
@@ -190,6 +196,8 @@ export const OFFER_TRANSITION_OPERATIONS: readonly OfferTransitionOperation[] = 
   {
     // Includes the two edges rev. 5 added (CONFIRMED | ARRIVING -> CANCELLED),
     // which M9's cancel SMS event and P4's waitlist renotify both depend on.
+    // The actor is the poster or a moderator as of 0027 (issue #133): the
+    // offer is the poster's, and cancelling it cancels every live seat on it.
     fn: 'offer_cancel',
     edges: [
       ['OPEN', 'CANCELLED'],
@@ -198,7 +206,7 @@ export const OFFER_TRANSITION_OPERATIONS: readonly OfferTransitionOperation[] = 
       ['CONFIRMED', 'CANCELLED'],
       ['ARRIVING', 'CANCELLED'],
     ],
-    actor: 'participant',
+    actor: 'poster_or_moderator',
     clientCallable: true,
     source: '§8 M3 + POST /api/offers/cancel',
   },

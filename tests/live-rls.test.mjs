@@ -432,6 +432,99 @@ try {
   assert.equal(rows[0].revision, 2, 'a replay must not bump the revision')
   assert.equal(rows[0].state, 'OPEN', 'a replay must not move the state')
 
+  // ---------------------------------------------------------------------------
+  // Issue #133 — only the poster or a moderator may cancel an offer. 0002's
+  // offer_cancel let any rider holding a live seat cancel the whole offer and
+  // every other rider's reservation with it; 0027 re-creates it with a
+  // poster-or-moderator guard. This block reads whichever definition the branch
+  // is running and says which: it PASSES only where 0027 has been applied.
+  // ---------------------------------------------------------------------------
+  console.log("\n#133 — offer_cancel is the poster's (or a moderator's), never a rider's")
+
+  const cancelOfferId = await expectOk(
+    'poster offer_create (two seats) for the cancel-authorisation fixture',
+    poster.rpc('offer_create', {
+      p_poster_role: 'driver',
+      p_origin_location_id: originLocation.id,
+      p_destination_location_id: destinationLocation.id,
+      p_window_start: windowStart,
+      p_window_end: windowEnd,
+      p_seats_total: 2,
+      p_idempotency_key: key('cancel-fixture-create'),
+    }),
+    (d) => `offer ${d}`
+  )
+  let cancelRev = await expectOk(
+    'poster offer_publish puts the fixture on the board',
+    poster.rpc('offer_publish', {
+      p_offer_id: cancelOfferId,
+      p_expected_revision: 1,
+      p_idempotency_key: key('cancel-fixture-publish'),
+    }),
+    (d) => `revision ${d}`
+  )
+  cancelRev = await expectOk(
+    'rider offer_reserve_seat takes one of the two seats (OPEN -> PARTIALLY_RESERVED)',
+    rider.rpc('offer_reserve_seat', {
+      p_offer_id: cancelOfferId,
+      p_expected_revision: cancelRev,
+      p_idempotency_key: key('cancel-fixture-reserve'),
+      p_seats: 1,
+    }),
+    (d) => `revision ${d}`
+  )
+
+  const riderCancel = await expectRefused(
+    'rider holding a live seat CANNOT cancel the offer',
+    rider.rpc('offer_cancel', {
+      p_offer_id: cancelOfferId,
+      p_expected_revision: cancelRev,
+      p_idempotency_key: key('cancel-by-rider'),
+    })
+  )
+  assert.equal(
+    riderCancel.code,
+    TRANSITION_ERRCODES.FORBIDDEN,
+    `a rider's cancel must be refused as 42501 (0027 applied); 0002 accepts it — got ${describeError(riderCancel)}`
+  )
+  const outsiderCancel = await expectRefused(
+    'a member holding no seat cannot cancel it either',
+    outsider.rpc('offer_cancel', {
+      p_offer_id: cancelOfferId,
+      p_expected_revision: cancelRev,
+      p_idempotency_key: key('cancel-by-outsider'),
+    })
+  )
+  assert.equal(outsiderCancel.code, TRANSITION_ERRCODES.FORBIDDEN)
+
+  // Neither refusal moved anything.
+  const afterRefusals = await expectOk(
+    'the offer is unchanged after both refusals',
+    poster.from('offers').select('state, revision, seats_taken').eq('id', cancelOfferId),
+    (d) => `state=${d[0]?.state} revision=${d[0]?.revision} seats_taken=${d[0]?.seats_taken}`
+  )
+  assert.equal(afterRefusals[0].state, 'PARTIALLY_RESERVED')
+  assert.equal(afterRefusals[0].revision, cancelRev)
+  assert.equal(afterRefusals[0].seats_taken, 1)
+
+  const posterCancelRev = await expectOk(
+    "poster offer_cancel succeeds and cascades to the rider's live seat",
+    poster.rpc('offer_cancel', {
+      p_offer_id: cancelOfferId,
+      p_expected_revision: cancelRev,
+      p_idempotency_key: key('cancel-by-poster'),
+    }),
+    (d) => `revision ${d}`
+  )
+  assert.equal(posterCancelRev, cancelRev + 1, 'a cancel is one hop')
+  const riderSeatAfter = await expectOk(
+    "rider reads their own reservation after the poster's cancel",
+    rider.from('reservations').select('state').eq('offer_id', cancelOfferId).eq('rider_id', riderUser.id),
+    (d) => `${d.length} row(s), state=${d[0]?.state}`
+  )
+  assert.equal(riderSeatAfter.length, 1, 'the rider can read their own reservation (reservations_select_participant)')
+  assert.equal(riderSeatAfter[0].state, 'CANCELLED', "the poster's cancel cascades to live seats, as 0002 always did")
+
   // Authorisation inside the entry point: the poster may not take their own seat.
   await expectRefused(
     'poster cannot reserve a seat on their own offer',
