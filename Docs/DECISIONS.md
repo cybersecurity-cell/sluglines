@@ -6323,3 +6323,46 @@ Nothing under `supabase/` changes; no live test applies.
 **Status:** DONE for the code and documents (a documentation issue closes on review of the diff, not
 on a deployed check); the `/app` qualifier and the footer are, like everything else, first seen at
 the deployed URL when #47 clears.
+
+## D-93 — `unavailable` outcomes are logged as one structured line without PII; the in-memory rate limiter evicts; both service-role factories throw the same typed error; `/login` carries the §10 reassurance. The rest of #144 is recorded, not done. Issue #144
+
+**Date:** 2026-09-06
+
+### The decision
+
+- **`src/lib/observability.ts`** (new): `reportUnavailable(scope, reason, error?)` writes one JSON
+  line to stderr — `event`, `scope`, `reason`, and from the error only its `code` (SQLSTATE or HTTP
+  status) and `name`. Never `error.message` (PostgREST messages can echo request values; the CSP
+  report route already records why a raw string on a log line is an injection vector), never a
+  member id, phone or row. `console.error`, not a library: nothing else here has one and the runtime
+  ships stderr to the log drain. Called on every path that returns `unavailable` in
+  `corridor-board.ts`, `dashboard.ts`, `onboarding.ts` and `public-directory.ts` — the four the issue
+  names, whose `reason` fields were documented as "for the server log" and never logged.
+- **`createFixedWindowLimiter`** sweeps once per window and drops every key whose hits have all aged
+  out; a key still inside its window is untouched, so the sweep never loosens a limit. `size()` is
+  exposed for the test. Before, every distinct IP or phone that ever hit a route stayed in memory
+  for the life of the process.
+- **`createServiceRoleClient`** (the AI audit writer) throws `ServiceRoleKeyMissingError` from
+  `./service.ts` instead of passing `undefined!` into supabase-js. Two factories remain — the AI
+  writer wants `autoRefreshToken: false` — but a missing key reads the same wherever it is caught.
+- **`/login`** says "Other sluggers never see your number. It stays with sign-in; members see only the
+  display name you choose." — true by construction: the phone lives in `auth.users`, which no client
+  role can read, and `members` has no phone column.
+
+### Recorded as still open, on the issue
+
+Retention and deletion policy for every table (`agent_traces` keeps `user_message` indefinitely and
+cascades on `auth.users` delete while `audit_events` anonymises); a data-export path; a privacy page
+and a consent text for the AI route — these are owner-authored statements about the product, not
+code; the 6.37 MB legacy JSON imported at module scope on `/`; the 168 unreachable prerendered legacy
+pages; session refresh on read paths and the `middleware` → `proxy` convention. Each is a change with
+its own decision to record; none is a one-line fix, and bundling them here would hide that.
+
+### The evidence
+
+Four `console.*` calls in all of `src/` before this change, one of them the CSP report. `tests/
+observability.test.mjs` (new) executes the line builder against an error carrying a phone number in
+its message and asserts the number never reaches the log; exercises the sweep with fifty keys; and
+asserts the factories and the login copy in source.
+
+**Status:** DONE for the four items above (they are verifiable in code); the rest of #144 stays open.

@@ -11,6 +11,7 @@
  */
 
 import { createClient } from '@/lib/supabase/server'
+import { reportUnavailable } from '@/lib/observability.ts'
 
 export interface MemberProfile {
   displayName: string
@@ -36,11 +37,13 @@ export async function getMemberProfile(memberId: string): Promise<MemberProfile 
       .eq('id', memberId)
       .maybeSingle()
 
+    if (error) reportUnavailable('onboarding.profile', `members read failed (${error.code ?? 'unknown'})`, error)
     if (error || !data) return null
 
     const row = data as unknown as { display_name: string; location_id: string | null }
     return { displayName: row.display_name, locationId: row.location_id }
-  } catch {
+  } catch (error) {
+    reportUnavailable('onboarding.profile', 'supabase client unavailable', error)
     return null
   }
 }
@@ -77,10 +80,12 @@ export async function getActiveHomeSpotOptions(): Promise<HomeSpotOption[]> {
       .order('direction', { ascending: true })
       .order('name', { ascending: true })
 
+    if (error) reportUnavailable('onboarding.home-spots', `locations read failed (${error.code ?? 'unknown'})`, error)
     if (error || !data) return []
 
     return data as unknown as HomeSpotOption[]
-  } catch {
+  } catch (error) {
+    reportUnavailable('onboarding.home-spots', 'supabase client unavailable', error)
     return []
   }
 }

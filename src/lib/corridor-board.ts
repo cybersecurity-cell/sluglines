@@ -19,6 +19,7 @@ import type { CorridorOfferRow } from '@/lib/domain/board.ts'
 import type { ResolvedPilotCorridor } from '@/lib/domain/corridor.ts'
 import { readPilotCorridor } from '@/lib/corridor-locations.ts'
 import { createClient } from '@/lib/supabase/server'
+import { reportUnavailable } from '@/lib/observability.ts'
 
 export type CorridorBoardRead =
   | { readonly state: 'signed-out' }
@@ -43,7 +44,10 @@ export async function getCorridorBoardOffers(): Promise<CorridorBoardRead> {
     // offers existed. A missing row is reported as `unavailable` with the slug
     // named, not rendered as an honest-looking empty board.
     const corridor = await readPilotCorridor(supabase)
-    if (!corridor.ok) return { state: 'unavailable', reason: corridor.reason }
+    if (!corridor.ok) {
+      reportUnavailable('corridor-board.corridor', corridor.reason)
+      return { state: 'unavailable', reason: corridor.reason }
+    }
 
     const { hornerRdId: originId, lenfantPlazaId: destinationId } = corridor.corridor
 
@@ -58,7 +62,9 @@ export async function getCorridorBoardOffers(): Promise<CorridorBoardRead> {
       .order('window_start', { ascending: true })
 
     if (error) {
-      return { state: 'unavailable', reason: `offers read failed (${error.code ?? 'unknown'})` }
+      const reason = `offers read failed (${error.code ?? 'unknown'})`
+      reportUnavailable('corridor-board.offers', reason, error)
+      return { state: 'unavailable', reason }
     }
 
     return {
@@ -67,7 +73,8 @@ export async function getCorridorBoardOffers(): Promise<CorridorBoardRead> {
       corridor: corridor.corridor,
       rows: (data ?? []) as unknown as CorridorOfferRow[],
     }
-  } catch {
+  } catch (error) {
+    reportUnavailable('corridor-board.client', 'supabase client unavailable', error)
     return { state: 'unavailable', reason: 'supabase client unavailable' }
   }
 }

@@ -42,6 +42,10 @@ export default async function LoginPage({ searchParams }: { searchParams?: Promi
           <p className="mt-4 text-base leading-7 text-slate-600">
             No password. We text a 6-digit code to confirm it&apos;s you.
           </p>
+          <p className="mt-2 text-sm leading-6 text-slate-600">
+            Other sluggers never see your number. It stays with sign-in; members see only the display name you
+            choose.
+          </p>
         </div>
       </section>
 
