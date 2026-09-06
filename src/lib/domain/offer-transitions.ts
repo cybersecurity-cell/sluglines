@@ -71,6 +71,15 @@ export const TRANSITION_ERRCODES = {
    * they cancel one, so never retried.
    */
   LIMIT_REACHED: 'PT429',
+
+  /**
+   * A location id that no `locations` row carries (`0004`'s
+   * `offers_*_location_id_fkey`). Not raised by the functions themselves but
+   * by the constraint under them, and permanent for the ids sent: the row is
+   * missing on this database, and no retry with the same ids creates it
+   * (issue #132, D-82).
+   */
+  FOREIGN_KEY_VIOLATION: '23503',
 } as const
 
 /**
