@@ -103,8 +103,8 @@ export default async function BoardPage() {
           <div className="mt-4 rounded-lg border border-slate-200 bg-slate-50 p-6 text-center">
             <p className="font-semibold text-slate-950">No offers for this window yet.</p>
             <p className="mt-2 text-slate-700">
-              <Link href="/dashboard" className="font-bold text-sky-700 underline-offset-2 hover:underline">
-                Check in
+              <Link href="/spots" className="font-bold text-sky-700 underline-offset-2 hover:underline">
+                Check in at your spot
               </Link>{' '}
               so drivers can see you, or{' '}
               <a href="#post-seat-form" className="font-bold text-sky-700 underline-offset-2 hover:underline">

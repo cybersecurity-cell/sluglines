@@ -5577,3 +5577,67 @@ performed it. Issue #119 must close **before or with** issue #52, never after: #
 `POST /api/auth/send-otp` the ability to send a real SMS at all (this repo has no provider wired in
 yet), and an endpoint that can spend money without any account-level alarm watching it is the
 precise gap this entry exists to close before it opens.
+
+
+---
+
+## D-85 — Check-in lives on the spot page, through `presence_checkin`; the nav gains Board and a sign-in control. Issue #135
+
+**Date:** 2026-09-06
+
+### The decision
+
+- **The M4 presence control is the spot page's** (`/spots/<routeSlug>`), as a server-rendered card
+  (`src/components/SpotCheckInCard.tsx`) in the aside above the live counts, with two
+  `<form action>` submits to `src/app/spots/actions.ts`: `checkInAtSpot` calls
+  `presence_checkin(p_location_id, p_direction)` (`0001`) with the spot's own direction, and
+  `checkOutFromSpot` calls `presence_clear()`. The id is resolved by slug through the caller's own
+  client at submit time — `get_public_location` (`0010`) deliberately returns no `id`, and
+  `locations_select_active` scoping the lookup is what makes an inactive spot un-checkable-into.
+  Outcomes return in the URL (`?checkin=ok|failed|unavailable`, `?checkout=ok|failed`) and the card
+  renders them; a signed-out submit goes to `/login?next=/spots/<routeSlug>`. Same server-action
+  reasoning as D-46's checkout: no browser Supabase client, works without JavaScript, and the action
+  can persist a refreshed session cookie.
+- **The card has the four presence states** `CheckInStatusPanel` has, with the same rule: `signed-out`
+  and `unavailable` never claim "you are not checked in". Checked in elsewhere says so and offers to
+  move; checked in here offers extend and check out.
+- **The circle is broken.** `/board`'s empty state now links to `/spots` ("Check in at your spot");
+  `/dashboard`'s "Open a spot to check in" was already pointing there and is now true.
+- **The nav** (`PRIMARY_NAV`) gains `Board -> /board` after `Slug Pickup`, and `Navbar` gains a
+  `Sign in -> /login` control (desktop and mobile sheet) styled as an action, not a section. `Slug
+  Pickup` is kept as the name of §10's Spots zone: it is the term the community has used for twenty
+  years and `/slug_pickup` runs the same directory search as `/spots`. The full §10 tab bar
+  (Lost & Found · Me, and a signed-in/out split) waits on the authenticated-surface migration; this
+  entry does not open it.
+
+### The evidence
+
+Before this change nothing in `src/` called `presence_checkin` (grep), while `/board`'s empty state
+sent riders to `/dashboard` to check in, `/dashboard` sent them to `/spots`, and the spot page had no
+control. `grep 'href="/board"'` found nothing. The function itself has been applied to production
+since `0001` (D-41) and revoked from `anon` by `0026`; this is UI wiring over an existing, tested
+writer, and `tests/dashboard-fast-board.test.mjs` asserts the wiring: server action, published
+function names, id by slug, session check first, `next` on sign-in, no direct table write, form
+submits, the four states handled, `/board` no longer pointing at `/dashboard`, sign-in in the nav.
+
+### Rejected alternatives
+
+- **A check-in control on `/dashboard`** picking a spot from a list. That is the 2016 app's model;
+  §10 makes presence a context strip on the place, and a rider joining a line is looking at that
+  spot's page, not at a list of fifty.
+- **A client component with `@/lib/supabase/client`.** D-46 priced this at 62 kB of route JavaScript
+  for one button; the same argument holds on a page whose audience is on a lot cell signal.
+- **Removing the check-in copy instead** (the issue's other option). Presence is the feature the 2016
+  app was praised for and the count `/spots` and the home page already show; the copy was right and
+  the control was missing.
+
+### What this does not do
+
+No new live test: `presence_checkin` and `presence_clear` are `0001` functions already exercised for
+refusal in `tests/live-public-surface.test.mjs`, and the server action cannot be driven from the
+Node suites. The signed-in card states are exercised only by source assertions; this environment has
+no session and Playwright here is always signed out.
+
+**Status:** PENDING. DONE when a signed-in person on the deployed spot page checks in, sees the count
+on `/spots` move and their check-in on `/dashboard`, and checks out again — the evidence on #135
+(needs #47 for a reachable deployment).
