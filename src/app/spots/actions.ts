@@ -55,7 +55,9 @@ export async function checkInAtSpot(formData: FormData) {
   const direction = formData.get('direction')
   const back = spotPath(formData.get('route_slug'))
 
-  let outcome: CheckInOutcome | 'signed-out' = 'failed'
+  // Assigned on every path below (TypeScript's definite-assignment check
+  // proves it), so no placeholder initial value that CodeQL would flag as dead.
+  let outcome: CheckInOutcome | 'signed-out'
 
   try {
     const supabase = await createClient()
