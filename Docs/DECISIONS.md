@@ -5458,3 +5458,47 @@ describes still live until `0026` is applied. `0011`, `0023` and `0025` were not
 entry touches no already-applied file). The 46-function gap this entry describes is closed in the
 committed SQL and proven by the static analyser and the test suite; it remains live on any database
 until a future, explicitly authorised session applies `0026`.
+
+---
+
+## D-80 — The per-IP OTP send cap stays where it already runs, in the route handler; the specified edge-middleware placement is superseded. Issue #118
+
+**Date:** 2026-09-05
+
+**Decision:** §8 M2's "≤10 OTP sends per IP per day" control is enforced by the route-handler
+limiters already built and running in `src/lib/api/send-otp-route.ts`. The edge-middleware placement
+that §8 M2 and §11 Phase 0 specify for this cap is superseded and will not be built.
+
+**Evidence:**
+- `send-otp-route.ts` runs two limiters keyed on `ip:${clientIp(request)}`: `ipDailyLimiter`, an
+  in-memory `createFixedWindowLimiter({ max: 10, windowMs: DAY_MS })` pre-check, and
+  `durableIpDailyLimiter`, a `createDurableRateLimiter({ max: 10, windowMs: DAY_MS })` backed by the
+  `rate_limit_hit()` Postgres function (issue #55, D-45) — a fixed window that coordinates across
+  every serverless instance and survives a redeploy. Both apply D-8's daily figure; the durable one
+  is the source of truth, the in-memory one a zero-round-trip pre-check in front of it.
+- `src/middleware.ts` contains no rate-limiting logic of any kind. Its only concern is the legacy
+  URL handler (§8 M1: 301s and the branded 410), and its `matcher` explicitly excludes `api/` — this
+  middleware never runs on `/api/auth/send-otp` in the first place.
+- PR #112 (merged 2026-09-05T10:36:33Z) made `clientIp()` read the platform-set
+  `x-vercel-forwarded-for` header first, falling back to the rightmost `x-forwarded-for` hop, rather
+  than the forgeable leftmost entry a client controls. The issue's own blocking precondition — that
+  the IP bucketing this cap keys on be trustworthy — is satisfied.
+
+**Reasoning, including the rejected alternative:** building the specified edge-middleware cap was
+considered and rejected. The durable limiter coordinates across instances through Postgres, which
+Vercel edge middleware cannot easily do — edge functions run per-region with no equivalent low-
+latency path back to a stateful store on every request without themselves re-deriving something
+like the existing RPC. An edge cap would therefore be *weaker* than what already runs: per-instance,
+in-memory, reset on every redeploy — exactly the gap D-45 already recorded and closed for this same
+control. Adding it in front of the existing pair would also add a middleware invocation to every
+matched request for no gain: a second, weaker cap ahead of a stronger one buys nothing, since the
+stronger one still has to run and still has to be correct on its own.
+
+**What this decision does NOT claim:** it does not give `/api/csp-report`, or any future public
+endpoint, an inherited rate-limit cap. There is no edge control after this decision, and there was
+none of any strength before it, for any route other than `/api/auth/send-otp`. Each endpoint that
+needs a cap must adopt a limiter explicitly, the way `send-otp-route.ts` does. This is the one real
+thing the edge placement would have bought — a single choke point ahead of every matched route — and
+it is being given up knowingly, not overlooked.
+
+**Status:** ADOPTED.
