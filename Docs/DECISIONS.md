@@ -6120,3 +6120,64 @@ and stacked on `0028` (#153).
 
 **Status:** PENDING. Moves to DONE when `0029` has been rehearsed on a preview branch with the `#138`
 live section passing, then applied under the owner's authorisation and recorded here.
+
+## D-89 — `create_recurring_offer` validates the timezone against `pg_timezone_names`; `instantiate_recurring_offers` isolates each template and records a failure instead of aborting the sweep. `0030` (written, NOT applied). Issue #139
+
+**Date:** 2026-09-06
+
+### The decision
+
+`supabase/migrations/0030_recurring_timezone_guard.sql` re-creates two `0020` functions with their
+exact signatures (defaults included):
+
+- **`create_recurring_offer(...)`** refuses, with `22023`, a `p_timezone` that is not a name in
+  `pg_timezone_names` — the same catalogue `at time zone` resolves against — after the checks `0020`
+  already made and before the insert. `0020` accepted any text, and the function is granted to
+  `authenticated`, so any member with a JWT could store `timezone = 'garbage'` over PostgREST even
+  though no route exposes it.
+- **`instantiate_recurring_offers()`** runs each template's work in its own sub-block. `0020`
+  evaluated `now() at time zone v_tpl.timezone` in a loop with no handler, so one bad template raised
+  and aborted instantiation for every template. Now a failure rolls back that template's work only,
+  the loop moves on, and the failure is recorded as an audit event
+  (`recurring_offer.instantiate_failed`, with `SQLSTATE` and `SQLERRM`) against the template. This
+  differs from `promote_waitlist_sweep()` (`0022`), which swallows per-offer failures with `null`: a
+  template that fails every morning is something a moderator should be able to see, and the audit
+  table is where such things already go.
+
+Everything else in both bodies is byte-for-byte `0020`'s; `tests/recurring-offers-schema.test.mjs`
+asserts that by stripping the sub-block and its handler from the new sweep body and comparing what
+remains with the old, and by checking every `0020` argument check survives in order in
+`create_recurring_offer`. The sweep stays internal: revoked from `anon` and `authenticated` (`0025`),
+never granted.
+
+### The evidence
+
+`0020` lines 353–365 (`create_recurring_offer`'s checks: none on `p_timezone`) and 214–216
+(`v_today := (now() at time zone v_tpl.timezone)::date` inside the loop with no `begin ... exception`
+block). Suspected from the SQL, as the issue says; not reproduced live here. Templates already stored
+with a bad zone (none are known — the function has no callers in this repo) are not repaired: after
+`0030` the sweep skips them, records the failure, and instantiates everyone else's.
+
+### Rejected alternatives
+
+- **A CHECK constraint on `recurring_offer_templates.timezone`.** A CHECK cannot reference a view
+  (`pg_timezone_names`), and an IMMUTABLE wrapper would lie: the catalogue changes with tzdata.
+- **Swallowing the failure with `null` like `0022`'s sweep.** Silent forever is how a member's
+  recurring offer stops appearing with nobody knowing why.
+- **Bounding template windows here as `0028` bounds `offer_create`.** A different finding; `0028`'s
+  header says so and points here for the template half, which is this validation and nothing more.
+
+### Verification, and what has not been done
+
+`tests/live-rls.test.mjs` gains a section: `create_recurring_offer` with `'garbage'` is refused
+`22023`; with `'America/New_York'` it succeeds and is cancelled again. Against `0020` the first call
+succeeds and the section fails there. The sweep's isolation is asserted in source only: it is
+internal and cannot be called from a member session, and the issue's own check — a garbage template
+plus a sweep run — needs `service_role` on a preview branch. **Nothing has run live** (#41). `0030`
+is `APPLIED: no` and stacked on `0029` (#154).
+
+**Status:** PENDING. Moves to DONE when `0030` has been rehearsed on a preview branch — including
+the issue's check: a template stored with `'garbage'` (inserted with `service_role`, since the
+function now refuses it), then a sweep that records one `recurring_offer.instantiate_failed` and
+still instantiates the valid templates — then applied under the owner's authorisation and recorded
+here.
