@@ -1,5 +1,5 @@
-import Image from 'next/image'
 import { Route } from 'lucide-react'
+import { optimizedImageProps } from '@/lib/image-props'
 import type { SpotImage } from '@/lib/domain/locations'
 
 interface SpotPhotoProps {
@@ -33,20 +33,35 @@ interface SpotPhotoProps {
  * on principle, and a page should not claim a discipline that was not the
  * reason. What it says instead is the narrower true thing — nobody has
  * photographed this spot, and no diagram was published for it either.
+ *
+ * WHY A PLAIN `<img>` WITH NEXT'S PROPS, NOT `<Image>` (issue #160, D-95)
+ * ---------------------------------------------------------------------------
+ * This is a server component rendering a local file of known size. Everything
+ * `next/image` does for that case — the optimizer URL, the `srcset` for
+ * `sizes`, `loading="lazy"`, `decoding="async"`, the reserved box — is computed
+ * on the server (`lib/image-props.ts`); the `<Image>` client component adds
+ * only hydration behaviour this page never uses. Importing `next/image` here at
+ * all — the entry module requires the client component — made Turbopack ship
+ * the whole `next/image` client runtime in every spot page's chunk, whether or
+ * not the spot has a diagram (42 of 50 do not), and pushed `/spots/[slug]`
+ * over the Lighthouse script budget. The markup below is what `<Image>` would
+ * have rendered.
  */
 export default function SpotPhoto({ image, spotName }: SpotPhotoProps) {
   if (image) {
+    const imgProps = optimizedImageProps({
+      src: image.src,
+      alt: image.alt,
+      width: image.width,
+      height: image.height,
+      sizes: '(min-width: 1024px) 360px, 100vw',
+      className: 'h-full w-full object-contain',
+    })
     return (
       <figure className="w-full">
         <div className="relative aspect-4/3 w-full overflow-hidden rounded-lg border border-slate-200 bg-white">
-          <Image
-            src={image.src}
-            alt={image.alt}
-            width={image.width}
-            height={image.height}
-            sizes="(min-width: 1024px) 360px, 100vw"
-            className="h-full w-full object-contain"
-          />
+          {/* eslint-disable-next-line @next/next/no-img-element -- the props are next/image's own, computed server-side; see the header */}
+          <img {...imgProps} alt={image.alt} />
         </div>
         <figcaption className="mt-2 text-xs leading-relaxed text-slate-600">
           Transit diagram, not a photograph. Migrated from sluglines.com on {image.fetchedAt}; the

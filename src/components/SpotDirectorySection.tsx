@@ -1,6 +1,6 @@
 import Link from 'next/link'
-import Image from 'next/image'
 import { getPrimaryFacebookUrlForSpot } from '@/lib/community-channels'
+import { optimizedImageProps } from '@/lib/image-props'
 import {
   DirectorySpot,
   getSpotDetailHref,
@@ -12,6 +12,18 @@ interface SpotDirectorySectionProps {
   title?: string
   description?: string
   limitPerCounty?: number
+}
+
+/**
+ * A 22px decorative icon through the image optimizer, without the `<Image>`
+ * client component (issue #160, D-95). This is a server component and the
+ * two icons are local files of fixed size, so `lib/image-props.ts` computes
+ * the same `src`/`srcset`/`loading` on the server; importing `next/image`
+ * here put the whole `next/image` client runtime in the home page's bundle
+ * for two 22px PNGs. `alt=""` because each link already carries an `aria-label`.
+ */
+function iconProps(src: string) {
+  return optimizedImageProps({ src, alt: '', width: 22, height: 22 })
 }
 
 export default function SpotDirectorySection({
@@ -80,7 +92,8 @@ export default function SpotDirectorySection({
                                       className="inline-flex h-11 w-11 items-center justify-center rounded-md hover:bg-stone-100"
                                       aria-label={`Open ${spot.name} community group on Facebook`}
                                     >
-                                      <Image src="/images/facebook-70x70.png" alt="" width={22} height={22} />
+                                      {/* eslint-disable-next-line @next/next/no-img-element -- props from getImageProps; see iconProps */}
+                                      <img {...iconProps('/images/facebook-70x70.png')} alt="" />
                                     </a>
                                   )}
                                   {/* Four legacy-only spots publish no coordinates
@@ -94,7 +107,8 @@ export default function SpotDirectorySection({
                                       className="inline-flex h-11 w-11 items-center justify-center rounded-md hover:bg-stone-100"
                                       aria-label={`Open ${spot.name} in Google Maps`}
                                     >
-                                      <Image src="/images/direction.png" alt="" width={22} height={22} />
+                                      {/* eslint-disable-next-line @next/next/no-img-element -- props from getImageProps; see iconProps */}
+                                      <img {...iconProps('/images/direction.png')} alt="" />
                                     </a>
                                   )}
                                 </div>

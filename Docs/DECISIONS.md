@@ -6366,3 +6366,69 @@ its message and asserts the number never reaches the log; exercises the sweep wi
 asserts the factories and the login copy in source.
 
 **Status:** DONE for the four items above (they are verifiable in code); the rest of #144 stays open.
+
+---
+
+## D-95 — The public surface renders spot imagery through `next/image`'s server half only; the client component is gone, and the Lighthouse script budget returns to 176 KiB
+
+**Date:** 2026-09-06
+**Scope:** `src/lib/image-props.ts` (new), `src/components/SpotPhoto.tsx`, `src/components/SpotDirectorySection.tsx`, `lighthouserc.json`, `tests/spot-photos.test.mjs`. Issue #160; closes the commitment in D-94.
+
+### What was wrong, precisely
+
+D-94 measured a second copy of the ten `next/image` client modules in `/spots/[slug]`'s own chunk and
+attributed it to Turbopack chunking around the first page-local client components (D-85). Reading
+the page's RSC payload while fixing it showed the sharper fact: on `/spots/Horner-Rd` **no client
+reference points at `next/image` at all** — Horner Rd has no diagram, so `SpotPhoto` never renders
+`<Image>` — yet the page's chunk carried the whole runtime, because `SpotPhoto` *imported* it.
+`next/image`'s entry module (`next/dist/shared/lib/image-external.js`) `require()`s the
+`'use client'` component at top level, so any import of `next/image` from a server component puts the
+client runtime into every page that renders that component. `getImageProps` from the same entry does
+not help: it drags the same require in (verified — the chunk hash did not change). The home page paid
+the same price for two 22px PNG icons in `SpotDirectorySection`.
+
+### The decision
+
+`src/lib/image-props.ts` calls the function `getImageProps` wraps — `getImgProps` from Next's shared
+lib — with the two arguments `image-external.js` passes it (the default loader and the image config
+Next defines into every bundle as `process.env.__NEXT_IMAGE_OPTS`, falling back inside `getImgProps`
+to `imageConfigDefault`, which is this repo's configuration). The two server components spread the
+result onto a plain `<img>` with `alt` explicit. The markup is what `<Image>` rendered: the same
+`/_next/image?url=…&w=…&q=75` `srcset` for the same `sizes`, `loading="lazy"`, `decoding="async"`,
+width and height. Nothing on the public surface used the client component's behaviour (`placeholder`,
+`onLoad`, `fill`), and the header of `lib/image-props.ts` says where that behaviour still belongs.
+The helper is the one file allowed to name `next/dist/...` internals; `tests/spot-photos.test.mjs`
+pins that, pins that nothing under `src/` imports `next/image`, and pins the helper's arguments so a
+future `images.*` key in `next.config` keeps being honoured.
+
+### The measurement
+
+Local, mobile viewport, every `script` response gzipped, before and after this change on the same
+build machine (the CI figures are on the PR and on #160 once the job has run):
+
+| page | before: scripts / gzipped bytes | after | change |
+|---|---|---|---|
+| `/` | 9 / 164,300 | 8 / 161,953 | −2,347 |
+| `/spots/Horner-Rd` (no diagram) | 10 / 170,469 | 9 / 162,697 | −7,772 |
+| `/spots/Bobs-Old-Keene-Mill-Rd` (diagram) | 10 / 170,469 | 9 / 162,697 | −7,772 |
+
+The spot page's page-local chunk is now the two check-in buttons alone (744 bytes gzipped, was
+6,169 with the image runtime inside it), and the shared image chunk is gone from both pages.
+The optimizer answers the generated URLs (`w=640`, `w=1080`, the 32px icon: all 200).
+
+`lighthouserc.json`'s `resource-summary:script:size` goes back to **180,224 (176 KiB)**, as D-94
+committed; the saving is larger than the 1,396 bytes the budget was over by and larger than the
+7,388 D-85 added, so the margin D-64 wanted is back without a third number.
+
+### Rejected alternatives
+
+- **Plain submit buttons instead of `useFormStatus`** (option 1 on #160). Would have removed the
+  page-local chunk, but the image runtime it carried was the cost, not the buttons (744 bytes), and
+  D-85's pending state survives.
+- **A hand-rolled `srcset`.** The optimizer rejects widths outside `deviceSizes`/`imageSizes`; a copy
+  of the algorithm drifts from Next's the first time either changes. Calling Next's function does not.
+- **Keep `import { getImageProps } from 'next/image'`.** Measured: identical chunk. The entry module
+  is the problem, not the export.
+
+**Status:** DONE when the Lighthouse job passes at 180,224 on this change's PR and the CI figures are
+on #160; the rendered markup is verifiable in the build.

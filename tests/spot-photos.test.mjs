@@ -163,11 +163,48 @@ const photo = read('src/components/SpotPhoto.tsx')
 // Same reason dashboard-fast-board.test.mjs strips comments before its bans.
 const photoCode = photo.replace(/\/\*[\s\S]*?\*\//g, '').replace(/^\s*\/\/.*$/gm, '')
 
-assert.match(photo, /from 'next\/image'/, 'the populated branch uses next/image, not a bare <img>')
-assert.equal(/<img[\s>]/.test(photoCode), false, 'no raw <img>: it would ship an unsized asset')
-assert.match(photo, /width=\{image\.width\}/, 'explicit width')
-assert.match(photo, /height=\{image\.height\}/, 'explicit height')
-assert.match(photo, /sizes=/, 'responsive sizes, so a 360px slot does not fetch a 2600px file')
+// next/image's *server* half, not its client component (issue #160, D-95): the
+// optimizer URL, srcset, lazy loading and the reserved box all come from Next's
+// own `getImgProps`, called through `lib/image-props.ts`; `<Image>` added only
+// hydration this page never uses, and importing `next/image` at all — its entry
+// requires the client component — shipped the runtime on every spot page.
+assert.match(photo, /import \{ optimizedImageProps \} from '@\/lib\/image-props'/, 'the populated branch goes through lib/image-props')
+assert.equal(/<Image[\s>]/.test(photoCode), false, 'no <Image> client component: it ships the next/image runtime on every spot page (#160)')
+assert.match(photoCode, /<img \{\.\.\.imgProps\} alt=\{image\.alt\} \/>/, 'the <img> takes exactly the props Next computed, with the alt explicit')
+assert.equal(/<img(?![^>]*\{\.\.\.imgProps\})[\s>]/.test(photoCode), false, 'no raw <img>: it would ship an unsized, unoptimized asset')
+assert.match(photo, /width: image\.width/, 'explicit width')
+assert.match(photo, /height: image\.height/, 'explicit height')
+assert.match(photo, /sizes: '/, 'responsive sizes, so a 360px slot does not fetch a 2600px file')
+
+// The helper is Next's own function with Next's own arguments, and it is the one
+// place the `next/dist/...` internals may be named: nothing under src/ imports
+// `next/image` any more (even `getImageProps` from it drags the client component
+// in, see the helper's header), and a future import would put the runtime back
+// on every page that renders the component (#160).
+{
+  const helper = read('src/lib/image-props.ts')
+  assert.match(helper, /import \{ getImgProps \} from 'next\/dist\/shared\/lib\/get-img-props'/, 'the helper calls the function getImageProps wraps')
+  assert.match(helper, /import defaultLoader from 'next\/dist\/shared\/lib\/image-loader'/, 'with the default loader')
+  assert.match(helper, /imgConf: process\.env\.__NEXT_IMAGE_OPTS/, 'and the image config Next defines into the bundle, so next.config images.* stays honoured')
+  const walk = (dir) =>
+    fs.readdirSync(dir, { withFileTypes: true }).flatMap((entry) => {
+      const full = path.join(dir, entry.name)
+      return entry.isDirectory() ? walk(full) : /\.(tsx?|mjs)$/.test(entry.name) ? [full] : []
+    })
+  const sources = walk(path.join(root, 'src')).map((file) => [path.relative(root, file), fs.readFileSync(file, 'utf8')])
+  assert.deepEqual(
+    sources.filter(([, source]) => /from\s+'next\/image'/.test(source)).map(([file]) => file),
+    [],
+    'no module under src/ imports next/image (#160, D-95)'
+  )
+  assert.deepEqual(
+    sources.filter(([, source]) => /from\s+'next\/dist\//.test(source)).map(([file]) => file),
+    ['src/lib/image-props.ts'],
+    'lib/image-props.ts is the only module that names Next internals'
+  )
+  const directory = read('src/components/SpotDirectorySection.tsx')
+  assert.match(directory, /optimizedImageProps\(\{ src, alt: '', width: 22, height: 22 \}\)/, 'the directory icons go through the same helper')
+}
 
 // The 4:3 box is reserved in BOTH branches. That is the asset register's rule,
 // and it is what stops the page reflowing the day a photograph is added.
