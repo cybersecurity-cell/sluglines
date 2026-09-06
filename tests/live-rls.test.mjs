@@ -600,6 +600,103 @@ try {
     )
   }
 
+  // ---------------------------------------------------------------------------
+  // Issue #138 — report_no_show (0029): refused while merely CONFIRMED, allowed
+  // once ARRIVING, visible to the rider it names, and it cancels the offer when
+  // the last confirmed rider no-showed at the curb. Own fixture, so the main
+  // flow below keeps its rider. Against 0022 the CONFIRMED report SUCCEEDS and
+  // this section fails there, naming why.
+  // ---------------------------------------------------------------------------
+  console.log('\n#138 — report_no_show: ARRIVING or later, subject-readable')
+
+  const nsOfferId = await expectOk(
+    'poster offer_create (one seat) for the no-show fixture',
+    poster.rpc('offer_create', {
+      p_poster_role: 'driver',
+      p_origin_location_id: originLocation.id,
+      p_destination_location_id: destinationLocation.id,
+      p_window_start: windowStart,
+      p_window_end: windowEnd,
+      p_seats_total: 1,
+      p_idempotency_key: key('ns-create'),
+    }),
+    (d) => `offer ${d}`
+  )
+  let nsRev = await expectOk(
+    'poster offer_publish the fixture',
+    poster.rpc('offer_publish', { p_offer_id: nsOfferId, p_expected_revision: 1, p_idempotency_key: key('ns-publish') }),
+    (d) => `revision ${d}`
+  )
+  nsRev = await expectOk(
+    'rider offer_reserve_seat fills it (OPEN -> PARTIALLY_RESERVED -> RESERVED)',
+    rider.rpc('offer_reserve_seat', { p_offer_id: nsOfferId, p_expected_revision: nsRev, p_idempotency_key: key('ns-reserve'), p_seats: 1 }),
+    (d) => `revision ${d}`
+  )
+  nsRev = await expectOk(
+    'poster offer_confirm (RESERVED -> CONFIRMED)',
+    poster.rpc('offer_confirm', { p_offer_id: nsOfferId, p_expected_revision: nsRev, p_idempotency_key: key('ns-confirm') }),
+    (d) => `revision ${d}`
+  )
+  const nsReservation = await expectOk(
+    'rider reads their confirmed reservation',
+    rider.from('reservations').select('id, state').eq('offer_id', nsOfferId),
+    (d) => `${d.length} row(s), state=${d[0]?.state}`
+  )
+  assert.equal(nsReservation.length, 1)
+  assert.equal(nsReservation[0].state, 'CONFIRMED')
+  const nsReservationId = nsReservation[0].id
+
+  const tooEarly = await expectRefused(
+    'poster CANNOT report a no-show while the offer is merely CONFIRMED',
+    poster.rpc('report_no_show', { p_reservation_id: nsReservationId })
+  )
+  assert.equal(
+    tooEarly.code,
+    TRANSITION_ERRCODES.ILLEGAL_STATE,
+    `a no-show before ARRIVING must be refused as 55000 (0029); 0022 accepts it — got ${describeError(tooEarly)}`
+  )
+  await expectRefused(
+    'rider cannot report a no-show at all (poster only)',
+    rider.rpc('report_no_show', { p_reservation_id: nsReservationId })
+  )
+  const noReportsYet = await expectOk(
+    'rider sees no report about them yet',
+    rider.from('no_show_reports').select('id').eq('reservation_id', nsReservationId),
+    (d) => `${d.length} row(s)`
+  )
+  assert.equal(noReportsYet.length, 0)
+
+  await expectOk(
+    'poster offer_advance (CONFIRMED -> ARRIVING): the driver is at the curb',
+    poster.rpc('offer_advance', { p_offer_id: nsOfferId, p_expected_revision: nsRev, p_idempotency_key: key('ns-advance') }),
+    (d) => `revision ${d}`
+  )
+  await expectOk(
+    'poster report_no_show succeeds once ARRIVING',
+    poster.rpc('report_no_show', { p_reservation_id: nsReservationId }),
+    () => 'reported'
+  )
+  const reportSeenBySubject = await expectOk(
+    'the rider named in the report can read it (no_show_reports_select_subject)',
+    rider.from('no_show_reports').select('id, rider_id, reported_by').eq('reservation_id', nsReservationId),
+    (d) => `${d.length} row(s), rider_id=${d[0]?.rider_id}`
+  )
+  assert.equal(reportSeenBySubject.length, 1, 'the subject must see the report about them')
+  assert.equal(reportSeenBySubject[0].rider_id, riderUser.id)
+  assert.equal(reportSeenBySubject[0].reported_by, posterUser.id)
+  const outsiderSeesReport = await expectOk(
+    'a member who is neither reporter nor subject cannot read it',
+    outsider.from('no_show_reports').select('id').eq('reservation_id', nsReservationId),
+    (d) => `${d.length} row(s) visible`
+  )
+  assert.equal(outsiderSeesReport.length, 0)
+  const nsAfter = await expectOk(
+    'the only rider no-showed at the curb, so the offer is CANCELLED through the choke point',
+    poster.from('offers').select('state').eq('id', nsOfferId),
+    (d) => `state=${d[0]?.state}`
+  )
+  assert.equal(nsAfter[0].state, 'CANCELLED')
+
   // Authorisation inside the entry point: the poster may not take their own seat.
   await expectRefused(
     'poster cannot reserve a seat on their own offer',

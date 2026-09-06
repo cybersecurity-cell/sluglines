@@ -6060,3 +6060,63 @@ succeed and the section fails there. **It has not run** (no preview credentials,
 **Status:** PENDING. Moves to DONE when `0028` has been rehearsed on a preview branch with the
 `#137` live section passing and the issue's own check performed (an offer ending in 2099 is
 rejected), then applied under the owner's authorisation and recorded here.
+
+## D-88 — A no-show is reportable only once the driver is ARRIVING or has PICKED_UP, at most five times a day per reporter, and the rider it names can read it. `0029` (written, NOT applied). Issue #138
+
+**Date:** 2026-09-06
+
+### The decision
+
+`supabase/migrations/0029_no_show_report_guard.sql` re-creates `public.report_no_show(uuid)` — same
+signature, `0022`'s body — with three changes, and adds one policy and one index:
+
+- **State ≥ ARRIVING.** `0022` accepted `CONFIRMED`, which is before anyone could have failed to
+  appear. The guard is now `state in ('ARRIVING', 'PICKED_UP')`, raising `55000` otherwise.
+- **Five reports per reporter per rolling day**, counted from `no_show_reports.reported_by` before
+  any write and raised as `PT429` (the D-30 PTnnn form; `transition-http.ts` maps it to
+  `limit_reached`). Honest use is one report per rider who did not come.
+- **`no_show_reports_select_subject`**: `for select to authenticated using (rider_id = auth.uid())`.
+  `0021` let only the reporter and a moderator read the row, so the accused rider could neither see
+  nor contest it; rev. 5.3 §7's "politeness, not penalties" holds only if the person recorded can see
+  the record. Select only; the table still has no write policy for any role.
+- `idx_no_show_reports_reporter (reported_by, created_at desc)` for the cap.
+
+### The one semantic change beyond the guard, stated
+
+`0022` cancelled the whole offer through `apply_offer_transition()` when every rider no-showed
+while the offer was still `CONFIRMED`. With `CONFIRMED` no longer reportable that branch could never
+fire, so it moves one state later: when the last confirmed rider is reported while the offer is
+`ARRIVING` — the driver is at the curb and nobody came — the offer is cancelled through the same
+choke point on the legal `ARRIVING -> CANCELLED` edge. `PICKED_UP` has no such edge and means at
+least one rider is aboard, so the offer stays. Same mutation, same mechanism, at the first moment it
+can now be true.
+
+### The evidence
+
+`report_no_show` (`0022`, lines 464–524): poster-only, state `in ('CONFIRMED','ARRIVING',
+'PICKED_UP')`, no rate limit, no evidence; `no_show_reports_select_reporter` / `_moderator` (`0021`,
+194–204) are the only read policies. Harmless today because nothing consumes the table; a harassment
+lever the moment reputation is built on it. `tests/waitlist-eta-noshow-schema.test.mjs` now asserts
+the 0029 guard, cap, policy, grants, and that `0022`'s own guard admitted `CONFIRMED`; the `0022`
+assertions still read `0022`, unchanged.
+
+### Rejected alternatives
+
+- **Requiring evidence (an ETA update, a photo).** Nothing in the schema carries it and inventing a
+  field is #144's observability question, not this fix.
+- **Letting the subject contest in-band.** A `disputed` flag is a moderation workflow; the read
+  policy is the precondition for one and is enough for the pilot.
+- **Keeping `CONFIRMED` reportable with a time window after `window_start`.** A driver who never
+  advanced to `ARRIVING` has no standing to say who was not there.
+
+### Verification, and what has not been done
+
+`tests/live-rls.test.mjs` gains a section with its own one-seat fixture: reserve, confirm; the
+poster's report is refused `55000` while `CONFIRMED` and the rider's is refused outright; the rider
+sees no report; after `offer_advance` to `ARRIVING` the report succeeds, the rider named in it reads
+it, a third member cannot, and the offer reads `CANCELLED`. Against `0022` the first report succeeds
+and the section fails there. **It has not run** (no preview credentials, #41). `0029` is `APPLIED: no`
+and stacked on `0028` (#153).
+
+**Status:** PENDING. Moves to DONE when `0029` has been rehearsed on a preview branch with the `#138`
+live section passing, then applied under the owner's authorisation and recorded here.
