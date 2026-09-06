@@ -301,3 +301,64 @@ assert.match(functionsCode, /record_audit_event\(/)
 assert.equal(/log_audit_event\(/i.test(functionsCode), false)
 
 console.log('waitlist-eta-noshow-schema (0022): all assertions passed')
+
+// -----------------------------------------------------------------------------
+// 0029 — report_no_show is guarded (issue #138, D-88): ARRIVING or later, at
+// most five reports per reporter per day, and the subject can read the row.
+// Replace, not overload; 0022 is untouched (the assertions above still read it).
+// -----------------------------------------------------------------------------
+const guard = migrations.find((m) => m.file === '0029_no_show_report_guard.sql')
+assert.ok(guard, '0029_no_show_report_guard.sql must exist')
+const guardCode = guard.sql.replace(/^--.*$/gm, '')
+for (const stmt of guard.statements.filter((st) => st.kind === 'create_function')) {
+  assert.equal(stmt.securityDefiner, true, `${stmt.fn} must remain SECURITY DEFINER`)
+  assert.equal(stmt.pinsSearchPath, true, `${stmt.fn} must still pin search_path`)
+}
+assert.match(guard.sql, /--\s*APPLIED:\s*no\b/, '0029 ships unapplied; applying it is a separate authorised act')
+
+const noShowHeader0022 = /create or replace function public\.report_no_show\(([^)]*)\)\s*returns\s+(\w+)/i.exec(functionsCode)
+const noShowHeader0029 = /create or replace function public\.report_no_show\(([^)]*)\)\s*returns\s+(\w+)/i.exec(guardCode)
+assert.ok(noShowHeader0029, '0029 must re-create report_no_show')
+assert.equal(noShowHeader0029[1].replace(/\s+/g, ' ').trim(), noShowHeader0022[1].replace(/\s+/g, ' ').trim(), 'same argument list, or it overloads instead of replacing')
+assert.equal(noShowHeader0029[2], noShowHeader0022[2], 'same return type')
+
+const guardedBody = /report_no_show[\s\S]*?\$fn\$([\s\S]*?)\$fn\$/i.exec(guardCode)[1]
+assert.match(guardedBody, /auth\.uid\(\)/, 'still keyed on auth.uid()')
+
+// 1. State: ARRIVING or PICKED_UP, never CONFIRMED.
+assert.match(guardedBody, /if v_offer\.state not in \('ARRIVING', 'PICKED_UP'\) then/, 'a no-show is reportable only once the driver is arriving or has picked up')
+assert.equal(/not in \('CONFIRMED'/.test(guardedBody), false)
+assert.match(noShowBody, /not in \('CONFIRMED', 'ARRIVING', 'PICKED_UP'\)/, "0022's guard admitted CONFIRMED — the defect #138 names")
+
+// 2. The per-reporter cap, before any write, raising the published PT429.
+assert.match(guardedBody, /where r\.reported_by = v_actor\s+and r\.created_at > now\(\) - interval '1 day'/, 'the cap counts the reporter\'s own reports over a rolling day')
+assert.match(guardedBody, /if v_reports_today >= 5 then/, 'five per day')
+assert.match(guardedBody, /errcode = 'PT429'/, 'the cap raises LIMIT_REACHED')
+assert.ok(
+  guardedBody.indexOf('v_reports_today >= 5') < guardedBody.indexOf('update public.reservations'),
+  'the cap is checked before the reservation is touched'
+)
+
+// Unchanged mechanics: poster only, reservation CONFIRMED, cancel through the
+// choke point (now on ARRIVING, the first state where the branch can be true),
+// never a raw offers.state write, never a waitlist promotion.
+assert.match(guardedBody, /only the poster may report a no-show/)
+assert.match(guardedBody, /if v_reservation\.state <> 'CONFIRMED' then/)
+assert.match(guardedBody, /if v_offer\.state = 'ARRIVING' and v_live_count = 0 then/, 'everyone-no-showed cancels only when the driver is arriving with nobody left')
+assert.match(guardedBody, /apply_offer_transition\(/)
+assert.equal(/update\s+public\.offers\s+set\s+state/i.test(guardedBody), false)
+assert.equal(/promote_from_waitlist\(/i.test(guardedBody), false)
+assert.match(guardedBody, /record_audit_event\(v_actor, 'no_show\.reported'/)
+
+// 3. The subject can read the row; still select-only, still `to authenticated`.
+assert.match(guardCode, /create policy no_show_reports_select_subject\s+on public\.no_show_reports\s+for select\s+to authenticated\s+using \(rider_id = auth\.uid\(\)\)/i, 'the accused rider can read reports about them')
+assert.equal(/create policy [^;]*for (insert|update|delete|all)/i.test(guardCode), false, 'no write policy, for any role')
+assert.match(guardCode, /drop policy if exists no_show_reports_select_subject/, 're-runnable')
+
+// Grants travel with the re-creation, on the exact signature.
+assert.match(guardCode, /revoke all on function public\.report_no_show\(uuid\) from public;/)
+assert.match(guardCode, /revoke all on function public\.report_no_show\(uuid\) from anon;/)
+assert.match(guardCode, /grant execute on function public\.report_no_show\(uuid\) to authenticated;/)
+assert.match(guardCode, /create index if not exists idx_no_show_reports_reporter\s+on public\.no_show_reports \(reported_by, created_at desc\)/i, 'the cap has an index')
+
+console.log('waitlist-eta-noshow-schema (0029): all assertions passed')
