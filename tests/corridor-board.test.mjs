@@ -184,4 +184,31 @@ assert.equal(
   '/board must read through lib/corridor-board.ts, not open its own Supabase client'
 )
 
+// Issue #134: every branch renders inside the light shell `/login` uses, the
+// window label is pinned to Eastern time, and the default 404 no longer falls
+// through to the dark shell.
+assert.match(boardPage, /bg-white text-slate-950/, '/board must paint its own light ground; the :root shell is still dark')
+assert.equal(
+  (boardPage.match(/<BoardShell>/g) ?? []).length,
+  3,
+  'all three branches (signed-out, unavailable, board) must render inside the light shell'
+)
+assert.match(boardPage, /BOARD_TIME_ZONE = 'America\/New_York'/, 'the board zone is Eastern, pinned')
+assert.match(boardPage, /timeZone: BOARD_TIME_ZONE/, 'windowLabel must format in the pinned zone, never the server\'s')
+assert.match(boardPage, /timeZoneName: 'short'/, 'the label must name the zone so a reader knows whose clock it is')
+
+const notFoundPage = fs.readFileSync(path.join(root, 'src/app/not-found.tsx'), 'utf8')
+assert.match(notFoundPage, /GONE_TOKENS/, 'the 404 must use the 410\'s AA-tested tokens, not a new palette')
+assert.match(notFoundPage, /href="\/spots"/, 'the 404 links to /spots (§8 M1 dead-end links)')
+assert.match(notFoundPage, /href="\/lostfound"/, 'the 404 links to /lostfound (§8 M1 dead-end links)')
+assert.match(notFoundPage, /robots: \{ index: false/, 'a 404 is not indexed')
+
+const axeSpec = fs.readFileSync(path.join(root, 'tests/e2e/accessibility.spec.ts'), 'utf8')
+for (const route of ['/board', '/this-page-does-not-exist']) {
+  assert.ok(axeSpec.includes(`'${route}'`), `${route} must be an axe-gated route (issue #134)`)
+}
+// `/app` is deliberately not gated (its migrated body has no alt text; see the
+// spec's own comment and #141), and the spec must keep saying why.
+assert.match(axeSpec, /`\/app` is NOT in this list/, 'the axe spec must record why /app is not gated')
+
 console.log('corridor-board: ok')

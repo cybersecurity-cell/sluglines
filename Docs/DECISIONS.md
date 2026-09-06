@@ -5577,3 +5577,55 @@ performed it. Issue #119 must close **before or with** issue #52, never after: #
 `POST /api/auth/send-otp` the ability to send a real SMS at all (this repo has no provider wired in
 yet), and an endpoint that can spend money without any account-level alarm watching it is the
 precise gap this entry exists to close before it opens.
+
+
+---
+
+## D-84 — `/board` paints its own light shell and formats in Eastern time; the 404 is branded; `/board`, `/app` and the 404 are axe-gated. The `:root` flip stays deferred. Issue #134
+
+**Date:** 2026-09-06
+
+### The decision
+
+- Every branch of `src/app/board/page.tsx` renders inside the wrapper `/login` already uses
+  (`bg-white text-slate-950`). The dark `:root` shell in `globals.css` is **not** flipped: that is
+  the coordinated, every-shell-at-once change D-62 deferred and
+  `Docs/2026-09-01-handoff-public-surface-rest.md` §2 re-deferred, and `layout.tsx`'s footer still
+  paints white text on `var(--surface)`, so flipping the tokens under it would break the footer on
+  every page to fix one. `/board` is an authenticated surface and keeps its `sky-*`/`slate-*`
+  classes like the other four (`AGENTS.md`, "Public surface tokens").
+- `windowLabel` formats with `timeZone: 'America/New_York'`, pinned as `BOARD_TIME_ZONE`, and the
+  end of the window carries the zone name. A server component has no viewer clock, Vercel's is UTC,
+  and every spot on the corridor is in one zone.
+- `src/app/not-found.tsx` exists, modelled on the branded 410 and painted with the 410's own
+  `GONE_TOKENS`, whose contrast pairs `tests/legacy-redirects.test.mjs` already holds to AA. It links
+  to `/spots` and `/lostfound` (rev. 5.3 §8 M1's dead-end links) and is `noindex`.
+- `tests/e2e/accessibility.spec.ts` gates `/board` and a path no route serves. **`/app` is not
+  gated**, and #134's ask to gate it is declined on the record: when it was first added, axe
+  reported `image-alt` (critical) on nine press thumbnails and two app-store badges and
+  `link-name` (serious) on the eleven links wrapping them — all inside the migrated WordPress
+  body `LegacyContentPage` renders, which carries no alt text because the legacy site never
+  authored any. That is content work under the accessibility issue (#141), and a gate that is
+  red for a reason nobody can fix in the gated code is a gate that gets disabled (the spec's own
+  header says so). The spec's comment names the finding so the exclusion cannot be mistaken for
+  an oversight. (The same body also hotlinks those images from `sluglines.com`, so the page never
+  reaches `networkidle` on a runner with no route to that host — a second reason it needs its own
+  treatment.)
+
+### The evidence
+
+axe on the pre-change `/board` reported `color-contrast` (serious) in every state; the H1 computed at
+1.04:1 (`text-slate-950` on `#080d17`). `/board` was not in the axe route list, which is why CI was
+green. After the change the axe spec passes on all fourteen route × viewport cases, including the
+two new pages (`/board`, the 404). The Eastern-time defect is by inspection: `toLocaleString('en-US', {...})` with no
+`timeZone` prints the process zone.
+
+### What this does not do
+
+It does not migrate `/board` to the §10 palette, and it does not touch `/login`, `/verify`,
+`/onboarding` or `/dashboard`. Their dark-shell bleed at the bottom of a short page is the `:root`
+item, unchanged and still deferred; that item now has one fewer page depending on the dark shell.
+
+**Status:** PENDING. DONE when a person opens the deployed `/board` (signed out and signed in) and
+the 404 and sees them legible, and sees a window time that matches the pickup they posted, per
+`AGENTS.md`'s Definition of Done. Needs #47 for a reachable deployment.
