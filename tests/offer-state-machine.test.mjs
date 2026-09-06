@@ -375,10 +375,12 @@ const readMigration = (file) => ({
   sql: fs.readFileSync(path.join(process.cwd(), 'supabase/migrations', file), 'utf8'),
 })
 
-// In apply order. Later entries supersede earlier ones.
+// In apply order. Later entries supersede earlier ones. 0027 re-creates
+// offer_cancel with the poster-or-moderator guard (issue #133, D-83).
 const M3_MIGRATIONS = [
   readMigration('0002_ride_coordinator_state.sql'),
   readMigration('0003_resolve_transition_conflicts.sql'),
+  readMigration('0027_offer_cancel_poster_or_moderator.sql'),
 ]
 
 const migration = M3_MIGRATIONS.map((m) => m.sql).join('\n')
@@ -486,8 +488,24 @@ assert.match(choke.body, /insert into public\.offer_transitions/, 'every applied
 assert.match(choke.body, /revision\s+=\s+v_next/, 'the revision must move with the state')
 
 // The SQLSTATEs the domain module tells callers to branch on are the ones the
-// SQL actually raises.
+// SQL actually raises. 23503 is the one exception in kind, not in principle: it
+// is raised by the `locations` foreign keys 0004 adds under `offers`, not by a
+// `raise exception` in an M3 function (issue #132, D-82), so it is checked
+// against the constraint that raises it rather than against a `raise` line.
+const fkMigration = readMigration('0004_spot_locations_directory.sql').sql
 for (const code of Object.values(TRANSITION_ERRCODES)) {
+  if (code === TRANSITION_ERRCODES.FOREIGN_KEY_VIOLATION) {
+    assert.equal(code, '23503', 'FOREIGN_KEY_VIOLATION is the Postgres foreign_key_violation SQLSTATE')
+    for (const column of ['origin_location_id', 'destination_location_id']) {
+      assert.match(
+        fkMigration,
+        new RegExp(`'offers',\\s*'offers_${column}_fkey',\\s*'${column}'`),
+        `0004 must add the offers.${column} foreign key that raises 23503`
+      )
+    }
+    assert.match(fkMigration, /references public\.locations \(id\) on delete %s not valid/, '0004 adds the FKs NOT VALID — enforced on every new insert, skipped only for existing rows')
+    continue
+  }
   assert.ok(migration.includes(`errcode = '${code}'`), `the M3 migrations must raise SQLSTATE ${code}`)
 }
 
@@ -643,3 +661,62 @@ const stale = checkRevision(2, 1)
 assert.equal(stale.ok, false)
 assert.equal(stale.errcode, TRANSITION_ERRCODES.CONFLICT)
 assert.equal(isConflictError({ code: stale.errcode }), true, 'the predicted code must be the one callers catch')
+
+// =============================================================================
+// 0027 — offer_cancel is the poster's or a moderator's, never a rider's
+// (issue #133, D-83). Same discipline as the 0003 block above: the correction
+// must REPLACE, not overload; must change exactly the guard; and the effective
+// definition the tests read must be 0027's.
+// =============================================================================
+{
+  const cancelOp = OFFER_TRANSITION_OPERATIONS.find((op) => op.fn === 'offer_cancel')
+  assert.equal(cancelOp.actor, 'poster_or_moderator', 'the domain module must say who may cancel: the poster or a moderator')
+  assert.equal(
+    OFFER_TRANSITION_OPERATIONS.some((op) => op.actor === 'participant'),
+    false,
+    'no operation is "participant"-callable any more: a rider holding a seat may not end the ride for everyone'
+  )
+
+  const defs = definitionsOf('offer_cancel')
+  assert.equal(defs.length, 2, 'offer_cancel must be defined by 0002 and re-created by 0027')
+  assert.equal(defs[0].file, '0002_ride_coordinator_state.sql')
+  assert.equal(defs[1].file, '0027_offer_cancel_poster_or_moderator.sql')
+  assert.equal(
+    defs[0].header.replace(/\s+/g, ' ').trim(),
+    defs[1].header.replace(/\s+/g, ' ').trim(),
+    "0027 must re-create offer_cancel with 0002's exact signature, or it creates an overload instead of replacing"
+  )
+  assert.match(defs[1].header, /security definer/i, 'offer_cancel must remain SECURITY DEFINER')
+  assert.match(defs[1].header, /set search_path = public, pg_temp/i, 'offer_cancel must keep search_path pinned')
+
+  const [before, after] = defs
+  const OLD_GUARD =
+    /if v_poster <> v_actor\s+and not exists \(\s*select 1\s+from public\.reservations r\s+where r\.offer_id = p_offer_id\s+and r\.rider_id = v_actor\s+and r\.state in \('ACTIVE', 'CONFIRMED'\)\s*\) then\s+raise exception 'only a participant may cancel this offer' using errcode = '42501';/i
+  const NEW_GUARD =
+    /if v_poster <> v_actor and not public\.caller_is_moderator\(\) then\s+raise exception 'only the poster or a moderator may cancel this offer' using errcode = '42501';/i
+  assert.match(before.body, OLD_GUARD, "0002's offer_cancel admitted any rider holding a live seat — the defect #133 names")
+  assert.match(after.body, NEW_GUARD, "0027's offer_cancel must gate on the poster or caller_is_moderator()")
+  assert.equal(OLD_GUARD.test(after.body), false, '0027 must not keep the reservation-holder branch of the guard')
+  assert.equal(
+    /from public\.reservations r\s+where/i.test(after.body),
+    false,
+    "0027's guard must not consult reservations at all — a seat is not authority over the offer"
+  )
+
+  // Everything but the guard is byte-for-byte 0002: the idempotency claim and
+  // completion, the lock, the P0002, the hop, the cascade to live reservations.
+  const rewritten = before.body.replace(
+    OLD_GUARD,
+    "if v_poster <> v_actor and not public.caller_is_moderator() then raise exception 'only the poster or a moderator may cancel this offer' using errcode = '42501';"
+  )
+  assert.equal(normalise(after.body), normalise(rewritten), '0027 must change nothing in offer_cancel but the guard')
+  assert.match(after.body, /update public\.reservations\s+set\s+state\s+=\s+'CANCELLED'/i, "the poster's cancel still cascades to every live seat")
+
+  // The grants travel with the re-creation: revoked from PUBLIC and anon,
+  // granted to authenticated, on the exact signature.
+  const sql0027 = M3_MIGRATIONS[2].sql
+  assert.match(sql0027, /revoke all on function public\.offer_cancel\(uuid, integer, text\) from public;/)
+  assert.match(sql0027, /revoke all on function public\.offer_cancel\(uuid, integer, text\) from anon;/)
+  assert.match(sql0027, /grant execute on function public\.offer_cancel\(uuid, integer, text\) to authenticated;/)
+  assert.match(sql0027, /--\s*APPLIED:\s*no\b/, '0027 ships unapplied; applying it is a separate authorised act')
+}

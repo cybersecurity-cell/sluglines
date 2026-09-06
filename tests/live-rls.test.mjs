@@ -30,7 +30,15 @@ import fs from 'node:fs'
 import path from 'node:path'
 import { randomUUID } from 'node:crypto'
 import { createClient } from '@supabase/supabase-js'
-import { TRANSITION_ERRCODES } from '../src/lib/domain/index.ts'
+import {
+  BOARD_VISIBLE_STATES,
+  CORRIDOR_OFFER_COLUMNS,
+  PILOT_CORRIDOR_SLUGS,
+  TRANSITION_ERRCODES,
+  buildCorridorBoard,
+  corridorLocationIdsForDirection,
+  resolvePilotCorridor,
+} from '../src/lib/domain/index.ts'
 
 const PRODUCTION_REF = 'bwpguotjzczmieeepczf'
 const ENV_FILE = '.env.preview.local'
@@ -432,6 +440,99 @@ try {
   assert.equal(rows[0].revision, 2, 'a replay must not bump the revision')
   assert.equal(rows[0].state, 'OPEN', 'a replay must not move the state')
 
+  // ---------------------------------------------------------------------------
+  // Issue #133 — only the poster or a moderator may cancel an offer. 0002's
+  // offer_cancel let any rider holding a live seat cancel the whole offer and
+  // every other rider's reservation with it; 0027 re-creates it with a
+  // poster-or-moderator guard. This block reads whichever definition the branch
+  // is running and says which: it PASSES only where 0027 has been applied.
+  // ---------------------------------------------------------------------------
+  console.log("\n#133 — offer_cancel is the poster's (or a moderator's), never a rider's")
+
+  const cancelOfferId = await expectOk(
+    'poster offer_create (two seats) for the cancel-authorisation fixture',
+    poster.rpc('offer_create', {
+      p_poster_role: 'driver',
+      p_origin_location_id: originLocation.id,
+      p_destination_location_id: destinationLocation.id,
+      p_window_start: windowStart,
+      p_window_end: windowEnd,
+      p_seats_total: 2,
+      p_idempotency_key: key('cancel-fixture-create'),
+    }),
+    (d) => `offer ${d}`
+  )
+  let cancelRev = await expectOk(
+    'poster offer_publish puts the fixture on the board',
+    poster.rpc('offer_publish', {
+      p_offer_id: cancelOfferId,
+      p_expected_revision: 1,
+      p_idempotency_key: key('cancel-fixture-publish'),
+    }),
+    (d) => `revision ${d}`
+  )
+  cancelRev = await expectOk(
+    'rider offer_reserve_seat takes one of the two seats (OPEN -> PARTIALLY_RESERVED)',
+    rider.rpc('offer_reserve_seat', {
+      p_offer_id: cancelOfferId,
+      p_expected_revision: cancelRev,
+      p_idempotency_key: key('cancel-fixture-reserve'),
+      p_seats: 1,
+    }),
+    (d) => `revision ${d}`
+  )
+
+  const riderCancel = await expectRefused(
+    'rider holding a live seat CANNOT cancel the offer',
+    rider.rpc('offer_cancel', {
+      p_offer_id: cancelOfferId,
+      p_expected_revision: cancelRev,
+      p_idempotency_key: key('cancel-by-rider'),
+    })
+  )
+  assert.equal(
+    riderCancel.code,
+    TRANSITION_ERRCODES.FORBIDDEN,
+    `a rider's cancel must be refused as 42501 (0027 applied); 0002 accepts it — got ${describeError(riderCancel)}`
+  )
+  const outsiderCancel = await expectRefused(
+    'a member holding no seat cannot cancel it either',
+    outsider.rpc('offer_cancel', {
+      p_offer_id: cancelOfferId,
+      p_expected_revision: cancelRev,
+      p_idempotency_key: key('cancel-by-outsider'),
+    })
+  )
+  assert.equal(outsiderCancel.code, TRANSITION_ERRCODES.FORBIDDEN)
+
+  // Neither refusal moved anything.
+  const afterRefusals = await expectOk(
+    'the offer is unchanged after both refusals',
+    poster.from('offers').select('state, revision, seats_taken').eq('id', cancelOfferId),
+    (d) => `state=${d[0]?.state} revision=${d[0]?.revision} seats_taken=${d[0]?.seats_taken}`
+  )
+  assert.equal(afterRefusals[0].state, 'PARTIALLY_RESERVED')
+  assert.equal(afterRefusals[0].revision, cancelRev)
+  assert.equal(afterRefusals[0].seats_taken, 1)
+
+  const posterCancelRev = await expectOk(
+    "poster offer_cancel succeeds and cascades to the rider's live seat",
+    poster.rpc('offer_cancel', {
+      p_offer_id: cancelOfferId,
+      p_expected_revision: cancelRev,
+      p_idempotency_key: key('cancel-by-poster'),
+    }),
+    (d) => `revision ${d}`
+  )
+  assert.equal(posterCancelRev, cancelRev + 1, 'a cancel is one hop')
+  const riderSeatAfter = await expectOk(
+    "rider reads their own reservation after the poster's cancel",
+    rider.from('reservations').select('state').eq('offer_id', cancelOfferId).eq('rider_id', riderUser.id),
+    (d) => `${d.length} row(s), state=${d[0]?.state}`
+  )
+  assert.equal(riderSeatAfter.length, 1, 'the rider can read their own reservation (reservations_select_participant)')
+  assert.equal(riderSeatAfter[0].state, 'CANCELLED', "the poster's cancel cascades to live seats, as 0002 always did")
+
   // Authorisation inside the entry point: the poster may not take their own seat.
   await expectRefused(
     'poster cannot reserve a seat on their own offer',
@@ -592,6 +693,115 @@ try {
     (d) => `${d.length} row(s) visible`
   )
   assert.equal(outsiderLedger.length, 0)
+
+  // ---------------------------------------------------------------------------
+  // Issue #132 — the pilot corridor resolves to real `locations` rows, an offer
+  // posted on them lands on `/board`, and the placeholder ids PR #115 shipped
+  // are refused by the 0004 foreign key exactly as the issue describes.
+  //
+  // `POST /api/offers` and `/board` themselves are not reachable from this
+  // suite (no Next server here, and Vercel Authentication blocks every preview
+  // — #47), so this exercises the same three steps they take, through the same
+  // PostgREST path, the same RLS policy (`locations_select_active`, as a
+  // member, not service_role) and the same domain functions
+  // (`resolvePilotCorridor`, `corridorLocationIdsForDirection`,
+  // `buildCorridorBoard`). What it does not prove is the HTTP layer on top;
+  // D-82 records that as the remaining check.
+  // ---------------------------------------------------------------------------
+  console.log('\n#132 — pilot corridor: slug lookup, post, board read-back')
+
+  const corridorRows = await expectOk(
+    'member resolves both pilot corridor slugs through locations_select_active',
+    poster.from('locations').select('id,slug').in('slug', [...PILOT_CORRIDOR_SLUGS]),
+    (d) => d.map((r) => `${r.slug}=${r.id}`).join(' ')
+  )
+  const resolvedCorridor = resolvePilotCorridor(corridorRows)
+  assert.equal(
+    resolvedCorridor.ok,
+    true,
+    `pilot corridor row(s) missing or inactive on ${targetRef}: ` +
+      `${resolvedCorridor.ok ? '' : resolvedCorridor.missing.join(', ')} — 0004 seeds both, active`
+  )
+  const { hornerRdId, lenfantPlazaId } = resolvedCorridor.corridor
+  const corridorIds = corridorLocationIdsForDirection(resolvedCorridor.corridor, 'horner-to-lenfant')
+
+  // The defect itself, observed live: the two literals corridor.ts used to
+  // commit are not rows, and the NOT VALID FK still refuses them on insert.
+  // 23503 is the SQLSTATE transition-http.ts now maps to 422 unknown_location.
+  const fkRefusal = await expectRefused(
+    'offer_create with the old placeholder uuids is refused by the 0004 foreign key',
+    poster.rpc('offer_create', {
+      p_poster_role: 'driver',
+      p_origin_location_id: '11111111-1111-4111-8111-111111111111',
+      p_destination_location_id: '22222222-2222-4222-8222-222222222222',
+      p_window_start: windowStart,
+      p_window_end: windowEnd,
+      p_seats_total: 1,
+      p_idempotency_key: key('corridor-placeholder'),
+    })
+  )
+  assert.equal(
+    fkRefusal.code,
+    TRANSITION_ERRCODES.FOREIGN_KEY_VIOLATION,
+    `a non-directory uuid must fail as 23503 (foreign_key_violation), got ${describeError(fkRefusal)}`
+  )
+
+  const corridorOfferId = await expectOk(
+    'offer_create on the resolved pilot corridor ids succeeds',
+    poster.rpc('offer_create', {
+      p_poster_role: 'driver',
+      p_origin_location_id: corridorIds.originId,
+      p_destination_location_id: corridorIds.destinationId,
+      p_window_start: windowStart,
+      p_window_end: windowEnd,
+      p_seats_total: 3,
+      p_idempotency_key: key('corridor-create'),
+    }),
+    (d) => `offer ${d}`
+  )
+  const corridorRevision = await expectOk(
+    'offer_publish puts it on the board',
+    poster.rpc('offer_publish', {
+      p_offer_id: corridorOfferId,
+      p_expected_revision: 1,
+      p_idempotency_key: key('corridor-publish'),
+    }),
+    (d) => `revision ${d}`
+  )
+
+  // Exactly the query src/lib/corridor-board.ts runs, as a different member.
+  const boardRows = await expectOk(
+    "another member reads /board's filter and finds the offer",
+    outsider
+      .from('offers')
+      .select(CORRIDOR_OFFER_COLUMNS)
+      .in('state', BOARD_VISIBLE_STATES)
+      .or(
+        `and(origin_location_id.eq.${hornerRdId},destination_location_id.eq.${lenfantPlazaId}),` +
+          `and(origin_location_id.eq.${lenfantPlazaId},destination_location_id.eq.${hornerRdId})`
+      )
+      .order('window_start', { ascending: true }),
+    (d) => `${d.length} row(s) on the board, ${d.filter((r) => r.id === corridorOfferId).length} of them this offer`
+  )
+  assert.ok(boardRows.some((r) => r.id === corridorOfferId), 'the posted offer must be on the board')
+  const corridorBoard = buildCorridorBoard(boardRows, { viewerId: outsiderUser.id, corridor: resolvedCorridor.corridor })
+  const shown = corridorBoard.offers.find((o) => o.id === corridorOfferId)
+  assert.ok(shown, 'the view model must carry the posted offer')
+  assert.equal(shown.directionLabel, "Horner Rd -> L'Enfant Plaza", 'labelled by the resolved ids, not by a literal')
+  assert.equal(shown.seatsRemaining, 3)
+  assert.equal(shown.isMine, false, 'another member is not its poster')
+  record('the board labels the posted offer by its resolved corridor', `${shown.directionLabel}, ${shown.seatsRemaining} seats`)
+
+  // Leave the branch's board as it was found.
+  await expectOk(
+    'poster offer_cancel clears the fixture off the board',
+    poster.rpc('offer_cancel', {
+      p_offer_id: corridorOfferId,
+      p_expected_revision: corridorRevision,
+      p_idempotency_key: key('corridor-cancel'),
+    }),
+    (d) => `revision ${d}`
+  )
 
   console.log(`\nlive-rls: ${evidence.length} assertions passed against ${targetRef}`)
 } catch (err) {

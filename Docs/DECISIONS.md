@@ -5581,6 +5581,213 @@ precise gap this entry exists to close before it opens.
 
 ---
 
+## D-82 — The pilot corridor's location ids are resolved by slug per request, never committed as literals; 23503 is a 422, not a retryable outage. Issue #132
+
+**Date:** 2026-09-06
+
+### The decision
+
+`src/lib/domain/corridor.ts` no longer carries a location uuid. It names the Horner Rd <-> L'Enfant
+Plaza pair by **slug** (`horner-rd`, `lenfant-plaza`), and the ids are resolved on every request from
+the `locations` rows of the database serving it — `src/lib/corridor-locations.ts` reads `id, slug`
+for the two slugs through the caller's own cookie-bound client (so `locations_select_active` scopes
+it, like every other member read), and the pure `resolvePilotCorridor` pairs what came back. Both
+`POST /api/offers` (`lib/api/offer-create-route.ts`) and the `/board` read (`lib/corridor-board.ts`)
+resolve the pair after the session check and before touching `offers`. A miss is reported by slug:
+the route refuses with **422 `unknown_location`, `retryable: false`**, and the board renders its
+`unavailable` state naming the row, never an honest-looking empty board.
+
+`TRANSITION_ERRCODES` gains `FOREIGN_KEY_VIOLATION: '23503'`, mapped in `transition-http.ts` to the
+same 422 `unknown_location`. Before this, a 23503 carried no published code, fell to the transport
+branch, and was reported as `502 unavailable, retryable: true` — a Retry button that could never
+succeed, because a retry does not create a directory row.
+
+### The evidence
+
+- PR #115 committed `11111111-1111-4111-8111-111111111111` and `22222222-2222-4222-8222-222222222222`
+  on the written premise (corridor.ts, lines 7-10 as merged) that `0004` "still isn't applied
+  anywhere". `0004_spot_locations_directory.sql` is `APPLIED: production` (D-41). It adds
+  `offers_origin_location_id_fkey` / `offers_destination_location_id_fkey` as `NOT VALID`, which
+  Postgres enforces in full on every new insert and skips only for pre-existing rows (`0004`'s own
+  header says so). `locations.id` is `gen_random_uuid()`, so no committed literal can match a row on
+  any database. Every post-a-seat request therefore raised 23503, and `/board`'s `.or()` filter on
+  the same two literals matched nothing whatever the table held.
+- **The issue's second premise is wrong, and this entry corrects it.** #132 states, and the merged
+  corridor.ts also states, that "L'Enfant Plaza has no `locations` row at all (the directory seeds
+  origin lots only)". `src/lib/domain/locations.ts` carries `lenfant-plaza` (`routeSlug`
+  `LEnfant-Plaza`, `direction: 'Afternoon'`, `active: true`, coordinates `38.88489, -77.023402`),
+  `0004` seeds it (line 258 of the generated file), and `0009` refreshes its content. The production
+  table has the row. So the seed migration #132 asks for — "an append-only migration seeding an
+  L'Enfant Plaza destination row" — is **not written**: it would insert nothing (`on conflict do
+  nothing` against a row that exists), would still need an authorised apply to be "done", and would
+  record a premise the directory module contradicts. `tests/corridor-board.test.mjs` now asserts both
+  slugs are active rows of the committed directory and appear in `0004`, so the claim cannot recur
+  unnoticed.
+- The choice of placeholders in #115 and its reversal here were never recorded; this entry is the
+  record of both.
+
+### Rejected alternatives
+
+- **Keep the literals and seed rows with those exact ids.** Possible (`id` has a default, not a
+  constraint against explicit values) but it fights `0004`'s stated design — "the stable
+  cross-environment key is `slug`; nothing should join on the uuid across a dump boundary" — and
+  every preview branch created from production already carries different ids for the same slugs.
+- **Resolve through the service-role client.** Would work with `is_active = false` rows too, but it
+  bypasses `locations_select_active` for a read a member is entitled to make, and the route would
+  then depend on `SUPABASE_SERVICE_ROLE_KEY`, which #117 showed is not reliably present in
+  production.
+- **Report a lookup miss as `unavailable` (retryable).** A missing directory row is a deployment
+  fact, not a transient. The whole point of #132 is that "retryable" was a lie the UI repeated.
+
+### What the tests prove, and what they do not
+
+`tests/corridor-board.test.mjs` proves the pure half (resolution, direction ids, labels, the
+no-literal-uuid rule, both slugs present and active in the directory and in `0004`).
+`tests/api-routes.test.mjs` proves the order session -> lookup -> `offer_create` -> `offer_publish`
+in the route source and the 23503 -> 422 mapping executed. `tests/live-rls.test.mjs` gains a
+section that, against a preview branch, resolves both slugs **as a member**, observes the old
+placeholder ids refused as 23503 by the FK, posts on the resolved ids, publishes, reads the offer
+back with exactly the `/board` query as a different member, labels it through `buildCorridorBoard`,
+and cancels it. That section has **not run**: no preview credentials exist in this session or in
+CI (issue #41), and `npm run test` skips the live suites without them. What no test covers is the
+HTTP layer itself — `POST /api/offers` and `/board` served by Next against a database — because
+Vercel Authentication blocks every preview (#47).
+
+**Status:** PENDING. Moves to DONE when (1) the `live-rls` suite has run against a preview branch
+with its `#132` section passing, with the output on the issue, and (2) a person has posted a seat
+on the deployed `/board` and seen it listed, per `AGENTS.md`'s Definition of Done. Both need the
+owner (#41 for the credentials; #47 for a reachable deployment).
+
+## D-83 — SECURITY FIX: `offer_cancel` is the poster's or a moderator's, never a rider's. `0027` (written, NOT applied). Issue #133
+
+**Date:** 2026-09-06
+
+### The decision
+
+`supabase/migrations/0027_offer_cancel_poster_or_moderator.sql` re-creates
+`public.offer_cancel(uuid, integer, text)` — same signature, same body — with one guard changed:
+
+```
+-- 0002                                              -- 0027
+if v_poster <> v_actor                               if v_poster <> v_actor
+   and not exists (select 1 from reservations r         and not public.caller_is_moderator() then
+    where r.offer_id = p_offer_id                       raise exception '... poster or a moderator ...'
+      and r.rider_id = v_actor                            using errcode = '42501';
+      and r.state in ('ACTIVE','CONFIRMED')) then
+  raise exception '... participant ...' using errcode = '42501';
+```
+
+`src/lib/domain/offer-transitions.ts` records the actor as `poster_or_moderator` (the `participant`
+actor no longer exists), and `POST /api/offers/cancel` forwards a rider's attempt to be refused as
+403, exactly as it forwards every other 42501.
+
+### The evidence
+
+- `0002`'s `offer_cancel` (lines ~1275-1283) admits any actor who is the poster **or** holds an
+  ACTIVE/CONFIRMED reservation. On success it moves the offer to CANCELLED (terminal) and sets
+  **every** live reservation on it to CANCELLED (~1290-1296). So a rider holding one seat of a
+  four-seat car ends the ride for the other three with two requests
+  (`POST /api/reservations`, then `POST /api/offers/cancel`), and one phone-verified account can
+  empty a corridor's board during a peak window — which fails the Phase 3 exit gate
+  (board-non-empty ≥90%) and teaches drivers the app is less reliable than the physical line.
+- `0002`'s own header justified it as rev. 5.3 §8 M3's "driver/rider bail-out" label on
+  `CONFIRMED | ARRIVING -> CANCELLED`. The label describes the *edge*; it does not say a rider's
+  bail-out should be the *offer's* cancellation. A rider's bail-out is a decision about their seat.
+- `tests/offer-state-machine.test.mjs` now reads `0027` as the effective definition (its
+  `M3_MIGRATIONS` list gained the file) and asserts: `0002` and `0027` define it exactly twice with
+  identical signatures (replace, not overload); `0002`'s body carries the reservation-holder guard
+  and `0027`'s carries the poster-or-moderator guard and never consults `reservations` for
+  authority; and, after normalising, the two bodies differ in nothing but that guard.
+  `sql:check` lints the tree clean (R8, R9, R12 via the `auth.uid()` branch and the explicit anon
+  revoke).
+
+### What this takes away, and why it ships anyway
+
+A rider holding an **ACTIVE** seat still has `offer_release_seat`: their seat goes back, the offer
+recomputes state, nobody else is touched. A rider holding a **CONFIRMED** seat has, after `0027`,
+no write path of their own: `offer_release_seat` refuses CONFIRMED by design ("bailing out after
+confirmation is `offer_cancel()`", `0002`'s own comment above it), and `0027` closes that route.
+This is a real gap and the smaller one. A confirmed rider who cannot make it has the poster's
+pickup details and the poster can cancel or proceed; a rider who can cancel the car for everyone is
+the failure that makes drivers stop posting. The rider-scoped withdrawal of a CONFIRMED seat is a
+new function on an edge §8 M3 does not currently draw, and is filed as **issue #148** rather than
+added here.
+
+### Rejected alternatives
+
+- **Moderator-only, poster excluded.** The poster owns the offer; forcing them through a moderator
+  to cancel their own ride adds a round trip to the one person with standing.
+- **Keep rider access but cancel only their own reservation inside `offer_cancel`.** Makes one
+  function do two different things depending on who calls it, on an operation name every route,
+  ledger row and idempotency claim already reads as "cancel the offer". That is #148's function
+  under its own name.
+- **Fix it in the route.** A route is not a security boundary (rev. 5.3 §12 constraint 6); the
+  function is reachable through PostgREST directly by any authenticated client.
+
+### Verification, and what has not been done
+
+`tests/live-rls.test.mjs` gains a section that, against a preview branch: creates a two-seat offer
+as the poster, publishes it, reserves one seat as a rider, has the rider and then a third member
+call `offer_cancel` and asserts **42501** for both with the offer unmoved, then has the poster
+cancel and asserts the rider's reservation reads CANCELLED. Against a branch still running `0002`
+the rider's call **succeeds** and the section fails at that assertion, naming the cause. **It has not
+run**: no preview credentials exist in this session or in CI (#41). `0027` is `APPLIED: no`; the
+defect is live on every database running `0002`, production included, until an authorised apply.
+
+**Status:** PENDING. Moves to DONE when `0027` has been rehearsed on a preview branch with the
+`#133` live section passing, then applied to production under the owner's authorisation, with the
+apply recorded here and the evidence on issue #133 (the manual check the issue names: as rider B on
+driver A's offer, `POST /api/offers/cancel` returns 403 and rider C's reservation is untouched).
+
+## D-84 — `/board` paints its own light shell and formats in Eastern time; the 404 is branded; `/board`, `/app` and the 404 are axe-gated. The `:root` flip stays deferred. Issue #134
+
+**Date:** 2026-09-06
+
+### The decision
+
+- Every branch of `src/app/board/page.tsx` renders inside the wrapper `/login` already uses
+  (`bg-white text-slate-950`). The dark `:root` shell in `globals.css` is **not** flipped: that is
+  the coordinated, every-shell-at-once change D-62 deferred and
+  `Docs/2026-09-01-handoff-public-surface-rest.md` §2 re-deferred, and `layout.tsx`'s footer still
+  paints white text on `var(--surface)`, so flipping the tokens under it would break the footer on
+  every page to fix one. `/board` is an authenticated surface and keeps its `sky-*`/`slate-*`
+  classes like the other four (`AGENTS.md`, "Public surface tokens").
+- `windowLabel` formats with `timeZone: 'America/New_York'`, pinned as `BOARD_TIME_ZONE`, and the
+  end of the window carries the zone name. A server component has no viewer clock, Vercel's is UTC,
+  and every spot on the corridor is in one zone.
+- `src/app/not-found.tsx` exists, modelled on the branded 410 and painted with the 410's own
+  `GONE_TOKENS`, whose contrast pairs `tests/legacy-redirects.test.mjs` already holds to AA. It links
+  to `/spots` and `/lostfound` (rev. 5.3 §8 M1's dead-end links) and is `noindex`.
+- `tests/e2e/accessibility.spec.ts` gates `/board` and a path no route serves. **`/app` is not
+  gated**, and #134's ask to gate it is declined on the record: when it was first added, axe
+  reported `image-alt` (critical) on nine press thumbnails and two app-store badges and
+  `link-name` (serious) on the eleven links wrapping them — all inside the migrated WordPress
+  body `LegacyContentPage` renders, which carries no alt text because the legacy site never
+  authored any. That is content work under the accessibility issue (#141), and a gate that is
+  red for a reason nobody can fix in the gated code is a gate that gets disabled (the spec's own
+  header says so). The spec's comment names the finding so the exclusion cannot be mistaken for
+  an oversight. (The same body also hotlinks those images from `sluglines.com`, so the page never
+  reaches `networkidle` on a runner with no route to that host — a second reason it needs its own
+  treatment.)
+
+### The evidence
+
+axe on the pre-change `/board` reported `color-contrast` (serious) in every state; the H1 computed at
+1.04:1 (`text-slate-950` on `#080d17`). `/board` was not in the axe route list, which is why CI was
+green. After the change the axe spec passes on all fourteen route × viewport cases, including the
+two new pages (`/board`, the 404). The Eastern-time defect is by inspection: `toLocaleString('en-US', {...})` with no
+`timeZone` prints the process zone.
+
+### What this does not do
+
+It does not migrate `/board` to the §10 palette, and it does not touch `/login`, `/verify`,
+`/onboarding` or `/dashboard`. Their dark-shell bleed at the bottom of a short page is the `:root`
+item, unchanged and still deferred; that item now has one fewer page depending on the dark shell.
+
+**Status:** PENDING. DONE when a person opens the deployed `/board` (signed out and signed in) and
+the 404 and sees them legible, and sees a window time that matches the pickup they posted, per
+`AGENTS.md`'s Definition of Done. Needs #47 for a reachable deployment.
+
 ## D-85 — Check-in lives on the spot page, through `presence_checkin`; the nav gains Board and a sign-in control. Issue #135
 
 **Date:** 2026-09-06

@@ -163,19 +163,28 @@ export { isE164Phone, isOtpCode, normalizePhone, redactPii } from './phone.ts'
 
 export {
   HORNER_RD,
-  HORNER_RD_LOCATION_ID,
+  HORNER_RD_SLUG,
   LENFANT_PLAZA,
-  LENFANT_PLAZA_LOCATION_ID,
-  PILOT_CORRIDOR_PAIR_LOCATION_IDS,
+  LENFANT_PLAZA_SLUG,
+  PILOT_CORRIDOR_SLUGS,
   CORRIDOR_DIRECTIONS,
   isCorridorDirection,
   corridorLocationsForDirection,
   corridorDirectionOptions,
+  resolvePilotCorridor,
+  corridorLocationIdsForDirection,
   isPilotCorridorPair,
   corridorDirectionLabel,
 } from './corridor.ts'
 
-export type { CorridorDirection, PilotCorridorLocation, CorridorDirectionOption } from './corridor.ts'
+export type {
+  CorridorDirection,
+  PilotCorridorLocation,
+  CorridorDirectionOption,
+  LocationIdRow,
+  ResolvedPilotCorridor,
+  ResolvePilotCorridorResult,
+} from './corridor.ts'
 
 export {
   BOARD_VISIBLE_STATES,
