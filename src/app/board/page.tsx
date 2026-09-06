@@ -74,7 +74,7 @@ export default async function BoardPage() {
     )
   }
 
-  const board = buildCorridorBoard(read.rows, { viewerId: read.viewerId })
+  const board = buildCorridorBoard(read.rows, { viewerId: read.viewerId, corridor: read.corridor })
 
   return (
     <div className="mx-auto max-w-4xl space-y-8 px-4 py-10">

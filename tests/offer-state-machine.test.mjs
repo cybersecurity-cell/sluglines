@@ -488,8 +488,24 @@ assert.match(choke.body, /insert into public\.offer_transitions/, 'every applied
 assert.match(choke.body, /revision\s+=\s+v_next/, 'the revision must move with the state')
 
 // The SQLSTATEs the domain module tells callers to branch on are the ones the
-// SQL actually raises.
+// SQL actually raises. 23503 is the one exception in kind, not in principle: it
+// is raised by the `locations` foreign keys 0004 adds under `offers`, not by a
+// `raise exception` in an M3 function (issue #132, D-82), so it is checked
+// against the constraint that raises it rather than against a `raise` line.
+const fkMigration = readMigration('0004_spot_locations_directory.sql').sql
 for (const code of Object.values(TRANSITION_ERRCODES)) {
+  if (code === TRANSITION_ERRCODES.FOREIGN_KEY_VIOLATION) {
+    assert.equal(code, '23503', 'FOREIGN_KEY_VIOLATION is the Postgres foreign_key_violation SQLSTATE')
+    for (const column of ['origin_location_id', 'destination_location_id']) {
+      assert.match(
+        fkMigration,
+        new RegExp(`'offers',\\s*'offers_${column}_fkey',\\s*'${column}'`),
+        `0004 must add the offers.${column} foreign key that raises 23503`
+      )
+    }
+    assert.match(fkMigration, /references public\.locations \(id\) on delete %s not valid/, '0004 adds the FKs NOT VALID — enforced on every new insert, skipped only for existing rows')
+    continue
+  }
   assert.ok(migration.includes(`errcode = '${code}'`), `the M3 migrations must raise SQLSTATE ${code}`)
 }
 

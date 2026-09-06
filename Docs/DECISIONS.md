@@ -5581,6 +5581,83 @@ precise gap this entry exists to close before it opens.
 
 ---
 
+## D-82 — The pilot corridor's location ids are resolved by slug per request, never committed as literals; 23503 is a 422, not a retryable outage. Issue #132
+
+**Date:** 2026-09-06
+
+### The decision
+
+`src/lib/domain/corridor.ts` no longer carries a location uuid. It names the Horner Rd <-> L'Enfant
+Plaza pair by **slug** (`horner-rd`, `lenfant-plaza`), and the ids are resolved on every request from
+the `locations` rows of the database serving it — `src/lib/corridor-locations.ts` reads `id, slug`
+for the two slugs through the caller's own cookie-bound client (so `locations_select_active` scopes
+it, like every other member read), and the pure `resolvePilotCorridor` pairs what came back. Both
+`POST /api/offers` (`lib/api/offer-create-route.ts`) and the `/board` read (`lib/corridor-board.ts`)
+resolve the pair after the session check and before touching `offers`. A miss is reported by slug:
+the route refuses with **422 `unknown_location`, `retryable: false`**, and the board renders its
+`unavailable` state naming the row, never an honest-looking empty board.
+
+`TRANSITION_ERRCODES` gains `FOREIGN_KEY_VIOLATION: '23503'`, mapped in `transition-http.ts` to the
+same 422 `unknown_location`. Before this, a 23503 carried no published code, fell to the transport
+branch, and was reported as `502 unavailable, retryable: true` — a Retry button that could never
+succeed, because a retry does not create a directory row.
+
+### The evidence
+
+- PR #115 committed `11111111-1111-4111-8111-111111111111` and `22222222-2222-4222-8222-222222222222`
+  on the written premise (corridor.ts, lines 7-10 as merged) that `0004` "still isn't applied
+  anywhere". `0004_spot_locations_directory.sql` is `APPLIED: production` (D-41). It adds
+  `offers_origin_location_id_fkey` / `offers_destination_location_id_fkey` as `NOT VALID`, which
+  Postgres enforces in full on every new insert and skips only for pre-existing rows (`0004`'s own
+  header says so). `locations.id` is `gen_random_uuid()`, so no committed literal can match a row on
+  any database. Every post-a-seat request therefore raised 23503, and `/board`'s `.or()` filter on
+  the same two literals matched nothing whatever the table held.
+- **The issue's second premise is wrong, and this entry corrects it.** #132 states, and the merged
+  corridor.ts also states, that "L'Enfant Plaza has no `locations` row at all (the directory seeds
+  origin lots only)". `src/lib/domain/locations.ts` carries `lenfant-plaza` (`routeSlug`
+  `LEnfant-Plaza`, `direction: 'Afternoon'`, `active: true`, coordinates `38.88489, -77.023402`),
+  `0004` seeds it (line 258 of the generated file), and `0009` refreshes its content. The production
+  table has the row. So the seed migration #132 asks for — "an append-only migration seeding an
+  L'Enfant Plaza destination row" — is **not written**: it would insert nothing (`on conflict do
+  nothing` against a row that exists), would still need an authorised apply to be "done", and would
+  record a premise the directory module contradicts. `tests/corridor-board.test.mjs` now asserts both
+  slugs are active rows of the committed directory and appear in `0004`, so the claim cannot recur
+  unnoticed.
+- The choice of placeholders in #115 and its reversal here were never recorded; this entry is the
+  record of both.
+
+### Rejected alternatives
+
+- **Keep the literals and seed rows with those exact ids.** Possible (`id` has a default, not a
+  constraint against explicit values) but it fights `0004`'s stated design — "the stable
+  cross-environment key is `slug`; nothing should join on the uuid across a dump boundary" — and
+  every preview branch created from production already carries different ids for the same slugs.
+- **Resolve through the service-role client.** Would work with `is_active = false` rows too, but it
+  bypasses `locations_select_active` for a read a member is entitled to make, and the route would
+  then depend on `SUPABASE_SERVICE_ROLE_KEY`, which #117 showed is not reliably present in
+  production.
+- **Report a lookup miss as `unavailable` (retryable).** A missing directory row is a deployment
+  fact, not a transient. The whole point of #132 is that "retryable" was a lie the UI repeated.
+
+### What the tests prove, and what they do not
+
+`tests/corridor-board.test.mjs` proves the pure half (resolution, direction ids, labels, the
+no-literal-uuid rule, both slugs present and active in the directory and in `0004`).
+`tests/api-routes.test.mjs` proves the order session -> lookup -> `offer_create` -> `offer_publish`
+in the route source and the 23503 -> 422 mapping executed. `tests/live-rls.test.mjs` gains a
+section that, against a preview branch, resolves both slugs **as a member**, observes the old
+placeholder ids refused as 23503 by the FK, posts on the resolved ids, publishes, reads the offer
+back with exactly the `/board` query as a different member, labels it through `buildCorridorBoard`,
+and cancels it. That section has **not run**: no preview credentials exist in this session or in
+CI (issue #41), and `npm run test` skips the live suites without them. What no test covers is the
+HTTP layer itself — `POST /api/offers` and `/board` served by Next against a database — because
+Vercel Authentication blocks every preview (#47).
+
+**Status:** PENDING. Moves to DONE when (1) the `live-rls` suite has run against a preview branch
+with its `#132` section passing, with the output on the issue, and (2) a person has posted a seat
+on the deployed `/board` and seen it listed, per `AGENTS.md`'s Definition of Done. Both need the
+owner (#41 for the credentials; #47 for a reachable deployment).
+
 ## D-83 — SECURITY FIX: `offer_cancel` is the poster's or a moderator's, never a rider's. `0027` (written, NOT applied). Issue #133
 
 **Date:** 2026-09-06
