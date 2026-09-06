@@ -6403,8 +6403,17 @@ future `images.*` key in `next.config` keeps being honoured.
 
 ### The measurement
 
-Local, mobile viewport, every `script` response gzipped, before and after this change on the same
-build machine (the CI figures are on the PR and on #160 once the job has run):
+CI's own `Lighthouse budgets` job (transfer bytes, headers included, the number the budget is
+asserted against), read from the uploaded reports of the last `main` run before this change
+(PR #159's head) and of PR #161's head:
+
+| page | before: bytes / requests | after | change | headroom under 180,224 |
+|---|---|---|---|---|
+| `/` | 174,515 / 9 | 171,074 / 8 | −3,441 | 9,150 |
+| `/spots/Horner-Rd` | 181,815 / 10 | 172,947 / 9 | −8,868 | 7,277 (4.0%) |
+
+Locally (mobile viewport, every `script` response gzipped, same build machine before and after),
+including a spot that does carry a diagram:
 
 | page | before: scripts / gzipped bytes | after | change |
 |---|---|---|---|
@@ -6430,5 +6439,5 @@ committed; the saving is larger than the 1,396 bytes the budget was over by and 
 - **Keep `import { getImageProps } from 'next/image'`.** Measured: identical chunk. The entry module
   is the problem, not the export.
 
-**Status:** DONE when the Lighthouse job passes at 180,224 on this change's PR and the CI figures are
-on #160; the rendered markup is verifiable in the build.
+**Status:** DONE. The Lighthouse job passed at 180,224 on PR #161's head with the figures above, which
+are also on #160; the rendered markup is verifiable in the build.
