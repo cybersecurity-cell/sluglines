@@ -7,6 +7,14 @@
 import { strict as assert } from 'node:assert'
 import fs from 'node:fs'
 import path from 'node:path'
+import {
+  DEFAULT_SIGNED_IN_PATH,
+  OTP_PHONE_COOKIE,
+  isPlaceholderDisplayName,
+  safeNextPath,
+  signedInDestination,
+  withNext,
+} from '../src/lib/domain/auth-return.ts'
 
 const root = process.cwd()
 const authApiDir = path.join(root, 'src/app/api/auth')
@@ -209,4 +217,106 @@ for (const [name, source] of [
 
 assert.match(loginForm, /fetch\('\/api\/auth\/send-otp'/, 'LoginForm must post to /api/auth/send-otp')
 assert.match(verifyForm, /fetch\('\/api\/auth\/verify-otp'/, 'VerifyForm must post to /api/auth/verify-otp')
-assert.match(verifyPage, /redirect\('\/login'\)/, '/verify with no phone in the URL must send the visitor back')
+assert.match(verifyPage, /redirect\('\/login'\)/, '/verify with no phone cookie must send the visitor back')
+
+// -----------------------------------------------------------------------------
+// 7. Issue #136 — `next` survives the whole flow, onboarding runs once, the
+//    phone stays out of the URL, /dashboard does not 500 without env, and an
+//    error boundary exists.
+// -----------------------------------------------------------------------------
+
+// The return path is a same-origin absolute path or nothing. An open redirect
+// through the sign-in flow is the classic phishing hop.
+for (const good of ['/board', '/spots/Horner-Rd', '/dashboard?checkout=failed', '/a/b/c']) {
+  assert.equal(safeNextPath(good), good, `${good} is a safe next`)
+}
+for (const bad of [
+  '//evil.example',
+  '\\\\evil.example',
+  '/\\evil.example',
+  'https://evil.example/',
+  'javascript:alert(1)',
+  'board',
+  '',
+  '/with space',
+  '/ctrl\u0000char',
+  `/${'x'.repeat(300)}`,
+  null,
+  undefined,
+  42,
+  ['/board'],
+]) {
+  assert.equal(safeNextPath(bad), undefined, `${JSON.stringify(bad)} must be rejected as a next path`)
+}
+assert.equal(withNext('/verify', '/board'), '/verify?next=%2Fboard')
+assert.equal(withNext('/onboarding?onboarding=failed', '/board'), '/onboarding?onboarding=failed&next=%2Fboard')
+assert.equal(withNext('/verify', undefined), '/verify')
+assert.equal(signedInDestination('/board'), '/board')
+assert.equal(signedInDestination('//evil.example'), DEFAULT_SIGNED_IN_PATH, 'a bad next falls back to the dashboard, never through')
+assert.equal(signedInDestination(undefined), '/dashboard')
+
+// The placeholder is exactly what handle_new_member() (0001) writes.
+const foundation136 = read('supabase/migrations/0001_rebuild_foundation.sql')
+assert.match(foundation136, /'member-' \|\| substr\(new\.id::text, 1, 8\)/, "the trigger's placeholder shape is what the skip keys on")
+assert.equal(isPlaceholderDisplayName('member-0a1b2c3d'), true)
+assert.equal(isPlaceholderDisplayName('member-0A1B2C3D'), false, 'uuid text is lower-case hex')
+assert.equal(isPlaceholderDisplayName('member-0a1b2c3'), false)
+assert.equal(isPlaceholderDisplayName('Kalai'), false)
+assert.equal(isPlaceholderDisplayName(''), false)
+assert.equal(isPlaceholderDisplayName(null), false)
+
+// `next` is carried: login page -> LoginForm -> /verify -> VerifyForm -> /onboarding -> action.
+assert.match(loginPage, /safeNextPath\(resolvedSearchParams\?\.next\)/, '/login reads and sanitises ?next=')
+assert.match(loginPage, /<LoginForm next=\{next\}/, 'and hands it to the form')
+assert.match(loginForm, /router\.push\(withNext\('\/verify', next\)\)/, 'LoginForm carries next to /verify')
+assert.match(verifyPage, /safeNextPath\(resolvedSearchParams\?\.next\)/, '/verify reads and sanitises ?next=')
+assert.match(verifyForm, /router\.push\(withNext\('\/onboarding', next\)\)/, 'VerifyForm carries next to /onboarding')
+assert.match(onboardingPage, /safeNextPath\(resolvedSearchParams\?\.next\)/, '/onboarding reads and sanitises ?next=')
+assert.match(onboardingPage, /redirect\(signedInDestination\(next\)\)/, 'a returning member skips straight to next')
+assert.match(onboardingPage, /!isPlaceholderDisplayName\(profile\.displayName\)/, 'the skip keys on the placeholder name, not on "has a row"')
+assert.match(onboardingActions, /safeNextPath\(formData\.get\('next'\)\)/, 'the action re-sanitises the hidden next field')
+assert.match(onboardingActions, /signedInDestination\(next\)/, 'and honours it on success')
+const onboardingForm136 = read('src/components/OnboardingForm.tsx')
+assert.match(onboardingForm136, /name="next" value=\{next\}/, 'the form carries next through the post')
+
+// The phone number stays out of the URL: cookie set on send, read on /verify,
+// cleared on verify.
+const sendOtpSource136 = read('src/lib/api/send-otp-route.ts')
+const verifyOtpSource136 = read('src/lib/api/verify-otp-route.ts')
+assert.equal(OTP_PHONE_COOKIE, 'sl_otp_phone')
+assert.equal(/verify\?phone=/.test(loginForm), false, 'LoginForm must not put the phone in the query string')
+assert.match(sendOtpSource136, /response\.cookies\.set\(OTP_PHONE_COOKIE, phone, \{/, 'send-otp sets the phone cookie on success')
+assert.match(sendOtpSource136, /httpOnly: true/, 'the phone cookie is httpOnly')
+assert.match(sendOtpSource136, /maxAge: OTP_PHONE_COOKIE_MAX_AGE_SECONDS/, 'and short-lived')
+assert.match(verifyOtpSource136, /response\.cookies\.set\(OTP_PHONE_COOKIE, '', \{[^}]*maxAge: 0/, 'verify-otp clears it on success')
+assert.match(verifyPage, /cookieStore\.get\(OTP_PHONE_COOKIE\)\?\.value/, '/verify reads the phone from the cookie')
+assert.equal(/searchParams\)\?\.phone|phone\?: string/.test(verifyPage), false, '/verify no longer reads the phone from the URL')
+
+// The resend cooldown is visible and the button cannot be double-tapped; a
+// rate-limited verify is a terminal state; start over is always offered.
+assert.match(verifyForm, /OTP_RESEND_COOLDOWN_SECONDS/, 'the cooldown is the published D-8 figure')
+assert.match(verifyForm, /Resend code in \$\{cooldown\}s/, 'the cooldown is shown as a countdown')
+assert.match(verifyForm, /disabled=\{resendDisabled\}/, 'resend is disabled during the cooldown and while in flight')
+assert.match(verifyForm, /if \(resending \|\| cooldown > 0\) return/, 'a second tap during either is a no-op')
+assert.match(verifyForm, /kind === 'rate_limited'\) setLockedOut\(true\)/, 'a rate-limited verify locks the field')
+assert.match(verifyForm, /Start over/, 'a way back to /login is always offered')
+
+// /dashboard: a client that cannot be constructed is not "signed out", and it
+// is not a 500 either.
+const dashboardPage136 = read('src/app/dashboard/page.tsx')
+assert.match(dashboardPage136, /try \{\s*const \{ data: auth \} = await \(await createClient\(\)\)\.auth\.getUser\(\)/, 'the session read is inside a try')
+assert.match(dashboardPage136, /redirect\('\/login\?next=\/dashboard'\)/, 'a signed-out visitor comes back here after sign-in')
+assert.ok(
+  dashboardPage136.indexOf('} catch {') < dashboardPage136.indexOf("redirect('/login?next=/dashboard')"),
+  'the redirect decision is made after the try/catch, so a thrown client never becomes a redirect'
+)
+
+// The error boundary exists, is a client component (Next requires it), keeps
+// the fault ours, and never prints error.message.
+const errorBoundary136 = read('src/app/error.tsx')
+assert.match(errorBoundary136, /^['"]use client['"]/m, 'error.tsx must be a client component')
+assert.match(errorBoundary136, /reset: \(\) => void/, 'it must accept reset()')
+assert.match(errorBoundary136, /onClick=\{reset\}/, 'and offer it')
+assert.match(errorBoundary136, /on our end/, 'the fault is ours, said plainly')
+assert.equal(/\{error\.message\}/.test(errorBoundary136), false, 'error.message is operator text and is never rendered')
+assert.equal(/Something went wrong/.test(errorBoundary136), false, 'no generic copy')

@@ -68,7 +68,10 @@ export default function ReserveSeatButton({ offerId, expectedRevision, disabled 
         return
       }
 
-      setMessage({ text: 'Reserved.', retryable: false })
+      // What happens next, in one line (issue #140): the driver confirms the
+      // ride before the window; the seat now shows under "Yours" above, with
+      // a release control if plans change.
+      setMessage({ text: 'Reserved. The driver confirms before the window; your seat is listed under Yours.', retryable: false })
       setIdempotencyKey(null)
       router.refresh()
     } catch {

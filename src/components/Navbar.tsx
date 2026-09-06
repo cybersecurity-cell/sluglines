@@ -38,6 +38,10 @@ export default function Navbar() {
   const itemBase = 'rounded-md px-3 text-sm font-semibold transition-colors inline-flex items-center min-h-[44px]'
   const itemActive = 'bg-[#EAF2ED] text-[#1F5C33]'
   const itemIdle = 'text-slate-600 hover:bg-stone-100 hover:text-[#17202A]'
+  // Sign-in is the one control on this bar that is not a content link (issue
+  // #135: nothing in the IA reached `/login` except the footer). Outlined in
+  // the §10 accent so it reads as an action, not another section.
+  const signIn = 'border border-[#2E7D46]/40 text-[#2E7D46] hover:bg-[#EAF2ED]'
 
   return (
     <nav className="sticky top-0 z-50 border-b border-stone-200 bg-white/95 backdrop-blur">
@@ -108,6 +112,10 @@ export default function Navbar() {
               </div>
             )}
           </div>
+
+          <Link href="/login" aria-current={isActive('/login') ? 'page' : undefined} className={clsx(itemBase, 'ml-2', signIn)}>
+            Sign in
+          </Link>
         </div>
 
         <button
@@ -149,6 +157,17 @@ export default function Navbar() {
                 {link.label}
               </Link>
             ))}
+          </div>
+
+          <div className="mt-3 border-t border-stone-200 pt-3">
+            <Link
+              href="/login"
+              onClick={() => setMenuOpen(false)}
+              aria-current={isActive('/login') ? 'page' : undefined}
+              className={clsx(itemBase, 'w-full justify-center', signIn)}
+            >
+              Sign in
+            </Link>
           </div>
         </div>
       )}

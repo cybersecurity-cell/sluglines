@@ -28,25 +28,33 @@
  * is `0002`'s 200-character bound minus the longer prefix (`publish:`, 8
  * chars), so a derived key can never be truncated into a collision with another.
  *
- * ONE CORRIDOR PAIR
+ * ONE CORRIDOR PAIR, RESOLVED PER REQUEST
  * ---------------------------------------------------------------------------
- * `origin_location_id`/`destination_location_id` carry no FK — the P1
- * `locations` directory (`0004`) is not applied anywhere (see
- * `lib/domain/corridor.ts`) — so this slice does not accept arbitrary location
- * ids from the client at all. The caller picks a *direction* along the one
- * corridor pair this PR ships, and the route resolves the two ids server-side.
- * That is what keeps this slice's explicit one-corridor scope real rather than
- * advisory.
+ * This route does not accept location ids from the client at all. The caller
+ * picks a *direction* along the one corridor pair this slice ships, and the
+ * route resolves the two ids server-side — by slug, from the `locations` rows
+ * on the database serving the request (`lib/corridor-locations.ts`), never from
+ * a committed literal. `origin_location_id`/`destination_location_id` carry a
+ * real foreign key to `locations` (`0004`, `APPLIED: production`, which seeds
+ * both `horner-rd` and `lenfant-plaza`), so a literal uuid can only ever raise
+ * 23503; the first version of this route did exactly that on every request
+ * (issue #132, D-82). The lookup runs after the session check and before
+ * either RPC: an unresolvable corridor is refused as `unknown_location` (422,
+ * not retryable) without spending a round trip on an insert that cannot
+ * succeed, and a 23503 that reaches the constraint anyway maps to the same
+ * status and kind (`transition-http.ts`).
  */
 
 import { NextResponse } from 'next/server'
 import type { NextRequest } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
 import { IDEMPOTENCY_KEY_MIN_LENGTH, REVISION_START } from '@/lib/domain/offer-transitions.ts'
-import { corridorLocationsForDirection, isCorridorDirection } from '@/lib/domain/corridor.ts'
+import { corridorLocationIdsForDirection, isCorridorDirection } from '@/lib/domain/corridor.ts'
 import type { CorridorDirection } from '@/lib/domain/corridor.ts'
+import { readPilotCorridor } from '@/lib/corridor-locations.ts'
 import {
   UNAUTHENTICATED_STATUS,
+  UNKNOWN_LOCATION_STATUS,
   transitionError,
   transitionFailure,
   transitionSuccess,
@@ -161,14 +169,25 @@ export function offerCreateRoute() {
       return NextResponse.json(parsed.body, { status: parsed.status })
     }
 
-    const { origin, destination } = corridorLocationsForDirection(parsed.value.direction)
+    // Resolved through the caller's own client, so the read is scoped by
+    // `locations_select_active` like every other member read. A miss names the
+    // slug in the server log (it is a deployment fact, not a user error) and
+    // refuses the request as permanent — no Retry button for a row a retry
+    // cannot create.
+    const corridor = await readPilotCorridor(supabase)
+    if (!corridor.ok) {
+      console.error(`POST /api/offers: ${corridor.reason}`)
+      return NextResponse.json(transitionError('unknown_location'), { status: UNKNOWN_LOCATION_STATUS })
+    }
+
+    const { originId, destinationId } = corridorLocationIdsForDirection(corridor.corridor, parsed.value.direction)
 
     // The actor is not passed: offer_create() and offer_publish() both read
     // auth.uid() themselves, same as every other M3 entry point.
     const { data: offerId, error: createError } = await supabase.rpc('offer_create', {
       p_poster_role: parsed.value.posterRole,
-      p_origin_location_id: origin.id,
-      p_destination_location_id: destination.id,
+      p_origin_location_id: originId,
+      p_destination_location_id: destinationId,
       p_window_start: parsed.value.windowStart,
       p_window_end: parsed.value.windowEnd,
       p_seats_total: parsed.value.seatsTotal,

@@ -1,5 +1,6 @@
 import { redirect } from 'next/navigation'
 import OnboardingForm from '@/components/OnboardingForm'
+import { isPlaceholderDisplayName, safeNextPath, signedInDestination } from '@/lib/domain/auth-return'
 import { getActiveHomeSpotOptions, getAuthenticatedUserId, getMemberProfile } from '@/lib/onboarding'
 
 /**
@@ -15,6 +16,16 @@ import { getActiveHomeSpotOptions, getAuthenticatedUserId, getMemberProfile } fr
  * is why this is the only page in the identity flow that requires a session
  * to *view*: `/spots` and the fast board's aggregates stay public. This page
  * is reachable only after `/verify` has already produced one.
+ *
+ * ONCE, NOT EVERY TIME (issue #136)
+ * ---------------------------------------------------------------------------
+ * rev. 5.3 §10 (3) says onboarding runs once. `/verify` cannot know whether a
+ * member is new, so it always lands here — and this page decides: a member
+ * whose display name is no longer `handle_new_member()`'s placeholder has
+ * been through this already and is sent straight on to `next` (the page they
+ * were trying to reach) or the dashboard. A member whose profile cannot be
+ * read is shown the form, not bounced — the form is harmless to repeat, and
+ * "could not read" is not evidence of anything.
  */
 export const dynamic = 'force-dynamic'
 
@@ -26,7 +37,7 @@ export const metadata = {
 export default async function OnboardingPage({
   searchParams,
 }: {
-  searchParams?: Promise<{ onboarding?: string }>
+  searchParams?: Promise<{ onboarding?: string; next?: string }>
 }) {
   const userId = await getAuthenticatedUserId()
   if (userId === null) {
@@ -38,6 +49,11 @@ export default async function OnboardingPage({
     getActiveHomeSpotOptions(),
     searchParams,
   ])
+  const next = safeNextPath(resolvedSearchParams?.next)
+
+  if (profile !== null && !isPlaceholderDisplayName(profile.displayName)) {
+    redirect(signedInDestination(next))
+  }
 
   return (
     <div className="bg-white text-slate-950">
@@ -57,6 +73,7 @@ export default async function OnboardingPage({
           currentLocationId={profile?.locationId ?? null}
           homeSpots={homeSpots}
           failed={resolvedSearchParams?.onboarding === 'failed'}
+          next={next}
         />
       </div>
     </div>

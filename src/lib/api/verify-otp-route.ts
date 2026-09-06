@@ -24,6 +24,7 @@
 import { NextResponse } from 'next/server'
 import type { NextRequest } from 'next/server'
 import { isOtpCode, normalizePhone } from '@/lib/domain/phone.ts'
+import { OTP_PHONE_COOKIE } from '@/lib/domain/auth-return.ts'
 import { createClient } from '@/lib/supabase/server.ts'
 import { createServiceClient } from '@/lib/supabase/service.ts'
 import { createDurableRateLimiter } from './durable-rate-limit.ts'
@@ -109,5 +110,9 @@ export async function verifyOtpHandler(request: NextRequest): Promise<NextRespon
     return NextResponse.json(otpError(kind), { status: otpStatus(kind) })
   }
 
-  return NextResponse.json({ ok: true, member_id: data.user?.id ?? null })
+  // The attempt is over; the phone cookie send-otp-route.ts set has nothing
+  // left to carry (issue #136).
+  const response = NextResponse.json({ ok: true, member_id: data.user?.id ?? null })
+  response.cookies.set(OTP_PHONE_COOKIE, '', { httpOnly: true, sameSite: 'lax', path: '/', maxAge: 0 })
+  return response
 }
