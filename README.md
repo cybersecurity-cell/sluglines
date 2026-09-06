@@ -1,121 +1,66 @@
-# Sluglines 🚗
+# Sluglines
 
-> HOV-3 carpool coordination for Northern Virginia commuters
+> Slug lines and HOV-3 carpools in Northern Virginia — the directory, the rules, and a coordination board for one pilot corridor.
 
-Sluglines helps commuters coordinate informal carpools ("slug lines") at designated pickup spots to leverage HOV-3 express lanes on I-95, I-395, and I-66.
+Slugging is casual carpooling: at designated lots on I-95, I-395 and I-66, drivers pick up strangers to meet the HOV-3 requirement, and riders get a free commute. No money changes hands. It has worked for decades on nothing but a queue and a destination called out of a window. This repository is the rebuild of `sluglines.com`, the community's site since 2016.
 
-## What is Slugging?
+## What is here
 
-Slugging is a unique form of commuter carpooling unique to Northern Virginia where strangers share rides to use HOV-3 lanes. No money changes hands — drivers get HOV access, riders get a free commute. It's been happening for decades.
+- **The spot directory** — 50 pickup locations across three corridors, with directions, peak hours, parking and the lines each lot runs to and from, served at `/spots` and `/slug_pickup`. Public, no account needed.
+- **Public counts** — aggregate rider and driver counts per spot on the home page and every spot page, read through SECURITY DEFINER functions so no member row is ever exposed.
+- **How slugging works and the rules** — the community's etiquette, migrated from the legacy site.
+- **The archive** — every page and post from the WordPress site, served at its original URL or redirected, with a branded 410 for the forum paths that are gone for good.
+- **Sign-in by phone code**, a display name and a home spot — the only identity a member has. Other members never see a phone number.
+- **Check-in** — a member at a spot can say so from the spot page; drivers see the count, not the name.
+- **The board** for one pilot corridor, Horner Rd ↔ L'Enfant Plaza: post a seat, reserve one, cancel or release your own. Offers move through a revision-checked, idempotent state machine in SQL.
 
-## Features
+## What is not here (yet)
 
-- 🟢 **Real-time board** — Live driver & rider counts at each spot, powered by Supabase real-time subscriptions
-- 📍 **Spot directory** — All major pickup locations with directions, peak hours, and Google Maps links
-- ℹ️ **How It Works** — Full guide for new sluggers (riders & drivers)
-- 👤 **User accounts** — Sign up to save your home spot and commute preferences
-- 📱 **Mobile app** — iOS and Android apps sharing the same Supabase backend
+- No mobile app. The `/app` page is preserved from the 2018 site with a note saying so.
+- No live updates. The board re-renders on a 30-second poll while the tab is open; there is no Supabase Realtime subscription in this code.
+- No SMS provider wired in, so sign-in cannot yet send a code in production (issue #52).
+- Every migration after `0026` is written and not applied; see `supabase/migrations/README.md` for what "applied" means here and who may do it.
 
-## Tech Stack
+Open work lives in [GitHub Issues](https://github.com/cybersecurity-cell/sluglines/issues), and nowhere else.
+
+## Stack
 
 | Layer | Technology |
 |---|---|
-| Frontend | Next.js 14 (App Router) + TypeScript |
-| Styling | Tailwind CSS |
-| Backend | Supabase (PostgreSQL + Realtime + Auth) |
+| App | Next.js 16 (App Router), TypeScript, Tailwind CSS 4 |
+| Data | Supabase — Postgres with row-level security and SECURITY DEFINER writers, Supabase Auth (phone OTP) |
 | Hosting | Vercel |
-| Mobile | React Native + Expo (separate repo) |
+| Tests | Node built-ins (`node:assert`), Playwright, axe, Lighthouse budgets, a SQL analyser (`scripts/sql-lint.mjs`) |
 
-## Getting Started
+## Working in this repository
 
-### 1. Clone & Install
-
-```bash
-git clone https://github.com/cybersecurity-cell/sluglines.git
-cd sluglines
-npm install
-```
-
-### 2. Set up Supabase
-
-1. Create a free project at [supabase.com](https://supabase.com)
-2. Go to **SQL Editor** and run the contents of `supabase/schema.sql`
-3. Go to **Database > Replication** and enable real-time for `spot_status` table
-4. Copy your project URL and anon key from **Settings > API**
-
-### 3. Configure Environment
+Read [`AGENTS.md`](AGENTS.md) first. It is the contract every contributor and every agent works to: six independent gates, append-only migrations that nothing here applies, an append-only decision log, content preservation for the 400+ legacy routes, and a definition of done that requires a person to have seen the change working at the deployed URL.
 
 ```bash
-cp .env.example .env.local
-# Fill in your Supabase URL and anon key
+npm ci
+npm run test        # unit + schema harness; live-* suites skip without .env.preview.local
+npm run lint
+npm run typecheck
+npm run build
+npm run sql:check   # the SQL analyser + the seed generator's byte-for-byte check
+npm run e2e         # Playwright, desktop + mobile Chromium
 ```
 
-### 4. Run Development Server
+Run them as six commands, never one `&&` chain: a gate that stops the others from running hides what they would have said.
 
-```bash
-npm run dev
-# Open http://localhost:3000
-```
+To run the app locally, copy `.env.example` to `.env.local` and fill in the Supabase URL and anon key of a **preview branch** — never the production project. The live test suites refuse the production ref by design; keep it that way.
 
-## Deploy to Vercel
+## Where things live
 
-1. Push to GitHub (already done!)
-2. Go to [vercel.com](https://vercel.com) → **New Project**
-3. Import `cybersecurity-cell/sluglines`
-4. Add environment variables: `NEXT_PUBLIC_SUPABASE_URL` and `NEXT_PUBLIC_SUPABASE_ANON_KEY`
-5. Click **Deploy** — done! 🎉
-6. Point `sluglines.com` DNS to Vercel from GoDaddy dashboard
-
-## Project Structure
-
-```
-sluglines/
-├── src/
-│   ├── app/
-│   │   ├── layout.tsx          # Root layout with Navbar + Footer
-│   │   ├── page.tsx            # Home page
-│   │   ├── dashboard/page.tsx  # Live real-time board
-│   │   ├── spots/page.tsx      # Pickup spots directory
-│   │   ├── how-it-works/       # Slugging guide & FAQ
-│   │   └── globals.css         # Global styles + Tailwind
-│   ├── components/
-│   │   ├── Navbar.tsx          # Responsive navigation
-│   │   └── RealTimeBoard.tsx   # Live driver/rider counter
-│   └── lib/
-│       └── supabase/
-│           ├── client.ts       # Browser Supabase client
-│           └── server.ts       # Server Supabase client
-├── supabase/
-│   └── schema.sql              # Full database schema + seed data
-├── package.json
-├── tailwind.config.ts
-└── tsconfig.json
-```
-
-## Database Schema
-
-### `spot_status` (real-time)
-| Column | Type | Description |
-|---|---|---|
-| id | uuid | Primary key |
-| spot_name | text | e.g. "Pentagon City" |
-| location | text | Street address |
-| destination | text | e.g. "Pentagon / DC" |
-| drivers_waiting | integer | Current driver count |
-| riders_waiting | integer | Current rider count |
-| last_updated | timestamptz | Last count update |
-| is_active | boolean | Show/hide the spot |
-
-Counts reset daily at 6 AM via the `reset_daily_counts()` Supabase function (schedule with pg_cron or a Vercel cron job).
-
-## Roadmap
-
-- [ ] Push notifications when counts reach a threshold
-- [ ] Commute history & analytics
-- [ ] Estimated wait time prediction
-- [ ] React Native mobile app (Expo)
-- [ ] Admin dashboard for spot management
+| What | Where |
+|---|---|
+| Architecture and product plan | `Docs/consolidated-architecture.md` |
+| Decisions, D-1 onward | `Docs/DECISIONS.md` |
+| Feature intent | `Docs/intent/<feature>.md` |
+| Migrations and their posture | `supabase/migrations/`, starting with its `README.md` |
+| Dated records (handoffs, ADRs) | `Docs/<date>-<slug>.md` |
+| The legacy site's content | `src/data/legacy-site-content.json`, served by `src/lib/legacy-content.ts` |
 
 ## License
 
-MIT — feel free to use this for your own commuter community!
+MIT.

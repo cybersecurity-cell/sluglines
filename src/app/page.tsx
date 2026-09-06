@@ -10,12 +10,24 @@ import { getActiveSpotLocations } from '@/lib/spot-directory'
 
 const homePage = getLegacyPageByPath('/')
 
-export const metadata = homePage
-  ? buildLegacyMetadata(homePage)
-  : {
-      title: 'Sluglines - Connecting drivers and riders for better commute',
-      description: 'Connecting drivers and riders for better commute',
-    }
+// The legacy SEO strings ("Connecting drivers and riders for better commute")
+// are kept in the data file, which is the record of the old site, but the page
+// says what the site is now (issue #142). The canonical and Open Graph shape
+// still come from buildLegacyMetadata.
+const HOME_TITLE = 'Sluglines - Slug lines and HOV-3 carpools in Northern Virginia'
+const HOME_DESCRIPTION =
+  'The pickup directory for slug lines on I-95, I-395 and I-66, rider and driver counts at every spot, and how slugging works.'
+
+export const metadata = {
+  ...(homePage ? buildLegacyMetadata(homePage) : {}),
+  title: HOME_TITLE,
+  description: HOME_DESCRIPTION,
+  openGraph: {
+    ...(homePage ? buildLegacyMetadata(homePage).openGraph : {}),
+    title: HOME_TITLE,
+    description: HOME_DESCRIPTION,
+  },
+}
 
 /**
  * `/` — hero + live corridor status strip + directory entries (rev. 5.3 §8 M1).

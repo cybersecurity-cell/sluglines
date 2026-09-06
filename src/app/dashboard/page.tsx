@@ -51,7 +51,7 @@ export const dynamic = 'force-dynamic'
 export const metadata = {
   title: 'Fast Board - Sluglines',
   description:
-    'Every active Northern Virginia slug line with live rider and driver counts, your current check-in, and one-tap checkout.',
+    'Every active Northern Virginia slug line with rider and driver counts, your current check-in, and one-tap checkout.',
 }
 
 export default async function DashboardPage({

@@ -56,12 +56,14 @@ export default function RootLayout({
                   <span className="font-bold text-lg text-white" style={{ fontFamily: 'var(--font-syne), sans-serif' }}>Sluglines</span>
                 </div>
                 <p className="text-sm leading-relaxed mb-4" style={{ color: 'var(--muted)' }}>Connecting drivers and riders for better commute</p>
-                <p className="text-xs" style={{ color: 'var(--muted)' }}>admin@sluglines.com</p>
+                <p className="text-xs" style={{ color: 'var(--muted)' }}>
+                  <a href="mailto:admin@sluglines.com" className="hover:text-white transition-colors">admin@sluglines.com</a>
+                </p>
               </div>
               <div>
                 <h2 className="text-white font-semibold text-sm mb-4" style={{ fontFamily: 'var(--font-syne), sans-serif' }}>Quick Links</h2>
                 <ul className="space-y-2.5 text-sm" style={{ color: 'var(--muted)' }}>
-                  <li><Link href="/metroshutdown-2019" className="hover:text-white transition-colors">Metro Shutdown 2019</Link></li>
+                  <li><Link href="/lostfound" className="hover:text-white transition-colors">Lost &amp; Found</Link></li>
                   <li><Link href="/slugging-rules-and-etiquette" className="hover:text-white transition-colors">Slugging Rules and Etiquette</Link></li>
                 </ul>
               </div>
@@ -72,8 +74,7 @@ export default function RootLayout({
                   <li><Link href="/app" className="hover:text-white transition-colors">APP</Link></li>
                   <li><Link href="/blog" className="hover:text-white transition-colors">BLOG</Link></li>
                   <li><Link href="/news" className="hover:text-white transition-colors">NEWS</Link></li>
-                  <li><Link href="/login" className="hover:text-white transition-colors">LOGIN</Link></li>
-                  <li><Link href="/login" className="hover:text-white transition-colors">REGISTER</Link></li>
+                  <li><Link href="/login" className="hover:text-white transition-colors">SIGN IN</Link></li>
                 </ul>
               </div>
               <div>

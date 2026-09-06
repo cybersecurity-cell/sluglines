@@ -5577,3 +5577,55 @@ performed it. Issue #119 must close **before or with** issue #52, never after: #
 `POST /api/auth/send-otp` the ability to send a real SMS at all (this repo has no provider wired in
 yet), and an endpoint that can spend money without any account-level alarm watching it is the
 precise gap this entry exists to close before it opens.
+
+
+---
+
+## D-92 — The site's remaining untrue claims are corrected or qualified: the README describes this stack; `/app` says it is a 2018 page; the footer offers routes that exist under the names they have; the home title says what the site is; `/blog` and `/news` are two views of the archive; `Docs/intent/` exists. Issue #142
+
+**Date:** 2026-09-06
+
+### The decision
+
+- **`README.md`** is rewritten to describe what is here (directory, public counts, rules, archive,
+  phone sign-in, check-in, the one-corridor board) and what is not (no mobile app, no live updates,
+  no SMS provider, migrations after `0026` unapplied), the stack as the lockfile has it (Next.js 16,
+  Supabase Postgres + Auth, Vercel), the six gates, and where things live. It points at `AGENTS.md`
+  as the contract and never prints the production project ref.
+- **`/app`** keeps its migrated 2018 body verbatim (content preservation) and gains a `role="note"`
+  qualifier above it, rendered by a new optional `notice` prop on `LegacyContentPage`: the page is
+  preserved from 2018, the iOS and Android apps it describes are no longer maintained or available,
+  and checking in and finding a ride now happen on this website. *Rejected:* removing the page (the
+  legacy redirect inventory and the nav both reach it) and editing the migrated HTML.
+- **Footer**: `REGISTER` is gone (phone sign-in has no separate registration) and `LOGIN` is
+  `SIGN IN`; the "Metro Shutdown 2019" quick link is replaced by Lost & Found (`/lostfound`, a route
+  that exists and a §10 zone) — the 2019 page itself is still served at its URL; `admin@sluglines.com`
+  is a `mailto:` link.
+- **Home metadata**: the page title is "Sluglines - Slug lines and HOV-3 carpools in Northern Virginia"
+  with a description of what the site offers; the legacy tagline stays in the data file, which is the
+  record of the old site, and `buildLegacyMetadata` still supplies the canonical and Open Graph shape.
+  `/dashboard`'s description drops "live": the counts are per-request aggregates. `/board`'s
+  description was already true.
+- **`/blog` and `/news`** rendered the identical list, because the news filter matched terms against
+  the body and every post about slugging mentions slugging. News is now a post whose *title* names an
+  external event (Metro work, HOV or express-lane changes, closures, moves, parking); the blog is the
+  rest. Two views of one archive, disjoint by construction (`isNewsPost`).
+- **`/slugging-rules-and-etiquette`** stays as a one-line alias of `/slugging-rules`: it is a legacy
+  URL in the redirect inventory, and an alias is not a second copy.
+- **`Docs/intent/`** exists with one file per feature in flight — `coordination-board.md`,
+  `presence.md`, `sign-in.md` — each with Why, Decisions (with rejected alternatives), Invariants and
+  Done, as `AGENTS.md` specifies.
+
+### The evidence
+
+Issue #142's list, each verified in source before the change; `tests/site-claims.test.mjs` (new) pins
+every item, including that no post appears on both index pages and that every intent file carries the
+four sections.
+
+### Not done
+
+Nothing under `supabase/` changes; no live test applies.
+
+**Status:** DONE for the code and documents (a documentation issue closes on review of the diff, not
+on a deployed check); the `/app` qualifier and the footer are, like everything else, first seen at
+the deployed URL when #47 clears.
