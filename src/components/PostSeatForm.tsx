@@ -168,7 +168,7 @@ export default function PostSeatForm() {
               className={`min-h-[44px] rounded-lg border px-4 text-sm font-bold transition-colors ${
                 leavingIn === minutes
                   ? 'border-sky-700 bg-sky-700 text-white'
-                  : 'border-slate-300 bg-white text-slate-950 hover:bg-slate-50'
+                  : 'border-slate-500 bg-white text-slate-950 hover:bg-slate-50'
               }`}
             >
               {minutes} min
