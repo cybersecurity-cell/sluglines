@@ -314,7 +314,7 @@ for (const stmt of guard.statements.filter((st) => st.kind === 'create_function'
   assert.equal(stmt.securityDefiner, true, `${stmt.fn} must remain SECURITY DEFINER`)
   assert.equal(stmt.pinsSearchPath, true, `${stmt.fn} must still pin search_path`)
 }
-assert.match(guard.sql, /--\s*APPLIED:\s*no\b/, '0029 ships unapplied; applying it is a separate authorised act')
+assert.match(guard.sql, /--\s*APPLIED:\s*(preview|production)\b/, '0029 is rehearsed on preview (D-96); a production apply is a separate authorised act')
 
 const noShowHeader0022 = /create or replace function public\.report_no_show\(([^)]*)\)\s*returns\s+(\w+)/i.exec(functionsCode)
 const noShowHeader0029 = /create or replace function public\.report_no_show\(([^)]*)\)\s*returns\s+(\w+)/i.exec(guardCode)

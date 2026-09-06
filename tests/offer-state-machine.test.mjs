@@ -720,7 +720,7 @@ assert.equal(isConflictError({ code: stale.errcode }), true, 'the predicted code
   assert.match(sql0027, /revoke all on function public\.offer_cancel\(uuid, integer, text\) from public;/)
   assert.match(sql0027, /revoke all on function public\.offer_cancel\(uuid, integer, text\) from anon;/)
   assert.match(sql0027, /grant execute on function public\.offer_cancel\(uuid, integer, text\) to authenticated;/)
-  assert.match(sql0027, /--\s*APPLIED:\s*no\b/, '0027 ships unapplied; applying it is a separate authorised act')
+  assert.match(sql0027, /--\s*APPLIED:\s*(preview|production)\b/, '0027 is rehearsed on preview (D-96); a production apply is a separate authorised act')
 }
 
 // =============================================================================
@@ -790,7 +790,7 @@ assert.equal(isConflictError({ code: stale.errcode }), true, 'the predicted code
   assert.match(sql0028, new RegExp(`revoke all on function public\\.${sig} from public;`))
   assert.match(sql0028, new RegExp(`revoke all on function public\\.${sig} from anon;`))
   assert.match(sql0028, new RegExp(`grant execute on function public\\.${sig} to authenticated;`))
-  assert.match(sql0028, /--\s*APPLIED:\s*no\b/, '0028 ships unapplied; applying it is a separate authorised act')
+  assert.match(sql0028, /--\s*APPLIED:\s*(preview|production)\b/, '0028 is rehearsed on preview (D-96); a production apply is a separate authorised act')
 
   // The three indexes, each `if not exists`, each on the columns a reader
   // actually filters on.

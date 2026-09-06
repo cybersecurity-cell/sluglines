@@ -1,7 +1,11 @@
 -- =============================================================================
 -- 0027_offer_cancel_poster_or_moderator.sql
 --
--- APPLIED: no
+-- APPLIED: preview
+-- TARGET:  Supabase preview branch phase-3-4-staging (project ref xqonrogwwytkmqfinszp),
+--          applied 2026-09-06 through the Supabase MCP connector's apply_migration, one
+--          file per apply, as the rehearsal for the production apply. Production has
+--          NOT run this file. See Docs/DECISIONS.md D-96 and supabase/migrations/README.md.
 --
 -- SECURITY FIX. Issue #133, `Docs/DECISIONS.md` D-83. Re-creates
 -- `public.offer_cancel(uuid, integer, text)` so that only the offer's poster
@@ -70,10 +74,10 @@
 -- `anon`, so this file is safe to apply before or after `0026`. The body reads
 -- `auth.uid()` (R12's guard branch) as it always did.
 --
--- ==> APPLIED: no. Writing this file is the job of the change that adds it;
---     applying it is a separate, explicitly authorised act, rehearsed on a
---     preview branch first (README, "Applying a migration"). Until it is
---     applied, the defect is live on every database that runs `0002`.
+-- ==> APPLIED: preview (phase-3-4-staging, 2026-09-06, D-96). Writing this
+--     file was the job of the change that added it; the production apply is a
+--     separate, explicitly authorised act still pending (README, "Applying a
+--     migration"). Until it runs there, the defect is live on production.
 -- =============================================================================
 
 create or replace function public.offer_cancel(

@@ -128,13 +128,13 @@ assert.ok(revokeAnon, '0026_revoke_anon_execute.sql must exist')
 assert.equal(revokeAnon.ordinal, 26)
 assert.match(
   revokeAnon.sql,
-  /--\s*APPLIED:\s*no\b/,
-  '0026 must ship APPLIED: no -- writing it is the job, applying it is a separate authorised act'
+  /--\s*APPLIED:\s*(preview|production)\b/,
+  '0026 is applied to preview (D-96); the production apply is a separate authorised act (D-79)'
 )
-assert.equal(
-  /--\s*TARGET:/.test(revokeAnon.sql),
-  false,
-  '0026 carries no TARGET line -- it has not been applied anywhere to have a target'
+assert.match(
+  revokeAnon.sql,
+  /--\s*TARGET:\s*\S/,
+  '0026 is applied to preview (D-96), so it must carry a TARGET line naming the branch and the date'
 )
 
 // 0011, 0023 and 0025 are APPLIED: production / carry statements 0026 must

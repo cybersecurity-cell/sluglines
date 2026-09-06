@@ -1,7 +1,11 @@
 -- =============================================================================
 -- 0028_offer_create_bounds_and_indexes.sql
 --
--- APPLIED: no
+-- APPLIED: preview
+-- TARGET:  Supabase preview branch phase-3-4-staging (project ref xqonrogwwytkmqfinszp),
+--          applied 2026-09-06 through the Supabase MCP connector's apply_migration, one
+--          file per apply, as the rehearsal for the production apply. Production has
+--          NOT run this file. See Docs/DECISIONS.md D-96 and supabase/migrations/README.md.
 --
 -- Issue #137, `Docs/DECISIONS.md` D-87. Two things `0002` left out of the
 -- offers table and its one client entry point:
@@ -77,9 +81,10 @@
 -- this runs inside a migration transaction on a table with, today, a handful
 -- of rows.
 --
--- ==> APPLIED: no. Writing this file is the job of the change that adds it;
---     applying it is a separate, explicitly authorised act, rehearsed on a
---     preview branch first (README, "Applying a migration").
+-- ==> APPLIED: preview (phase-3-4-staging, 2026-09-06, D-96). Writing this
+--     file was the job of the change that added it; the production apply is a
+--     separate, explicitly authorised act still pending (README, "Applying a
+--     migration").
 -- =============================================================================
 
 create or replace function public.offer_create(

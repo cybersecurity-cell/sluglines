@@ -6441,3 +6441,128 @@ committed; the saving is larger than the 1,396 bytes the budget was over by and 
 
 **Status:** DONE. The Lighthouse job passed at 180,224 on PR #161's head with the figures above, which
 are also on #160; the rendered markup is verifiable in the build.
+
+---
+
+## D-96 — `0027`–`0030` rehearsed on the preview branch `phase-3-4-staging`; the four live sections and both manual checks pass at SQL level; the branch was first brought from `0008`/D-75 to `0026`. Production apply PENDING. Issues #133, #137, #138, #139
+
+**Date:** 2026-09-06
+**Target:** preview branch `phase-3-4-staging`, project ref `xqonrogwwytkmqfinszp`. **Production
+`bwpguotjzczmieeepczf` was not touched**: every write in this session named the branch ref before it ran,
+and the only tool that could reach any database was the Supabase MCP connector's `execute_sql` /
+`apply_migration`, always with that ref. This entry records the rehearsal D-83, D-87, D-88 and D-89 each
+name as the first half of their `PENDING → DONE` condition. It does not change those entries.
+
+### What the branch actually had before this session
+
+The README's table said `0001`–`0008` (2026-08-22) and D-75 said `0011`–`0025` (2026-09-02). Probed
+rather than assumed:
+
+- `supabase_migrations.schema_migrations` stopped at `0008` — D-75's guarded `pg`-client apply wrote no
+  ledger rows, so the ledger under-reports the branch by 15 files.
+- Every table and function `0011`–`0025` create was present (26 tables, 72 functions), so D-75's apply
+  is real; only its ledger record is missing.
+- `0009` was **not** applied: 41 of the 50 `locations` rows differed from the file's `values` list (the
+  en-dash peak-hour strings and the long descriptions), even though `0009` is `APPLIED: production`.
+- `0010` was **not** applied: `public.get_public_location` did not exist.
+- `0026` was **not** applied: 46 SECURITY DEFINER member entry points still reported
+  `has_function_privilege('anon', …, 'execute') = true` (`offer_cancel`, `report_no_show`,
+  `create_recurring_offer`, `get_leaderboard`, `get_dashboard_summary`, …), which is the D-79 gap.
+
+So "the branch lags" meant `0009`, `0010` and `0026`, not `0011`–`0026`.
+
+### What was applied, in order, one file per `apply_migration`
+
+| ordinal | `schema_migrations` version (UTC) | post-apply check |
+|---|---|---|
+| `0009` | `20260906194026` | the five refreshed columns over all 50 rows hash to `844f602433a5d0dfc1211c8f9203b7d1` both in Postgres and when recomputed from the file's `values` list |
+| `0010` | `20260906201614` | `get_public_location('bobs-old-keene-mill-rd')` returns one row; anon-callable by design |
+| `0026` | `20260906202030` | of 68 SECURITY DEFINER functions, exactly 4 remain anon-callable: the two `0005` aggregates, `0008`'s health reader, `0010`'s location read |
+| `0027` | `20260906205400` | `offer_cancel` body carries `caller_is_moderator()` and no `reservations` lookup |
+| `0028` | `20260906205812` | `offer_create` body carries the 4-hour, 14-day and `PT429` guards; the three indexes exist |
+| `0029` | `20260906211125` | `report_no_show` refuses outside `ARRIVING`/`PICKED_UP`; `no_show_reports_select_subject` exists as `for select to authenticated using (rider_id = auth.uid())`; `idx_no_show_reports_reporter` exists |
+| `0030` | `20260906212411` | `create_recurring_offer` consults `pg_timezone_names`; the sweep body carries the sub-block and `instantiate_failed` handler; the sweep is revoked from `anon` and `authenticated` |
+
+The statements sent were the files' statements verbatim; the header comments were not sent. `sql:check`
+before and after the header edits below: 30 migrations, 564 statements, 0 violations.
+
+### How the checks ran, and why not through `tests/live-rls.test.mjs`
+
+Two blockers, both discovered rather than assumed:
+
+1. **No service-role key.** The connector hands out the branch URL and publishable keys, never
+   `service_role`, and no `.env.preview.local` exists. Nobody was present to paste one.
+2. **The session sandbox cannot reach Supabase at all.** Its egress proxy answers `CONNECT … 403` for
+   every `*.supabase.co` host (the branch, the API host, the production host alike). A PostgREST
+   driver mirroring the four sections was written (`tmp/`, gitignored) and failed at the first GoTrue
+   sign-in with the proxy's refusal. So even with a key, the suite could not have run from here.
+
+The fallback the brief names was therefore the only path: **SQL-level rehearsal through `execute_sql`
+on the branch.** Three throwaway members were created as `auth.users` rows (the `0001` trigger made
+their `members` rows, role `member`); each call impersonated a member by setting
+`request.jwt.claim.sub` and `request.jwt.claims`, which is exactly what `auth.uid()` reads inside the
+SECURITY DEFINER functions; RLS reads ran under `set local role authenticated`, confirmed by
+`current_user`. Every assertion of the `#133`, `#137`, `#138` and `#139` sections was reproduced in one
+transaction with each refusal caught in a sub-block and its SQLSTATE and message recorded. **36
+observations, 0 failed**, at 2026-09-06 22:41 UTC:
+
+| section | what the database answered |
+|---|---|
+| `#133` | rider holding a live seat: `42501 only the poster or a moderator may cancel this offer`; outsider: same; offer unchanged (`PARTIALLY_RESERVED`, revision 3, `seats_taken` 1) and the rider's seat still `ACTIVE`; poster's cancel is one hop (3 → 4) and the rider then reads their seat as `CANCELLED` |
+| `#137` | 5-hour window, 15-day start and 2-hour-old start each `22023` with the file's messages; four more published offers bring the poster to 5; the sixth is `PT429 too many open offers (limit 5); cancel one first` |
+| `#138` | `report_no_show` while `CONFIRMED`: `55000`; by the rider: `42501`; rider sees 0 rows; after `offer_advance` to `ARRIVING` the report succeeds, the rider reads 1 row naming themself and the poster, the outsider reads 0, the offer reads `CANCELLED` |
+| `#139` | `'garbage'`: `22023 timezone must be a name from pg_timezone_names, got garbage`; `'America/New_York'` stored and cancelled |
+
+The two manual checks the issues name, same session:
+
+- **#137, an offer ending in 2099** is rejected `22023 window may not be longer than 4 hours`; one starting
+  in 2099 is rejected `22023 window_start must be within 14 days`.
+- **#139, a garbage template plus a sweep** (22:47 UTC): a valid all-days template was created through
+  `create_recurring_offer`, a second row with `timezone = 'garbage'` was inserted directly under
+  `set local role service_role` (the function now refuses it), then `instantiate_recurring_offers()`
+  **returned 1** and did not abort; `audit_events` gained exactly one
+  `recurring_offer.instantiate_failed` for the garbage template with
+  `{"sqlstate": "22023", "message": "time zone \"garbage\" not recognized"}` and one
+  `recurring_offer.instantiated` for the valid one, whose offer read `OPEN`; the garbage template
+  produced no offer. Fixture offer cancelled, valid template cancelled, garbage row deleted.
+
+The full observation log, the SQL that produced it and the four comment texts for the issues are in
+`Docs/2026-09-06-rehearsal-0027-0030-preview.md`.
+
+### What this proves, and what it does not
+
+Proves, on a database at `0001`–`0030` built from these files: the five re-created function bodies
+behave as D-83/D-87/D-88/D-89 specify, with the SQLSTATEs the routes map; the new `select` policy admits
+the subject and nobody else; the sweep isolates a bad template and records it. Does **not** prove:
+PostgREST's derivation of HTTP 429 from `PT429` and the route's 403 from `42501` (asserted in source
+and by D-30's precedent for `PT409`/`PT425`, not observed here), and the GoTrue JWT path. Those are
+exactly what one run of `npm run test` with `.env.preview.local` against this branch would add, and the
+branch is now at `0030` for it.
+
+### Side findings, recorded not fixed
+
+- **The live suite cannot delete its users after `#138`.** `deleteUser` ignores its response; on this
+  branch the delete fails twice over — `no_show_reports.rider_id`/`reported_by` are `NO ACTION` FKs onto
+  `members`, and the `offers` cascade reaches `offer_transitions`, whose append-only trigger refuses
+  `DELETE`. The branch carried 69 such users before this session and 72 after; the three from this
+  session are left with every offer `CANCELLED`, as every earlier run left theirs.
+- **The branch ledger still omits `0011`–`0025`.** Left as is: re-sending `create table` files to record
+  them would fail, and the objects are verified present.
+- **GitHub access is not enabled for this session's token** (the API answers 403 with that message), so
+  the evidence could not be posted to #133/#137/#138/#139 and no PR could be opened by the session.
+
+### Headers, tests, docs changed here
+
+`0026`–`0030` headers flipped `APPLIED: no` → `APPLIED: preview` with a dated `TARGET` line naming the
+branch ref (comment-only, README carve-out; `sql:check` statement count unmoved). The five test
+assertions that pinned those files to `no` — `offer-state-machine` (0027, 0028),
+`waitlist-eta-noshow-schema` (0029), `recurring-offers-schema` (0030),
+`lock-down-definer-functions` (0026) — now accept `preview|production`, the D-75 relaxation, and the
+sixth, which required `0026` to carry no `TARGET` line, now requires one; assertion count unchanged,
+so Baseline N stands. The README's target table now states both targets
+as they are (`0001`–`0025` on production per D-77, `0001`–`0030` on the branch).
+
+**Status:** PENDING. Moves to DONE when the owner (a) runs `tests/live-rls.test.mjs` once against the
+branch with real credentials, closing the HTTP-mapping gap above, and (b) applies `0026`–`0030` to
+production under their own authorisation, in that order, recording it here with the apply flipping the
+five headers to `production`.

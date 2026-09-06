@@ -1,7 +1,11 @@
 -- =============================================================================
 -- 0026_revoke_anon_execute.sql
 --
--- APPLIED: no
+-- APPLIED: preview
+-- TARGET:  Supabase preview branch phase-3-4-staging (project ref xqonrogwwytkmqfinszp),
+--          applied 2026-09-06 through the Supabase MCP connector's apply_migration, one
+--          file per apply, as the rehearsal for the production apply. Production has
+--          NOT run this file. See Docs/DECISIONS.md D-96 and supabase/migrations/README.md.
 --
 -- SECURITY FIX. `Docs/DECISIONS.md` D-79. Closes the anon-exec hole `0025`
 -- (D-74) left open by construction, not by oversight.
@@ -116,9 +120,9 @@
 -- `service_role` grant (`0012`) is untouched, and this migration does not
 -- reference it at all -- `0025` already covers it.
 --
--- ==> APPLIED: no. THIS MIGRATION IS NOT APPLIED TO ANY TARGET -- NOT PREVIEW,
---     NOT PRODUCTION. Writing it is the whole job of this change; applying it
---     is a separate, explicitly authorised act (`Docs/DECISIONS.md` D-79).
+-- ==> APPLIED: preview (phase-3-4-staging, 2026-09-06, D-96), NOT PRODUCTION.
+--     Writing it was the whole job of the change that added it (D-79); the
+--     production apply is a separate, explicitly authorised act still pending.
 -- =============================================================================
 
 

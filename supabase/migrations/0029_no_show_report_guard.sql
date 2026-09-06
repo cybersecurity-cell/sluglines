@@ -1,7 +1,11 @@
 -- =============================================================================
 -- 0029_no_show_report_guard.sql
 --
--- APPLIED: no
+-- APPLIED: preview
+-- TARGET:  Supabase preview branch phase-3-4-staging (project ref xqonrogwwytkmqfinszp),
+--          applied 2026-09-06 through the Supabase MCP connector's apply_migration, one
+--          file per apply, as the rehearsal for the production apply. Production has
+--          NOT run this file. See Docs/DECISIONS.md D-96 and supabase/migrations/README.md.
 --
 -- Issue #138, `Docs/DECISIONS.md` D-88. Three changes to how a no-show is
 -- reported, all append-only over `0021`/`0022`:
@@ -39,9 +43,10 @@
 -- waitlist is never promoted (`0022`'s header says why), and `offers.state` is
 -- never written directly. `0021` and `0022` are not edited.
 --
--- ==> APPLIED: no. Writing this file is the job of the change that adds it;
---     applying it is a separate, explicitly authorised act, rehearsed on a
---     preview branch first (README, "Applying a migration").
+-- ==> APPLIED: preview (phase-3-4-staging, 2026-09-06, D-96). Writing this
+--     file was the job of the change that added it; the production apply is a
+--     separate, explicitly authorised act still pending (README, "Applying a
+--     migration").
 -- =============================================================================
 
 create or replace function public.report_no_show(p_reservation_id uuid)

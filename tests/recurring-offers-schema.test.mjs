@@ -288,7 +288,7 @@ console.log('recurring-offers-schema (0020): all assertions passed')
 const guard = migrations.find((m) => m.file === '0030_recurring_timezone_guard.sql')
 assert.ok(guard, '0030_recurring_timezone_guard.sql must exist')
 const guardCode = guard.sql.replace(/^--.*$/gm, '')
-assert.match(guard.sql, /--\s*APPLIED:\s*no\b/, '0030 ships unapplied; applying it is a separate authorised act')
+assert.match(guard.sql, /--\s*APPLIED:\s*(preview|production)\b/, '0030 is rehearsed on preview (D-96); a production apply is a separate authorised act')
 for (const stmt of guard.statements.filter((st) => st.kind === 'create_function')) {
   assert.equal(stmt.securityDefiner, true, `${stmt.fn} must remain SECURITY DEFINER`)
   assert.equal(stmt.pinsSearchPath, true, `${stmt.fn} must still pin search_path`)

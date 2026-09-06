@@ -1,7 +1,11 @@
 -- =============================================================================
 -- 0030_recurring_timezone_guard.sql
 --
--- APPLIED: no
+-- APPLIED: preview
+-- TARGET:  Supabase preview branch phase-3-4-staging (project ref xqonrogwwytkmqfinszp),
+--          applied 2026-09-06 through the Supabase MCP connector's apply_migration, one
+--          file per apply, as the rehearsal for the production apply. Production has
+--          NOT run this file. See Docs/DECISIONS.md D-96 and supabase/migrations/README.md.
 --
 -- Issue #139, `Docs/DECISIONS.md` D-89. Two signature-preserving re-creations
 -- over `0020` (the `0003` pattern; `0020` is not edited):
@@ -37,9 +41,10 @@
 -- the tag, the hop through `apply_offer_transition()`, the audit event -- is
 -- byte-for-byte `0020`'s, one indentation level deeper.
 --
--- ==> APPLIED: no. Writing this file is the job of the change that adds it;
---     applying it is a separate, explicitly authorised act, rehearsed on a
---     preview branch first (README, "Applying a migration").
+-- ==> APPLIED: preview (phase-3-4-staging, 2026-09-06, D-96). Writing this
+--     file was the job of the change that added it; the production apply is a
+--     separate, explicitly authorised act still pending (README, "Applying a
+--     migration").
 -- =============================================================================
 
 create or replace function public.create_recurring_offer(
