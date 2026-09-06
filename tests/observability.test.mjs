@@ -43,7 +43,7 @@ assert.equal(JSON.stringify(unavailableEvent('x', 'why', { message: 'secret' }))
 
 // Every module that returns an `unavailable` state now reports it.
 for (const [file, scopes] of [
-  ['src/lib/corridor-board.ts', ['corridor-board.offers', 'corridor-board.client']],
+  ['src/lib/corridor-board.ts', ['corridor-board.corridor', 'corridor-board.offers', 'corridor-board.client']],
   ['src/lib/dashboard.ts', ['dashboard.presence', 'dashboard.client']],
   ['src/lib/onboarding.ts', ['onboarding.profile', 'onboarding.home-spots']],
   ['src/lib/public-directory.ts', ['public-directory.location', 'public-directory.counts']],

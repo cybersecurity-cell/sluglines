@@ -44,7 +44,10 @@ export async function getCorridorBoardOffers(): Promise<CorridorBoardRead> {
     // offers existed. A missing row is reported as `unavailable` with the slug
     // named, not rendered as an honest-looking empty board.
     const corridor = await readPilotCorridor(supabase)
-    if (!corridor.ok) return { state: 'unavailable', reason: corridor.reason }
+    if (!corridor.ok) {
+      reportUnavailable('corridor-board.corridor', corridor.reason)
+      return { state: 'unavailable', reason: corridor.reason }
+    }
 
     const { hornerRdId: originId, lenfantPlazaId: destinationId } = corridor.corridor
 
