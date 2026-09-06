@@ -9,8 +9,18 @@ export interface ResourceModule {
   href: string
 }
 
+/**
+ * The primary nav is still the WordPress IA plus the one zone §10 names that
+ * had no entry anywhere (issue #135): the Board. `Slug Pickup` is §10's Spots
+ * zone under the name the community has used for twenty years; `/slug_pickup`
+ * runs the same directory search as `/spots`. Sign-in is a separate control in
+ * `Navbar`, not a nav item, so it can sit apart from the content links. The
+ * full §10 tab bar (Lost & Found · Me) waits on the authenticated-surface
+ * migration; see D-85.
+ */
 export const PRIMARY_NAV: NavItem[] = [
   { label: 'Slug Pickup', href: '/slug_pickup' },
+  { label: 'Board', href: '/board' },
   { label: 'App', href: '/app' },
   { label: 'Blog', href: '/blog' },
   { label: 'News', href: '/news' },

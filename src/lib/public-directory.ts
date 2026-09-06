@@ -37,6 +37,7 @@ import {
   publicLocationFromRow,
 } from '@/lib/domain/public-location'
 import { createClient } from '@/lib/supabase/server'
+import { reportUnavailable } from '@/lib/observability.ts'
 
 export type { PublicLocation } from '@/lib/domain/public-location'
 
@@ -74,11 +75,15 @@ async function readLocationRow(slug: string): Promise<LocationRow | null> {
       .rpc('get_public_location', { p_slug: canonicalSlug(slug) })
       .maybeSingle()
 
+    // A missing row is a 404 in the making, not an outage; a refused or failed
+    // call is, and the directory fallback that follows would otherwise hide it.
+    if (error) reportUnavailable('public-directory.location', `get_public_location failed (${error.code ?? 'unknown'})`, error)
     if (error || !data) return null
 
     return data as unknown as LocationRow
-  } catch {
+  } catch (error) {
     // No env, no network, or a database without 0010 applied.
+    reportUnavailable('public-directory.location', 'supabase client unavailable', error)
     return null
   }
 }
@@ -90,7 +95,8 @@ async function readLocationRow(slug: string): Promise<LocationRow | null> {
 export async function getPublicSpotCounts(): Promise<PublicCountsSnapshot> {
   try {
     return await fetchPublicSpotCounts(await createClient())
-  } catch {
+  } catch (error) {
+    reportUnavailable('public-directory.counts', 'supabase client unavailable', error)
     return { ...UNAVAILABLE_SNAPSHOT, reason: 'supabase client unavailable' }
   }
 }

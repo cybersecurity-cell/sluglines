@@ -1,4 +1,5 @@
 import { createClient as createSupabaseClient } from '@supabase/supabase-js'
+import { ServiceRoleKeyMissingError } from './service'
 
 /**
  * The service-role client — bypasses RLS entirely. `src/lib/ai/agent.ts` and
@@ -11,11 +12,21 @@ import { createClient as createSupabaseClient } from '@supabase/supabase-js'
  *
  * No cookie binding, unlike `./server.ts` — the service key carries its own
  * authority and is never tied to a member's session.
+ *
+ * A missing key is the same typed error `./service.ts` throws (issue #144):
+ * two factories exist because the AI writer wants `autoRefreshToken: false`
+ * and nothing else does, but "the key is not set" is one condition and it
+ * should read the same wherever it is caught.
  */
 export function createServiceRoleClient() {
+  const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY
+  if (!serviceRoleKey) {
+    throw new ServiceRoleKeyMissingError()
+  }
+
   return createSupabaseClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.SUPABASE_SERVICE_ROLE_KEY!,
+    serviceRoleKey,
     {
       auth: {
         autoRefreshToken: false,

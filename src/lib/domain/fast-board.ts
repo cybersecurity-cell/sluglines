@@ -64,6 +64,15 @@ export const PRESENCE_CHECKIN_COLUMNS = 'member_id,location_id,direction,checked
 /** The 0001 SECURITY DEFINER writer the checkout button calls. Never a raw delete. */
 export const PRESENCE_CLEAR_FUNCTION = 'presence_clear'
 
+/**
+ * The 0001 SECURITY DEFINER writer the spot page's check-in button calls
+ * (issue #135). `presence_checkin(p_location_id uuid, p_direction text,
+ * p_ttl_minutes integer default 20)`: it takes the actor from `auth.uid()`,
+ * upserts that member's one row, and returns the expiry. Never a raw insert —
+ * `presence_checkins` has no insert policy for any role.
+ */
+export const PRESENCE_CHECKIN_FUNCTION = 'presence_checkin'
+
 /** `presence_checkins` stores lower-case; `SpotLocation.direction` is capitalised. */
 export type PresenceDirection = 'morning' | 'afternoon'
 
@@ -126,7 +135,8 @@ export function minutesRemaining(expiresAt: string, now = new Date()) {
   return Math.max(0, Math.ceil((expires - now.getTime()) / 60_000))
 }
 
-function toPresenceDirection(value: string): PresenceDirection | undefined {
+/** `'Morning'`/`'Afternoon'` (the directory) or `'morning'`/`'afternoon'` (the table) -> the table's form. */
+export function toPresenceDirection(value: string): PresenceDirection | undefined {
   return value === 'morning' || value === 'afternoon' ? value : undefined
 }
 

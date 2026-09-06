@@ -36,6 +36,7 @@ import {
 } from '@/lib/domain/fast-board'
 import { errorCodeOf } from '@/lib/domain/public-counts'
 import { createClient } from '@/lib/supabase/server'
+import { reportUnavailable } from '@/lib/observability.ts'
 
 export { getPublicSpotCounts } from '@/lib/public-directory'
 
@@ -73,7 +74,9 @@ export async function getMemberPresence(now = new Date()): Promise<MemberPresenc
       .maybeSingle()
 
     if (error) {
-      return { state: 'unavailable', reason: `presence_checkins read failed (${errorCodeOf(error) ?? 'unknown'})` }
+      const reason = `presence_checkins read failed (${errorCodeOf(error) ?? 'unknown'})`
+      reportUnavailable('dashboard.presence', reason, error)
+      return { state: 'unavailable', reason }
     }
 
     if (!data) return NO_PRESENCE
@@ -81,7 +84,8 @@ export async function getMemberPresence(now = new Date()): Promise<MemberPresenc
     const row = data as unknown as PresenceCheckinRow
 
     return presenceFromRow(row, await readPresenceLocation(row.location_id), now)
-  } catch {
+  } catch (error) {
+    reportUnavailable('dashboard.client', 'supabase client unavailable', error)
     return { state: 'unavailable', reason: 'supabase client unavailable' }
   }
 }

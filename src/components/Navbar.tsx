@@ -3,7 +3,7 @@
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
 import { ChevronDown, Menu, X } from 'lucide-react'
-import { useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import clsx from 'clsx'
 import { ABOUT_NAV, PRIMARY_NAV } from '@/lib/site-content'
 
@@ -11,6 +11,23 @@ export default function Navbar() {
   const pathname = usePathname()
   const [menuOpen, setMenuOpen] = useState(false)
   const [aboutOpen, setAboutOpen] = useState(false)
+  const aboutRef = useRef<HTMLDivElement>(null)
+
+  // Issue #141: the About menu opened on hover only, so a keyboard user could
+  // never reach About Slugging / About Us from the nav. It now toggles on
+  // click, Enter, Space and ArrowDown, and Escape closes it and the mobile
+  // sheet; focus leaving the menu closes it too.
+  useEffect(() => {
+    if (!aboutOpen && !menuOpen) return
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') {
+        setAboutOpen(false)
+        setMenuOpen(false)
+      }
+    }
+    document.addEventListener('keydown', onKeyDown)
+    return () => document.removeEventListener('keydown', onKeyDown)
+  }, [aboutOpen, menuOpen])
 
   const isActive = (href: string) => pathname === href || (href !== '/' && pathname.startsWith(`${href}/`))
 
@@ -21,6 +38,10 @@ export default function Navbar() {
   const itemBase = 'rounded-md px-3 text-sm font-semibold transition-colors inline-flex items-center min-h-[44px]'
   const itemActive = 'bg-[#EAF2ED] text-[#1F5C33]'
   const itemIdle = 'text-slate-600 hover:bg-stone-100 hover:text-[#17202A]'
+  // Sign-in is the one control on this bar that is not a content link (issue
+  // #135: nothing in the IA reached `/login` except the footer). Outlined in
+  // the §10 accent so it reads as an action, not another section.
+  const signIn = 'border border-[#2E7D46]/40 text-[#2E7D46] hover:bg-[#EAF2ED]'
 
   return (
     <nav className="sticky top-0 z-50 border-b border-stone-200 bg-white/95 backdrop-blur">
@@ -41,7 +62,15 @@ export default function Navbar() {
             </Link>
           ))}
 
-          <div className="relative" onMouseEnter={() => setAboutOpen(true)} onMouseLeave={() => setAboutOpen(false)}>
+          <div
+            ref={aboutRef}
+            className="relative"
+            onMouseEnter={() => setAboutOpen(true)}
+            onMouseLeave={() => setAboutOpen(false)}
+            onBlur={(event) => {
+              if (!aboutRef.current?.contains(event.relatedTarget as Node | null)) setAboutOpen(false)
+            }}
+          >
             <button
               className={clsx(
                 itemBase,
@@ -49,17 +78,32 @@ export default function Navbar() {
                 ABOUT_NAV.some((link) => isActive(link.href)) ? itemActive : itemIdle
               )}
               type="button"
+              aria-haspopup="menu"
+              aria-controls="about-menu"
               aria-expanded={aboutOpen}
+              onClick={() => setAboutOpen((open) => !open)}
+              onKeyDown={(event) => {
+                if (event.key === 'ArrowDown') {
+                  event.preventDefault()
+                  setAboutOpen(true)
+                }
+              }}
             >
               About
               <ChevronDown aria-hidden className="h-3.5 w-3.5" />
             </button>
             {aboutOpen && (
-              <div className="absolute left-0 top-full z-50 mt-1 min-w-44 rounded-lg border border-stone-200 bg-white py-1 shadow-xl">
+              <div
+                id="about-menu"
+                role="menu"
+                className="absolute left-0 top-full z-50 mt-1 min-w-44 rounded-lg border border-stone-200 bg-white py-1 shadow-xl"
+              >
                 {ABOUT_NAV.map((link) => (
                   <Link
                     key={link.href}
                     href={link.href}
+                    role="menuitem"
+                    onClick={() => setAboutOpen(false)}
                     className="flex min-h-[44px] items-center px-4 text-sm font-medium text-slate-600 transition-colors hover:bg-[#FAFAF8] hover:text-[#17202A]"
                   >
                     {link.label}
@@ -68,6 +112,10 @@ export default function Navbar() {
               </div>
             )}
           </div>
+
+          <Link href="/login" aria-current={isActive('/login') ? 'page' : undefined} className={clsx(itemBase, 'ml-2', signIn)}>
+            Sign in
+          </Link>
         </div>
 
         <button
@@ -109,6 +157,17 @@ export default function Navbar() {
                 {link.label}
               </Link>
             ))}
+          </div>
+
+          <div className="mt-3 border-t border-stone-200 pt-3">
+            <Link
+              href="/login"
+              onClick={() => setMenuOpen(false)}
+              aria-current={isActive('/login') ? 'page' : undefined}
+              className={clsx(itemBase, 'w-full justify-center', signIn)}
+            >
+              Sign in
+            </Link>
           </div>
         </div>
       )}

@@ -6,9 +6,16 @@ import { sanitizeLegacyHtml } from '@/lib/legacy-html'
 
 interface LegacyContentPageProps {
   page: LegacyRoute
+  /**
+   * A present-tense qualifier rendered above a migrated body whose claims are
+   * no longer true (issue #142). The body itself is preserved verbatim — the
+   * content-preservation rule — but a page telling visitors to download an app
+   * that no longer exists needs to say when it was written and what replaced it.
+   */
+  notice?: string
 }
 
-export default function LegacyContentPage({ page }: LegacyContentPageProps) {
+export default function LegacyContentPage({ page, notice }: LegacyContentPageProps) {
   const primaryCtas = page.ctas
     .filter((cta) => cta.href.startsWith('/') && cta.href !== page.path && !cta.href.startsWith('/forum'))
     .slice(0, 4)
@@ -50,10 +57,17 @@ export default function LegacyContentPage({ page }: LegacyContentPageProps) {
       </section>
 
       <section className="mx-auto grid max-w-6xl grid-cols-1 gap-8 px-4 py-10 lg:grid-cols-[minmax(0,1fr)_18rem]">
+        <div className="min-w-0 space-y-4">
+        {notice && (
+          <p role="note" className="rounded-lg border border-amber-200 bg-amber-50 p-4 text-sm leading-6 text-amber-900">
+            {notice}
+          </p>
+        )}
         <article
           className="legacy-content min-w-0 rounded-lg border border-stone-200 bg-white p-5 shadow-sm md:p-8"
           dangerouslySetInnerHTML={{ __html: safeContentHtml }}
         />
+        </div>
 
         <aside className="space-y-4">
           <CommunityLinksCard spotSlug={legacySpot?.slug} fallbackUrl={legacySpot?.fbUrl} />

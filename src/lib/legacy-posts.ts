@@ -7,21 +7,42 @@ export function getRecentLegacyPosts(limit = 24): LegacyRoute[] {
     .slice(0, limit)
 }
 
+/**
+ * A post is "news" when its TITLE names an external event — Metro work, HOV or
+ * express-lane changes, a lot or line moving, a closure or shutdown. Everything
+ * else is the blog. The old rule matched the same terms against the body too,
+ * and since every post about slugging mentions slugging, `/blog` and `/news`
+ * rendered the identical list (issue #142). Two views of one archive are
+ * fine; two identical views under different names are not.
+ */
+const NEWS_TITLE_TERMS = [
+  'metro',
+  'hov',
+  'express lane',
+  'express lanes',
+  'shutdown',
+  'closure',
+  'closed',
+  'relocat',
+  'moving',
+  'moves',
+  'parking',
+  'construction',
+  'safetrack',
+  'i-95',
+  'i-395',
+  'i-66',
+  'toll',
+]
+
+export function isNewsPost(post: LegacyRoute): boolean {
+  const title = post.title.toLowerCase()
+  return NEWS_TITLE_TERMS.some((term) => title.includes(term))
+}
+
 export function getRelatedLegacyPosts(topic: 'blog' | 'news', limit = 24): LegacyRoute[] {
   const posts = getRecentLegacyPosts(LEGACY_SITE_INVENTORY.routes.length)
-
-  if (topic === 'blog') {
-    return posts.slice(0, limit)
-  }
-
-  const newsTerms = ['metro', 'slug', 'slugline', 'commuter', 'hov', 'express', 'shutdown', 'parking', 'route']
-
-  return posts
-    .filter((post) => {
-      const text = `${post.title} ${post.bodyText}`.toLowerCase()
-      return newsTerms.some((term) => text.includes(term))
-    })
-    .slice(0, limit)
+  return posts.filter((post) => (topic === 'news' ? isNewsPost(post) : !isNewsPost(post))).slice(0, limit)
 }
 
 export function getLegacyPostHref(post: LegacyRoute) {

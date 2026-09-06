@@ -61,11 +61,11 @@ export default function SpotDirectorySection({
                             const communityUrl = getPrimaryFacebookUrlForSpot(spot.slug) || spot.fbUrl
 
                             return (
-                              <li key={spot.slug} className="flex items-center justify-between gap-3 py-2">
+                              <li key={spot.slug} className="flex items-center justify-between gap-3 py-1.5">
                                 <div className="min-w-0">
                                   <Link
                                     href={getSpotDetailHref(spot)}
-                                    className="block truncate text-sm font-semibold text-[#17202A] hover:text-[#2E7D46]"
+                                    className="flex min-h-[28px] items-center truncate text-sm font-semibold text-[#17202A] hover:text-[#2E7D46]"
                                   >
                                     {spot.name}
                                   </Link>

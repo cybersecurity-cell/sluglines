@@ -81,6 +81,10 @@ const tw = {
   'sky-600': '#0284c7',
   'sky-700': '#0369a1',
   'sky-800': '#075985',
+  // Issue #141: the form-control border and focus-ring colours, pinned once
+  // they were raised to clear WCAG 1.4.11 (3:1 for non-text UI). slate-300 /
+  // stone-300 borders were ~1.5:1 and the sky-200 / accent-tint rings ~1.3:1.
+  'stone-500': '#78716c',
 }
 
 // -----------------------------------------------------------------------------
@@ -168,6 +172,18 @@ export const PAIRS = [
   // the pair that fails the moment anyone reaches for slate-400 again.
   { theme: 'light', fg: ['slate-500', tw['slate-500']], bg: ['white', tw.white] },
   { theme: 'light', fg: ['slate-500', tw['slate-500']], bg: ['ground', ui.ground] },
+  // Issue #141: form-control borders and focus rings on white. Non-text UI
+  // needs 3:1 (1.4.11); all but the sky ring clear the 4.5:1 text bar too.
+  { theme: 'light', fg: ['slate-500 (input border)', tw['slate-500']], bg: ['white', tw.white] },
+  { theme: 'light', fg: ['stone-500 (input border)', tw['stone-500']], bg: ['white', tw.white] },
+  {
+    theme: 'light',
+    fg: ['sky-600 (focus ring)', tw['sky-600']],
+    bg: ['white', tw.white],
+    large: true,
+    why: 'focus ring only — WCAG 1.4.11 non-text contrast (4.10:1); never used for text',
+  },
+  { theme: 'light', fg: ['accent (focus ring)', ui.accent], bg: ['white', tw.white] },
   // Accent as link text and as a button ground, in both directions.
   { theme: 'light', fg: ['accent', ui.accent], bg: ['white', tw.white] },
   { theme: 'light', fg: ['accent', ui.accent], bg: ['ground', ui.ground] },

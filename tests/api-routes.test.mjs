@@ -34,6 +34,7 @@ import {
   TRANSITION_HTTP_STATUS,
   TRANSPORT_FAILURE_STATUS,
   UNAUTHENTICATED_STATUS,
+  UNKNOWN_LOCATION_STATUS,
   isUuid,
   parseTransitionInput,
   transitionError,
@@ -405,6 +406,25 @@ assert.ok(
   'offer-create-route.ts: offer_create must be called before offer_publish'
 )
 
+// Issue #132: the corridor's two location ids are resolved by slug on the
+// database serving the request, after the session check and before the first
+// RPC — never read from a committed literal. `0004`'s FKs are enforced on every
+// insert and `locations.id` is gen_random_uuid(), so a literal could only ever
+// raise 23503 (which it did, on every request, until this).
+assert.match(offerCreateFactory, /readPilotCorridor\(supabase\)/, 'offer-create-route.ts must resolve the corridor through the caller\'s own client')
+assert.ok(
+  offerCreateFactory.indexOf('supabase.auth.getUser()') < offerCreateFactory.indexOf('readPilotCorridor(') &&
+    offerCreateFactory.indexOf('readPilotCorridor(') < offerCreateFactory.indexOf("supabase.rpc('offer_create'"),
+  'offer-create-route.ts: session check, then corridor lookup, then offer_create'
+)
+assert.match(offerCreateFactory, /corridorLocationIdsForDirection\(/, 'the ids sent must come from the resolved pair')
+assert.equal(/LOCATION_ID\b/.test(offerCreateFactory), false, 'no literal location-id constant may reach the route')
+assert.match(
+  offerCreateFactory,
+  /transitionError\('unknown_location'\), \{ status: UNKNOWN_LOCATION_STATUS \}/,
+  'an unresolvable corridor is refused as unknown_location before any RPC, not reported as a retryable outage'
+)
+
 const reservationCreateFactory = fs.readFileSync(path.join(root, 'src/lib/api/reservation-create-route.ts'), 'utf8')
 assert.match(
   reservationCreateFactory,
@@ -481,6 +501,28 @@ assert.equal(transitionFailure({ code: TRANSITION_ERRCODES.ILLEGAL_STATE }).stat
 assert.equal(transitionFailure({ code: TRANSITION_ERRCODES.INVALID_ARGUMENT }).status, 400)
 assert.equal(transitionFailure({ code: TRANSITION_ERRCODES.FORBIDDEN }).status, 403)
 assert.equal(transitionFailure({ code: TRANSITION_ERRCODES.NOT_FOUND }).status, 404)
+
+// PT429 (issue #137): the per-member open-offer cap in 0028's offer_create.
+// PTnnn, like PT409/PT425, so PostgREST sets the status itself; permanent
+// until the member cancels an offer, so never retryable.
+const limit = transitionFailure({ code: TRANSITION_ERRCODES.LIMIT_REACHED })
+assert.equal(TRANSITION_ERRCODES.LIMIT_REACHED, 'PT429')
+assert.equal(limit.status, 429)
+assert.equal(limit.body.error.kind, 'limit_reached')
+assert.equal(limit.body.error.retryable, false, 'a retry with the same key replays the same refusal; cancelling an offer is the fix')
+assert.match(limit.body.error.message, /cancel one/i, 'the message says what to do about it')
+// 23503 (issue #132): the FK under offer_create refused a location id no
+// `locations` row carries. Before this mapping it fell to the transport branch
+// — 502, "unavailable", retryable: true — and the Retry button that produced
+// could never succeed, because a retry does not create the missing row.
+const fkViolation = transitionFailure({ code: TRANSITION_ERRCODES.FOREIGN_KEY_VIOLATION })
+assert.equal(TRANSITION_ERRCODES.FOREIGN_KEY_VIOLATION, '23503', 'the published code is the Postgres foreign_key_violation SQLSTATE')
+assert.equal(fkViolation.status, 422, 'a missing directory row is a permanent refusal of this request, not an outage')
+assert.equal(fkViolation.body.error.kind, 'unknown_location')
+assert.equal(fkViolation.body.error.errcode, '23503')
+assert.equal(fkViolation.body.error.retryable, false, 'no retry with the same ids can create the row')
+assert.equal(UNKNOWN_LOCATION_STATUS, 422, 'the pre-RPC lookup miss and the FK refusal share one status')
+assert.equal(transitionError('unknown_location').error.retryable, false)
 
 // A refusal with no SQLSTATE is a transport failure, never a decision. This is
 // the D-29 shape: it must not be reported as a conflict.
