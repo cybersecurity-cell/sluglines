@@ -666,7 +666,7 @@ try {
   )
   assert.equal(noReportsYet.length, 0)
 
-  nsRev = await expectOk(
+  await expectOk(
     'poster offer_advance (CONFIRMED -> ARRIVING): the driver is at the curb',
     poster.rpc('offer_advance', { p_offer_id: nsOfferId, p_expected_revision: nsRev, p_idempotency_key: key('ns-advance') }),
     (d) => `revision ${d}`
