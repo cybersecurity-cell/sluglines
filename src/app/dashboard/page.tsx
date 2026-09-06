@@ -51,7 +51,7 @@ export const dynamic = 'force-dynamic'
 export const metadata = {
   title: 'Fast Board - Sluglines',
   description:
-    'Every active Northern Virginia slug line with live rider and driver counts, your current check-in, and one-tap checkout.',
+    'Every active Northern Virginia slug line with rider and driver counts, your current check-in, and one-tap checkout.',
 }
 
 export default async function DashboardPage({
@@ -59,9 +59,22 @@ export default async function DashboardPage({
 }: {
   searchParams?: Promise<{ checkout?: string }>
 }) {
-  const { data: auth } = await (await createClient()).auth.getUser()
-  if (!auth?.user) {
-    redirect('/login')
+  // The guard is the page's own (F9). It is also allowed to fail without
+  // taking the page down (issue #136): with no Supabase environment
+  // `createClient()` throws, and this used to be Next's default 500 — no
+  // `<title>`, no `lang`, dark shell. A construction failure is not "signed
+  // out", so it is not redirected as one; the page renders with the panel in
+  // its `unavailable` state (which `getMemberPresence()` reports for itself)
+  // and no member data, which is the honest screen for "cannot tell".
+  let signedOut = false
+  try {
+    const { data: auth } = await (await createClient()).auth.getUser()
+    signedOut = !auth?.user
+  } catch {
+    signedOut = false
+  }
+  if (signedOut) {
+    redirect('/login?next=/dashboard')
   }
 
   const [snapshot, presence, resolvedSearchParams] = await Promise.all([

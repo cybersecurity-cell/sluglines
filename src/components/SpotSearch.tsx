@@ -30,7 +30,7 @@ export default function SpotSearch({ spots }: SpotSearchProps) {
               <span className="sr-only">Search pickup locations</span>
               <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-500" />
               <input
-                className="h-11 w-full rounded-lg border border-stone-300 bg-white pl-9 pr-3 text-sm text-[#17202A] outline-none focus:border-[#2E7D46] focus:ring-2 focus:ring-[#EAF2ED]"
+                className="h-11 w-full rounded-lg border border-stone-500 bg-white pl-9 pr-3 text-sm text-[#17202A] outline-none focus:border-[#2E7D46] focus:ring-2 focus:ring-[#2E7D46]"
                 placeholder="Search spot, destination, or county"
                 value={filters.query}
                 onChange={(event) => setFilters((current) => ({ ...current, query: event.target.value }))}
@@ -86,7 +86,7 @@ function FilterSelect({
     <label className="block">
       <span className="sr-only">{label}</span>
       <select
-        className="h-11 w-full rounded-lg border border-stone-300 bg-white px-3 text-sm font-semibold text-[#17202A] outline-none focus:border-[#2E7D46] focus:ring-2 focus:ring-[#EAF2ED]"
+        className="h-11 w-full rounded-lg border border-stone-500 bg-white px-3 text-sm font-semibold text-[#17202A] outline-none focus:border-[#2E7D46] focus:ring-2 focus:ring-[#2E7D46]"
         value={value}
         onChange={(event) => onChange(event.target.value)}
       >
