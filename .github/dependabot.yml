@@ -55,3 +55,16 @@ updates:
         update-types:
           - minor
           - patch
+    ignore:
+      # @types/node tracks the runtime, and every workflow above pins Node 22.
+      # A major bump here (26.x was proposed twice, #82 and #125) describes a
+      # runtime this repository does not run on; it is declined on purpose, not
+      # forgotten. Move this ignore when node-version moves.
+      - dependency-name: '@types/node'
+        update-types: ['version-update:semver-major']
+      # eslint-config-next 16.3.4 bundles eslint-plugin-import, -react and
+      # -jsx-a11y with peer ranges that stop at ESLint 9; ESLint 10 (#122) makes
+      # `npm run lint` throw `scopeManager.addGlobals is not a function` before
+      # linting a single file. Lift this when eslint-config-next's peers move.
+      - dependency-name: 'eslint'
+        update-types: ['version-update:semver-major']
