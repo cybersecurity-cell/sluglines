@@ -23,8 +23,29 @@ import { buildCorridorBoard } from '@/lib/domain/board.ts'
  * Server-rendered, same reasoning as `/dashboard`: the offers are in the HTML,
  * and a degraded read reports `unavailable` rather than a fabricated empty
  * board.
+ *
+ * LIGHT SHELL, AND EASTERN TIME (issue #134)
+ * ---------------------------------------------------------------------------
+ * `globals.css` still paints the legacy dark shell on `:root` (`--bg: #080d17`,
+ * `body { background: var(--bg) }`), and this page set `text-slate-950` with no
+ * ground of its own — axe measured the H1 at 1.04:1 in every state. Every
+ * branch below now renders inside the same light wrapper `/login` uses
+ * (`bg-white text-slate-950`), the pattern the authenticated surfaces share
+ * until the deferred `:root` flip (D-62, `Docs/2026-09-01-handoff-public-
+ * surface-rest.md` §2) lands for every shell at once. `/board` is also an
+ * axe-gated route now (`tests/e2e/accessibility.spec.ts`), which is what would
+ * have caught this.
+ *
+ * `windowLabel` formats in `America/New_York`, explicitly. Vercel's runtime
+ * clock is UTC, and `toLocaleString` with no `timeZone` prints the server's
+ * zone — a 15:50 ET pickup rendered as 19:50 for the only riders this board
+ * serves. The zone is pinned, not read from the viewer: this is a server
+ * component, and every spot on the corridor is in one zone.
  */
 export const dynamic = 'force-dynamic'
+
+/** The one zone every corridor spot is in. A server component has no viewer clock to read. */
+export const BOARD_TIME_ZONE = 'America/New_York'
 
 export const metadata = {
   title: 'Board - Sluglines',
@@ -34,11 +55,18 @@ export const metadata = {
 function windowLabel(windowStart: string, windowEnd: string): string {
   const start = new Date(windowStart)
   const end = new Date(windowEnd)
-  const format = (value: Date) =>
-    Number.isNaN(value.getTime())
-      ? 'unknown time'
-      : value.toLocaleString('en-US', { weekday: 'short', month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })
-  return `${format(start)} - ${format(end)}`
+  const format = (value: Date, options: Intl.DateTimeFormatOptions) =>
+    Number.isNaN(value.getTime()) ? 'unknown time' : value.toLocaleString('en-US', { timeZone: BOARD_TIME_ZONE, ...options })
+  const startLabel = format(start, { weekday: 'short', month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })
+  // The end carries the zone name (EDT/EST) so the reader is never left to
+  // guess whose clock the window is on.
+  const endLabel = format(end, { hour: 'numeric', minute: '2-digit', timeZoneName: 'short' })
+  return `${startLabel} - ${endLabel}`
+}
+
+/** The light shell every branch renders in — the same wrapper `/login` uses. */
+function BoardShell({ children }: { children: React.ReactNode }) {
+  return <div className="bg-white text-slate-950">{children}</div>
 }
 
 export default async function BoardPage() {
@@ -46,6 +74,7 @@ export default async function BoardPage() {
 
   if (read.state === 'signed-out') {
     return (
+      <BoardShell>
       <div className="mx-auto max-w-2xl px-4 py-16 text-center">
         <h1 className="text-3xl font-bold text-slate-950">Sign in to see the board</h1>
         <p className="mt-4 text-slate-700">
@@ -59,11 +88,13 @@ export default async function BoardPage() {
           Sign in
         </Link>
       </div>
+      </BoardShell>
     )
   }
 
   if (read.state === 'unavailable') {
     return (
+      <BoardShell>
       <div className="mx-auto max-w-2xl px-4 py-16 text-center">
         <h1 className="text-3xl font-bold text-slate-950">Board unavailable</h1>
         <p className="mt-4 text-slate-700">
@@ -71,12 +102,14 @@ export default async function BoardPage() {
           lost.
         </p>
       </div>
+      </BoardShell>
     )
   }
 
   const board = buildCorridorBoard(read.rows, { viewerId: read.viewerId, corridor: read.corridor })
 
   return (
+    <BoardShell>
     <div className="mx-auto max-w-4xl space-y-8 px-4 py-10">
       <div>
         <h1 className="text-3xl font-bold tracking-tight text-slate-950 md:text-4xl">
@@ -142,5 +175,6 @@ export default async function BoardPage() {
         )}
       </section>
     </div>
+    </BoardShell>
   )
 }
