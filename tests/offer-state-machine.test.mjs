@@ -801,7 +801,7 @@ assert.equal(isConflictError({ code: stale.errcode }), true, 'the predicted code
   ]) {
     assert.match(
       sql0028,
-      new RegExp(`create index if not exists ${name}\\s+on public\\.offers ${columns.replace(/[()]/g, '\\$&')};`),
+      new RegExp(`create index if not exists ${name}\\s+on public\\.offers ${columns.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')};`),
       `0028 must add ${name} on ${columns}`
     )
   }
