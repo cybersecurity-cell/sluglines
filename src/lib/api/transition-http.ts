@@ -41,6 +41,8 @@ export const TRANSITION_ERROR_KINDS = [
   'in_flight',
   'unavailable',
   'not_implemented',
+  /** The caller holds the maximum number of open offers (PT429, `0028`). Permanent until they cancel one. */
+  'limit_reached',
   /** A location id the directory on this database does not carry (23503). Permanent; never retried. */
   'unknown_location',
 ] as const
@@ -67,6 +69,8 @@ export const TRANSITION_HTTP_STATUS: Readonly<Record<TransitionErrcode, number>>
   [TRANSITION_ERRCODES.INVALID_ARGUMENT]: 400,
   [TRANSITION_ERRCODES.FORBIDDEN]: 403,
   [TRANSITION_ERRCODES.NOT_FOUND]: 404,
+  /** PostgREST already sets 429 from the PT429 code; this keeps the route's own status line honest too. */
+  [TRANSITION_ERRCODES.LIMIT_REACHED]: 429,
   /**
    * 422, not 404 and not 502: the request was well-formed and the offer is not
    * the thing missing — a location row is, on this database. Before this
@@ -84,6 +88,7 @@ export const TRANSITION_ERROR_KIND_BY_ERRCODE: Readonly<Record<TransitionErrcode
   [TRANSITION_ERRCODES.INVALID_ARGUMENT]: 'invalid_argument',
   [TRANSITION_ERRCODES.FORBIDDEN]: 'forbidden',
   [TRANSITION_ERRCODES.NOT_FOUND]: 'not_found',
+  [TRANSITION_ERRCODES.LIMIT_REACHED]: 'limit_reached',
   [TRANSITION_ERRCODES.FOREIGN_KEY_VIOLATION]: 'unknown_location',
 }
 
@@ -112,6 +117,7 @@ const MESSAGE_BY_KIND: Readonly<Record<TransitionErrorKind, string>> = {
   in_flight: 'That request is still being processed. Retry with the same idempotency key.',
   unavailable: 'The coordinator is unreachable. Retry with the same idempotency key.',
   not_implemented: 'That endpoint is not available yet.',
+  limit_reached: 'You already have the maximum number of open offers. Cancel one before posting another.',
   unknown_location: 'One of the pickup spots on this corridor is not in the directory yet. Nothing was posted; this is not something a retry can fix.',
 }
 

@@ -502,6 +502,15 @@ assert.equal(transitionFailure({ code: TRANSITION_ERRCODES.INVALID_ARGUMENT }).s
 assert.equal(transitionFailure({ code: TRANSITION_ERRCODES.FORBIDDEN }).status, 403)
 assert.equal(transitionFailure({ code: TRANSITION_ERRCODES.NOT_FOUND }).status, 404)
 
+// PT429 (issue #137): the per-member open-offer cap in 0028's offer_create.
+// PTnnn, like PT409/PT425, so PostgREST sets the status itself; permanent
+// until the member cancels an offer, so never retryable.
+const limit = transitionFailure({ code: TRANSITION_ERRCODES.LIMIT_REACHED })
+assert.equal(TRANSITION_ERRCODES.LIMIT_REACHED, 'PT429')
+assert.equal(limit.status, 429)
+assert.equal(limit.body.error.kind, 'limit_reached')
+assert.equal(limit.body.error.retryable, false, 'a retry with the same key replays the same refusal; cancelling an offer is the fix')
+assert.match(limit.body.error.message, /cancel one/i, 'the message says what to do about it')
 // 23503 (issue #132): the FK under offer_create refused a location id no
 // `locations` row carries. Before this mapping it fell to the transport branch
 // — 502, "unavailable", retryable: true — and the Retry button that produced

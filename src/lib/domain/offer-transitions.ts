@@ -65,6 +65,14 @@ export const TRANSITION_ERRCODES = {
   /** The offer or reservation does not exist. */
   NOT_FOUND: 'P0002',
   /**
+   * The caller already holds the maximum number of open offers
+   * (`OFFER_CREATE_LIMITS.maxOpenOffersPerMember`, `0028`). PTnnn so PostgREST
+   * sets the status line to 429 itself (D-30); permanent for the caller until
+   * they cancel one, so never retried.
+   */
+  LIMIT_REACHED: 'PT429',
+
+  /**
    * A location id that no `locations` row carries (`0004`'s
    * `offers_*_location_id_fkey`). Not raised by the functions themselves but
    * by the constraint under them, and permanent for the ids sent: the row is
@@ -72,6 +80,23 @@ export const TRANSITION_ERRCODES = {
    * (issue #132, D-82).
    */
   FOREIGN_KEY_VIOLATION: '23503',
+} as const
+
+/**
+ * The bounds `offer_create` (`0028`, issue #137) enforces. Published here so a
+ * form can say them before the round trip and so
+ * `tests/offer-state-machine.test.mjs` can hold the SQL to the same numbers;
+ * the SQL remains the enforcement.
+ */
+export const OFFER_CREATE_LIMITS = {
+  /** `window_end - window_start` at most this many hours. */
+  maxWindowHours: 4,
+  /** `window_start` at most this many days from now. */
+  maxStartDaysAhead: 14,
+  /** `window_start` may already be at most this many minutes in the past. */
+  maxStartMinutesAgo: 60,
+  /** Open (non-terminal, window not ended) offers, plus DRAFTs from the last day, per member. */
+  maxOpenOffersPerMember: 5,
 } as const
 
 export type TransitionErrcode = (typeof TRANSITION_ERRCODES)[keyof typeof TRANSITION_ERRCODES]

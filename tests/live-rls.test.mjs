@@ -533,6 +533,73 @@ try {
   assert.equal(riderSeatAfter.length, 1, 'the rider can read their own reservation (reservations_select_participant)')
   assert.equal(riderSeatAfter[0].state, 'CANCELLED', "the poster's cancel cascades to live seats, as 0002 always did")
 
+  // ---------------------------------------------------------------------------
+  // Issue #137 — offer_create bounds the window and caps open offers per member
+  // (0028). Each refusal is named by SQLSTATE; against a branch still on 0002
+  // the first three calls SUCCEED and this section fails there, naming why.
+  // ---------------------------------------------------------------------------
+  console.log('\n#137 — offer_create bounds: window length, horizon, staleness, per-member cap')
+
+  const boundedCreate = (start, end, keySuffix) =>
+    poster.rpc('offer_create', {
+      p_poster_role: 'driver',
+      p_origin_location_id: originLocation.id,
+      p_destination_location_id: destinationLocation.id,
+      p_window_start: start.toISOString(),
+      p_window_end: end.toISOString(),
+      p_seats_total: 1,
+      p_idempotency_key: key(`bounds-${keySuffix}`),
+    })
+  const nowMs = Date.now()
+  const hour = 3600e3
+
+  const tooLong = await expectRefused(
+    'a 5-hour window is refused (limit 4 hours)',
+    boundedCreate(new Date(nowMs + hour), new Date(nowMs + 6 * hour), 'too-long')
+  )
+  assert.equal(tooLong.code, TRANSITION_ERRCODES.INVALID_ARGUMENT, `expected 22023, got ${describeError(tooLong)}`)
+  const tooFar = await expectRefused(
+    'a window starting in 15 days is refused (limit 14)',
+    boundedCreate(new Date(nowMs + 15 * 24 * hour), new Date(nowMs + 15 * 24 * hour + hour), 'too-far')
+  )
+  assert.equal(tooFar.code, TRANSITION_ERRCODES.INVALID_ARGUMENT, `expected 22023, got ${describeError(tooFar)}`)
+  const tooOld = await expectRefused(
+    'a window that started 2 hours ago is refused (limit 1 hour ago)',
+    boundedCreate(new Date(nowMs - 2 * hour), new Date(nowMs - hour), 'too-old')
+  )
+  assert.equal(tooOld.code, TRANSITION_ERRCODES.INVALID_ARGUMENT, `expected 22023, got ${describeError(tooOld)}`)
+
+  // The cap. The poster holds one OPEN offer here (the main fixture); four
+  // more reach the limit of five, and the sixth is refused as PT429 with the
+  // HTTP status PostgREST derives from it.
+  const capOfferIds = []
+  for (let i = 0; i < 4; i += 1) {
+    const id = await expectOk(
+      `poster offer_create #${i + 2} of 5 towards the cap`,
+      boundedCreate(new Date(nowMs + hour), new Date(nowMs + 2 * hour), `cap-${i}`),
+      (d) => `offer ${d}`
+    )
+    const rev = await expectOk(
+      '...and publishes it (only open offers count)',
+      poster.rpc('offer_publish', { p_offer_id: id, p_expected_revision: 1, p_idempotency_key: key(`cap-publish-${i}`) }),
+      (d) => `revision ${d}`
+    )
+    capOfferIds.push({ id, rev })
+  }
+  const capResponse = await boundedCreate(new Date(nowMs + hour), new Date(nowMs + 2 * hour), 'cap-over')
+  const capRefusal = await expectRefused('a sixth open offer is refused (per-member cap of 5)', capResponse)
+  assert.equal(capRefusal.code, TRANSITION_ERRCODES.LIMIT_REACHED, `expected PT429, got ${describeError(capRefusal)}`)
+  assert.equal(capResponse.status, 429, `PT429 must arrive as HTTP 429, got ${capResponse.status}`)
+
+  // Leave the branch's board as it was found.
+  for (const [i, { id, rev }] of capOfferIds.entries()) {
+    await expectOk(
+      `poster offer_cancel clears cap fixture #${i + 1}`,
+      poster.rpc('offer_cancel', { p_offer_id: id, p_expected_revision: rev, p_idempotency_key: key(`cap-cancel-${i}`) }),
+      (d) => `revision ${d}`
+    )
+  }
+
   // Authorisation inside the entry point: the poster may not take their own seat.
   await expectRefused(
     'poster cannot reserve a seat on their own offer',
