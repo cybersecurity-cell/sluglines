@@ -279,3 +279,91 @@ assert.match(functionsCode, /record_audit_event\(/)
 assert.equal(/log_audit_event\(/i.test(functionsCode), false)
 
 console.log('recurring-offers-schema (0020): all assertions passed')
+
+// -----------------------------------------------------------------------------
+// 0030 — the timezone is validated at create time, and one bad template no
+// longer aborts the sweep for everyone (issue #139, D-89). Replace, not
+// overload; 0020 is untouched (the assertions above still read it).
+// -----------------------------------------------------------------------------
+const guard = migrations.find((m) => m.file === '0030_recurring_timezone_guard.sql')
+assert.ok(guard, '0030_recurring_timezone_guard.sql must exist')
+const guardCode = guard.sql.replace(/^--.*$/gm, '')
+assert.match(guard.sql, /--\s*APPLIED:\s*no\b/, '0030 ships unapplied; applying it is a separate authorised act')
+for (const stmt of guard.statements.filter((st) => st.kind === 'create_function')) {
+  assert.equal(stmt.securityDefiner, true, `${stmt.fn} must remain SECURITY DEFINER`)
+  assert.equal(stmt.pinsSearchPath, true, `${stmt.fn} must still pin search_path`)
+}
+assert.deepEqual(
+  guard.statements.filter((st) => st.kind === 'create_function').map((st) => st.fn).sort(),
+  ['public.create_recurring_offer', 'public.instantiate_recurring_offers'],
+  '0030 re-creates exactly the two functions the finding names'
+)
+
+const headerOf = (code, name) =>
+  new RegExp(`create or replace function public\\.${name}\\(([^)]*)\\)\\s*returns\\s+([\\w.]+)`, 'i').exec(code)
+const bodyOf = (code, name) =>
+  new RegExp(`create or replace function public\\.${name}\\([^$]*?\\$fn\\$([\\s\\S]*?)\\$fn\\$`, 'i').exec(code)[1]
+const norm = (text) => text.replace(/^\s*--.*$/gm, '').replace(/\s+/g, ' ').trim()
+
+for (const name of ['create_recurring_offer', 'instantiate_recurring_offers']) {
+  const before = headerOf(functionsCode, name)
+  const after = headerOf(guardCode, name)
+  assert.ok(after, `0030 must re-create ${name}`)
+  assert.equal(norm(after[1]), norm(before[1]), `${name}: same argument list (defaults included), or it overloads instead of replacing`)
+  assert.equal(after[2], before[2], `${name}: same return type`)
+}
+
+// 1. create_recurring_offer validates the timezone against the server's own
+//    catalogue, with 22023 like every other argument check, after the checks
+//    0020 already made and before the insert.
+const createBefore = norm(bodyOf(functionsCode, 'create_recurring_offer'))
+const createAfter = norm(bodyOf(guardCode, 'create_recurring_offer'))
+assert.match(
+  createAfter,
+  /if not exists \(select 1 from pg_timezone_names where name = coalesce\(p_timezone, 'America\/New_York'\)\) then raise exception 'timezone must be a name from pg_timezone_names[^;]*errcode = '22023';/,
+  'an unknown timezone is refused at create time, against pg_timezone_names'
+)
+assert.equal(/pg_timezone_names/.test(createBefore), false, "0020's create_recurring_offer accepted any text — the defect #139 names")
+const originalChecks = [...createBefore.matchAll(/if [^;]+? then raise exception [^;]+;/g)].map((m) => m[0])
+assert.ok(originalChecks.length >= 7, `0020's create_recurring_offer has its checks, found ${originalChecks.length}`)
+let cursor = 0
+for (const check of originalChecks) {
+  const at = createAfter.indexOf(check, cursor)
+  assert.ok(at >= cursor, `0030 must keep 0020's check, in order: ${check.slice(0, 60)}...`)
+  cursor = at + check.length
+}
+assert.ok(createAfter.indexOf('pg_timezone_names') < createAfter.indexOf('insert into public.recurring_offer_templates'), 'validated before the insert')
+for (const kept of ['insert into public.recurring_offer_templates (', "perform public.record_audit_event(v_actor, 'recurring_offer.created'", 'return v_template;']) {
+  assert.ok(createAfter.includes(kept), `0030 must keep: ${kept}`)
+}
+
+// 2. instantiate_recurring_offers isolates each template: the whole loop body
+//    sits in a sub-block whose handler records the failure and moves on.
+const sweepBefore = norm(bodyOf(functionsCode, 'instantiate_recurring_offers'))
+const sweepAfter = norm(bodyOf(guardCode, 'instantiate_recurring_offers'))
+assert.equal(/exception when others/.test(sweepBefore), false, "0020's sweep had no handler — one bad template aborted everyone's instantiation")
+assert.match(sweepAfter, /for update loop begin v_today := \(now\(\) at time zone v_tpl\.timezone\)::date;/, 'the sub-block opens before the first use of the template\'s timezone')
+assert.match(
+  sweepAfter,
+  /v_count := v_count \+ 1; exception when others then perform public\.record_audit_event\( v_tpl\.member_id, 'recurring_offer\.instantiate_failed', 'recurring_offer_template', v_tpl\.id, jsonb_build_object\('sqlstate', SQLSTATE, 'message', SQLERRM\) \); end; end loop;/,
+  'a failing template is recorded against the template and the loop continues'
+)
+// Every step 0020's sweep took is still taken, in order: the body between
+// `loop` and `end loop`, minus the sub-block and its handler, is 0020's.
+const inner = (text) => text.slice(text.indexOf('loop ') + 5, text.lastIndexOf(' end loop;'))
+const strippedAfter = inner(sweepAfter)
+  .replace(/^begin /, '')
+  .replace(/ exception when others then perform public\.record_audit_event\([^;]*\); end;$/, '')
+assert.equal(strippedAfter, inner(sweepBefore), '0030 must change nothing in the sweep but the sub-block and its handler')
+
+// 3. Grants travel with the re-creations, on the exact signatures. The sweep
+//    stays internal (0025): revoked from anon and authenticated, never granted.
+const createSig = 'create_recurring_offer\\(text, uuid, uuid, integer\\[\\], time, time, integer, text, date, date\\)'
+assert.match(guardCode, new RegExp(`revoke all on function public\\.${createSig} from public;`))
+assert.match(guardCode, new RegExp(`revoke all on function public\\.${createSig} from anon;`))
+assert.match(guardCode, new RegExp(`grant execute on function public\\.${createSig} to authenticated;`))
+assert.match(guardCode, /revoke all on function public\.instantiate_recurring_offers\(\) from public;/)
+assert.match(guardCode, /revoke all on function public\.instantiate_recurring_offers\(\) from anon, authenticated;/)
+assert.equal(/grant execute on function public\.instantiate_recurring_offers/.test(guardCode), false, 'the sweep is never granted to a client role')
+
+console.log('recurring-offers-schema (0030): all assertions passed')

@@ -689,6 +689,46 @@ try {
   )
   assert.equal(nsAfter[0].state, 'CANCELLED')
 
+  // ---------------------------------------------------------------------------
+  // Issue #139 — create_recurring_offer (0030) refuses a timezone Postgres does
+  // not know. Against 0020 the 'garbage' template is ACCEPTED and this section
+  // fails there, naming why. The sweep's per-template isolation is asserted in
+  // source (tests/recurring-offers-schema.test.mjs): instantiate_recurring_offers
+  // is internal (0025) and cannot be called from a member session.
+  // ---------------------------------------------------------------------------
+  console.log('\n#139 — create_recurring_offer: the timezone must be a real one')
+
+  const recurringArgs = (timezone, keySuffix) => ({
+    p_poster_role: 'driver',
+    p_origin_location_id: originLocation.id,
+    p_destination_location_id: destinationLocation.id,
+    p_days_of_week: [1, 2, 3, 4, 5],
+    p_window_start_local: '07:00',
+    p_window_end_local: '07:30',
+    p_seats_total: 2,
+    p_timezone: timezone,
+  })
+  const badZone = await expectRefused(
+    "create_recurring_offer with timezone 'garbage' is refused",
+    poster.rpc('create_recurring_offer', recurringArgs('garbage'))
+  )
+  assert.equal(
+    badZone.code,
+    TRANSITION_ERRCODES.INVALID_ARGUMENT,
+    `an unknown timezone must be refused as 22023 (0030); 0020 stores it — got ${describeError(badZone)}`
+  )
+  const goodTemplate = await expectOk(
+    "create_recurring_offer with 'America/New_York' succeeds",
+    poster.rpc('create_recurring_offer', recurringArgs('America/New_York')),
+    (d) => `template ${d?.id}, timezone=${d?.timezone}`
+  )
+  assert.equal(goodTemplate.timezone, 'America/New_York')
+  await expectOk(
+    'poster cancel_recurring_offer clears the fixture',
+    poster.rpc('cancel_recurring_offer', { p_template_id: goodTemplate.id }),
+    () => 'cancelled'
+  )
+
   // Authorisation inside the entry point: the poster may not take their own seat.
   await expectRefused(
     'poster cannot reserve a seat on their own offer',
