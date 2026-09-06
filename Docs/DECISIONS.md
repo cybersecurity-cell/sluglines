@@ -6181,3 +6181,57 @@ the issue's check: a template stored with `'garbage'` (inserted with `service_ro
 function now refuses it), then a sweep that records one `recurring_offer.instantiate_failed` and
 still instantiates the valid templates — then applied under the owner's authorisation and recorded
 here.
+
+## D-90 — `/board` puts open offers first, shows the viewer's own offers and seats under "Yours" with cancel and release as server actions, presets the post form to "leaving in N minutes", and polls while visible. Issue #140
+
+**Date:** 2026-09-06
+
+### The decision
+
+- **Order.** Open offers first (riders are the majority user and come to find a seat), the viewer's
+  own offers and seats above them under "Yours", the post form last and still reachable from the
+  empty state's anchor.
+- **Undo, as server actions** (`src/app/board/actions.ts`): a poster cancels their own offer through
+  `offer_cancel`; a rider releases their own ACTIVE seat through `offer_release_seat`. rev. 5.3 §8 M3
+  names exactly thirteen POST routes and a release endpoint is not one of them, so neither is a route.
+  The idempotency key is derived on the server from what is being asked —
+  `board-cancel:<offer>:<revision>` / `board-release:<offer>:<revision>` — so a double tap replays
+  through `0002`'s idempotency table rather than applying a second hop; the input goes through the
+  same `parseTransitionInput` the fetch routes use, and a failure is classified by
+  `transitionFailure`. Outcomes return in the URL (`?done=`, `?error=`). A CONFIRMED seat gets no
+  release control: `offer_release_seat` refuses it by design, and the rider path for it is #148.
+- **The "mine" view** is drawn from the same rows: `buildCorridorBoard` gains an optional
+  `reservations` input (read by the new `src/lib/board-reservations.ts`, scoped to the viewer in the
+  query and degrading to `[]`) and returns `yours` and `others` alongside the full list.
+- **The 6 am form** (`PostSeatForm`): "leaving in" presets of 10/20/30/45 minutes set a fixed
+  30-minute window; the pickers are pre-filled and kept to adjust; the start cannot be in the past;
+  end-after-start is checked before the round trip (the SQL checks it again); seats default to three.
+- **The list is live**: `aria-live="polite"` on the offers, and `LiveUpdated` re-renders the server
+  board every 30 s while the tab is visible and shows the render time in Eastern.
+- After "Reserved." the rider is told what happens next in one line.
+
+### The evidence
+
+Issue #140's five bullets, each verified in the pre-change source: two raw `datetime-local` fields
+with no defaults; `grep cancel` finding nothing in `src/app` or `src/components`; "Reserved." with
+nothing after it; the form above the list; no `aria-live` and no refresh but the viewer's own.
+
+### Rejected alternatives
+
+- **A `POST /api/reservations/release` route.** Not in §8 M3's list of thirteen, which
+  `tests/api-routes.test.mjs` pins by count; a Server Action gives the same writer the same key
+  discipline without widening the API.
+- **Supabase Realtime now.** The eventual answer (§8 M3), but it means a browser Supabase client on
+  the page D-46 priced at 62 kB; a bounded, visibility-aware poll over the server render is the
+  honest interim.
+- **A separate "my rides" page.** The viewer's rows are already on the board; a section is the
+  smaller change and keeps one screen at the curb.
+
+### What this does not do
+
+No edit of a posted offer (there is no writer for it; a cancel-and-repost is two taps). No release of
+a CONFIRMED seat (#148). No Realtime.
+
+**Status:** PENDING. DONE when a signed-in person on the deployed `/board` posts with a preset, sees
+the offer under "Yours", cancels it; reserves someone else's, sees it under "Yours", releases it;
+and sees the list refresh on its own — evidence on #140 (needs #47).
