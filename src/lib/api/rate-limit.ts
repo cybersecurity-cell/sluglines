@@ -25,14 +25,31 @@ export interface RateLimitResult {
 
 export interface RateLimiter {
   consume(key: string, now: number): RateLimitResult
+  /** Keys currently held. Exposed so the eviction below is testable, not for callers. */
+  size(): number
 }
 
 export function createFixedWindowLimiter(options: { max: number; windowMs: number }): RateLimiter {
   const { max, windowMs } = options
   const hits = new Map<string, number[]>()
+  let lastSweep = Number.NEGATIVE_INFINITY
+
+  // Issue #144: the map never evicted, so every distinct IP or phone number
+  // that ever hit a route stayed in memory for the life of the process. Once
+  // per window, drop every key whose hits have all aged out. A key that is
+  // still inside its window is untouched, so the sweep never loosens a limit.
+  function sweep(now: number) {
+    if (now - lastSweep < windowMs) return
+    lastSweep = now
+    hits.forEach((times: number[], key: string) => {
+      if (times.every((t: number) => t <= now - windowMs)) hits.delete(key)
+    })
+  }
 
   return {
+    size: () => hits.size,
     consume(key: string, now: number): RateLimitResult {
+      sweep(now)
       const recent = (hits.get(key) ?? []).filter((t) => t > now - windowMs)
 
       if (recent.length >= max) {

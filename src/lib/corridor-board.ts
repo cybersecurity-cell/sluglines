@@ -18,6 +18,7 @@ import { BOARD_VISIBLE_STATES, CORRIDOR_OFFER_COLUMNS } from '@/lib/domain/board
 import type { CorridorOfferRow } from '@/lib/domain/board.ts'
 import { PILOT_CORRIDOR_PAIR_LOCATION_IDS } from '@/lib/domain/corridor.ts'
 import { createClient } from '@/lib/supabase/server'
+import { reportUnavailable } from '@/lib/observability.ts'
 
 export type CorridorBoardRead =
   | { readonly state: 'signed-out' }
@@ -44,11 +45,14 @@ export async function getCorridorBoardOffers(): Promise<CorridorBoardRead> {
       .order('window_start', { ascending: true })
 
     if (error) {
-      return { state: 'unavailable', reason: `offers read failed (${error.code ?? 'unknown'})` }
+      const reason = `offers read failed (${error.code ?? 'unknown'})`
+      reportUnavailable('corridor-board.offers', reason, error)
+      return { state: 'unavailable', reason }
     }
 
     return { state: 'ok', viewerId: auth.user.id, rows: (data ?? []) as unknown as CorridorOfferRow[] }
-  } catch {
+  } catch (error) {
+    reportUnavailable('corridor-board.client', 'supabase client unavailable', error)
     return { state: 'unavailable', reason: 'supabase client unavailable' }
   }
 }
