@@ -41,6 +41,8 @@ export const TRANSITION_ERROR_KINDS = [
   'in_flight',
   'unavailable',
   'not_implemented',
+  /** The caller holds the maximum number of open offers (PT429, `0028`). Permanent until they cancel one. */
+  'limit_reached',
 ] as const
 
 export type TransitionErrorKind = (typeof TRANSITION_ERROR_KINDS)[number]
@@ -65,6 +67,8 @@ export const TRANSITION_HTTP_STATUS: Readonly<Record<TransitionErrcode, number>>
   [TRANSITION_ERRCODES.INVALID_ARGUMENT]: 400,
   [TRANSITION_ERRCODES.FORBIDDEN]: 403,
   [TRANSITION_ERRCODES.NOT_FOUND]: 404,
+  /** PostgREST already sets 429 from the PT429 code; this keeps the route's own status line honest too. */
+  [TRANSITION_ERRCODES.LIMIT_REACHED]: 429,
 }
 
 export const TRANSITION_ERROR_KIND_BY_ERRCODE: Readonly<Record<TransitionErrcode, TransitionErrorKind>> = {
@@ -74,6 +78,7 @@ export const TRANSITION_ERROR_KIND_BY_ERRCODE: Readonly<Record<TransitionErrcode
   [TRANSITION_ERRCODES.INVALID_ARGUMENT]: 'invalid_argument',
   [TRANSITION_ERRCODES.FORBIDDEN]: 'forbidden',
   [TRANSITION_ERRCODES.NOT_FOUND]: 'not_found',
+  [TRANSITION_ERRCODES.LIMIT_REACHED]: 'limit_reached',
 }
 
 /**
@@ -101,6 +106,7 @@ const MESSAGE_BY_KIND: Readonly<Record<TransitionErrorKind, string>> = {
   in_flight: 'That request is still being processed. Retry with the same idempotency key.',
   unavailable: 'The coordinator is unreachable. Retry with the same idempotency key.',
   not_implemented: 'That endpoint is not available yet.',
+  limit_reached: 'You already have the maximum number of open offers. Cancel one before posting another.',
 }
 
 /**

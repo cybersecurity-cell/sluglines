@@ -19,6 +19,7 @@ import {
   RESERVATION_STATES,
   REVISION_START,
   TERMINAL_OFFER_STATES,
+  OFFER_CREATE_LIMITS,
   TRANSITION_ERRCODES,
   canTransition,
   checkRevision,
@@ -381,6 +382,7 @@ const M3_MIGRATIONS = [
   readMigration('0002_ride_coordinator_state.sql'),
   readMigration('0003_resolve_transition_conflicts.sql'),
   readMigration('0027_offer_cancel_poster_or_moderator.sql'),
+  readMigration('0028_offer_create_bounds_and_indexes.sql'),
 ]
 
 const migration = M3_MIGRATIONS.map((m) => m.sql).join('\n')
@@ -703,4 +705,88 @@ assert.equal(isConflictError({ code: stale.errcode }), true, 'the predicted code
   assert.match(sql0027, /revoke all on function public\.offer_cancel\(uuid, integer, text\) from anon;/)
   assert.match(sql0027, /grant execute on function public\.offer_cancel\(uuid, integer, text\) to authenticated;/)
   assert.match(sql0027, /--\s*APPLIED:\s*no\b/, '0027 ships unapplied; applying it is a separate authorised act')
+}
+
+// =============================================================================
+// 0028 — offer_create bounds the window and the number of open offers per
+// member, and offers gains its indexes (issue #137, D-87). Replace, not
+// overload; the checks 0002 made are all still made, in the same order, before
+// the new ones; the numbers in the SQL are the numbers the domain publishes.
+// =============================================================================
+{
+  const defs = definitionsOf('offer_create')
+  assert.equal(defs.length, 2, 'offer_create must be defined by 0002 and re-created by 0028')
+  assert.equal(defs[0].file, '0002_ride_coordinator_state.sql')
+  assert.equal(defs[1].file, '0028_offer_create_bounds_and_indexes.sql')
+  assert.equal(
+    defs[0].header.replace(/\s+/g, ' ').trim(),
+    defs[1].header.replace(/\s+/g, ' ').trim(),
+    "0028 must re-create offer_create with 0002's exact signature, or it creates an overload instead of replacing"
+  )
+  const [before, after] = defs
+  assert.match(after.header, /security definer/i)
+  assert.match(after.header, /set search_path = public, pg_temp/i)
+
+  // Every statement 0002 made is still made: the 0028 body is 0002's body
+  // plus the new checks, nothing removed and nothing reordered.
+  const stripped = (body) => body.replace(/^\s*--.*$/gm, '').replace(/\s+/g, ' ').trim()
+  const original = stripped(before.body)
+  const revised = stripped(after.body)
+  const originalChecks = [...original.matchAll(/if [^;]+? then raise exception [^;]+;/g)].map((m) => m[0])
+  assert.ok(originalChecks.length >= 5, `0002's offer_create has its five argument checks, found ${originalChecks.length}`)
+  let cursor = 0
+  for (const check of originalChecks) {
+    const at = revised.indexOf(check, cursor)
+    assert.ok(at >= cursor, `0028 must keep 0002's check, in order: ${check.slice(0, 60)}...`)
+    cursor = at + check.length
+  }
+  for (const statement of [
+    "public.claim_offer_operation(v_actor, 'offer_create', null, p_idempotency_key)",
+    'insert into public.offers (',
+    "perform public.record_audit_event(v_actor, 'offer.created', 'offer', v_offer_id,",
+    'perform public.complete_offer_operation(v_actor, p_idempotency_key, v_offer_id, 1);',
+    'return v_offer_id;',
+  ]) {
+    assert.ok(revised.includes(statement), `0028 must keep: ${statement}`)
+  }
+
+  // The new bounds, and the numbers the domain publishes for them.
+  assert.match(after.body, new RegExp(`p_window_end - p_window_start > interval '${OFFER_CREATE_LIMITS.maxWindowHours} hours'`), 'window length bound')
+  assert.match(after.body, new RegExp(`p_window_start > now\\(\\) \\+ interval '${OFFER_CREATE_LIMITS.maxStartDaysAhead} days'`), 'start horizon bound')
+  assert.equal(OFFER_CREATE_LIMITS.maxStartMinutesAgo, 60, 'the SQL says 1 hour; the domain says 60 minutes')
+  assert.match(after.body, /p_window_start < now\(\) - interval '1 hour'/, 'staleness bound')
+  assert.match(after.body, new RegExp(`if v_open >= ${OFFER_CREATE_LIMITS.maxOpenOffersPerMember} then`), 'per-member cap')
+  assert.match(after.body, /errcode = 'PT429'/, 'the cap raises the published LIMIT_REACHED code')
+  assert.equal(TRANSITION_ERRCODES.LIMIT_REACHED, 'PT429')
+  assert.match(after.body, /o\.poster_id = v_actor/, "the cap counts the caller's own offers")
+  assert.match(after.body, /o\.window_end > now\(\)/, 'an offer whose window ended does not count against the cap')
+  assert.match(after.body, /o\.state = 'DRAFT' and o\.created_at > now\(\) - interval '1 day'/, 'recent DRAFTs count, since they never expire')
+  // The cap runs after the argument checks and before the insert.
+  assert.ok(
+    revised.indexOf('seats_total must be between 1 and 6') < revised.indexOf('select count(*) into v_open') &&
+      revised.indexOf('select count(*) into v_open') < revised.indexOf('insert into public.offers ('),
+    'the cap is counted after the argument checks and before the insert'
+  )
+
+  // The grants travel with the re-creation, on the exact signature.
+  const sql0028 = M3_MIGRATIONS[3].sql
+  const sig = 'offer_create\\(text, uuid, uuid, timestamptz, timestamptz, integer, text\\)'
+  assert.match(sql0028, new RegExp(`revoke all on function public\\.${sig} from public;`))
+  assert.match(sql0028, new RegExp(`revoke all on function public\\.${sig} from anon;`))
+  assert.match(sql0028, new RegExp(`grant execute on function public\\.${sig} to authenticated;`))
+  assert.match(sql0028, /--\s*APPLIED:\s*no\b/, '0028 ships unapplied; applying it is a separate authorised act')
+
+  // The three indexes, each `if not exists`, each on the columns a reader
+  // actually filters on.
+  for (const [name, columns] of [
+    ['idx_offers_state_window_end', '(state, window_end)'],
+    ['idx_offers_corridor_state', '(origin_location_id, destination_location_id, state)'],
+    ['idx_offers_poster_state', '(poster_id, state)'],
+  ]) {
+    assert.match(
+      sql0028,
+      new RegExp(`create index if not exists ${name}\\s+on public\\.offers ${columns.replace(/[()]/g, '\\$&')};`),
+      `0028 must add ${name} on ${columns}`
+    )
+  }
 }

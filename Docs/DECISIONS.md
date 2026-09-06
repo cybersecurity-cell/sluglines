@@ -5661,3 +5661,85 @@ defect is live on every database running `0002`, production included, until an a
 `#133` live section passing, then applied to production under the owner's authorisation, with the
 apply recorded here and the evidence on issue #133 (the manual check the issue names: as rider B on
 driver A's offer, `POST /api/offers/cancel` returns 403 and rider C's reservation is untouched).
+
+
+---
+
+## D-87 — `offer_create` bounds the window (4 h long, 14 days ahead, 1 h stale) and caps open offers at 5 per member; `offers` gets three indexes. `0028` (written, NOT applied). Issue #137
+
+**Date:** 2026-09-06
+
+### The decision
+
+`supabase/migrations/0028_offer_create_bounds_and_indexes.sql` re-creates
+`public.offer_create(text, uuid, uuid, timestamptz, timestamptz, integer, text)` — same signature,
+`0002`'s body with its five checks kept in order — and adds, after them:
+
+| bound | value | raises |
+|---|---|---|
+| `window_end - window_start` | ≤ 4 hours | `22023` |
+| `window_start` | ≤ now + 14 days | `22023` |
+| `window_start` | ≥ now − 1 hour | `22023` |
+| open offers per member | < 5 before insert | **`PT429`** |
+
+"Open" is any of `OPEN, PARTIALLY_RESERVED, RESERVED, CONFIRMED, ARRIVING` whose `window_end > now()`,
+plus `DRAFT`s created in the last day (a DRAFT never expires, and the function is reachable over
+PostgREST without the publish call the route makes). The numbers are published as
+`OFFER_CREATE_LIMITS` in `src/lib/domain/offer-transitions.ts`; `tests/offer-state-machine.test.mjs`
+holds the SQL to them. `PT429` joins `TRANSITION_ERRCODES` as `LIMIT_REACHED`, mapped by
+`transition-http.ts` to `429 limit_reached, retryable: false` — the same PTnnn mechanism as
+`PT409`/`PT425` (D-30), so PostgREST sets the status line itself.
+
+Three indexes, each `if not exists`: `idx_offers_state_window_end (state, window_end)` for the
+expiry sweep and the cap's predicate; `idx_offers_corridor_state (origin_location_id,
+destination_location_id, state)` for the `/board` filter and, by its leading column, the `0005`
+aggregates' join; `idx_offers_poster_state (poster_id, state)` for the cap and any "my offers" read
+(#140).
+
+### The evidence
+
+`0002`'s `offer_create` (lines 819–835) checks seats, distinct endpoints and `window_end >
+window_start` only; `offer_expire_sweep` (1386–1396) keys on `window_end <= now()`, so an offer ending
+in 2099 sits on every board until cancelled; `offers` carried no index beyond the PK and `0019`'s
+partial one, and the sweep, the board query, `get_public_open_offer_counts` and
+`record_completed_rides_sweep` all scan it. `0020`'s own header states the rule this entry relies on:
+a later ordinal may re-create `offer_create` "only to fix a defect in it, with the old signature
+carried exactly" — an unbounded window and an absent cap are that defect.
+
+### Why these numbers
+
+Four hours covers a whole peak and is still a fraction of a day, so the sweep is never more than a
+peak behind. Fourteen days is a fortnight's planning; beyond that the board is a calendar. One hour
+of tolerance lets "leaving in ten minutes" from a slow phone clock, or a form submitted at the top of
+its window, still land. Five open offers is a morning and an afternoon for two days with one spare —
+generous for a person, useless for a flood. None of these is a product-tuned figure; each is a bound
+that a legitimate pilot use cannot hit, recorded so the day one does, the change is one line and one
+sentence here.
+
+### What this does not bound
+
+`offer_create_for_member` (`0020`), the recurring-offer sweep's copy of the body with an explicit
+actor. Its windows come from templates rather than requests, and template validation is issue
+#139's; the asymmetry is stated in `0028`'s header rather than left to be found.
+
+### Rejected alternatives
+
+- **Bounding in the route only.** A route is not a security boundary (rev. 5.3 §12 constraint 6); the
+  function is reachable directly by any authenticated client.
+- **A CHECK constraint on `offers`.** Cannot express "within 14 days of now" without `now()` in a
+  CHECK, which Postgres allows but which makes an existing row invalid a fortnight later; and a
+  constraint cannot express the per-member cap at all.
+- **Counting DRAFTs forever.** A publish that failed once would then cost the member a slot for good.
+
+### Verification, and what has not been done
+
+`tests/live-rls.test.mjs` gains a section: a 5-hour window, a start 15 days out and a start 2 hours
+ago are each refused `22023`; four further published offers bring the poster to five; the sixth is
+refused `PT429` **and** arrives as HTTP 429; the four are cancelled. Against `0002` the first three
+succeed and the section fails there. **It has not run** (no preview credentials, #41). `0028` is
+`APPLIED: no`. This branch is stacked on #133's (`0027`), because the sequence is contiguous and
+`0027` is not yet on `main`; the PR's base is that branch until #149 lands.
+
+**Status:** PENDING. Moves to DONE when `0028` has been rehearsed on a preview branch with the
+`#137` live section passing and the issue's own check performed (an offer ending in 2099 is
+rejected), then applied under the owner's authorisation and recorded here.

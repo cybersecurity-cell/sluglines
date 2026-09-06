@@ -482,6 +482,16 @@ assert.equal(transitionFailure({ code: TRANSITION_ERRCODES.INVALID_ARGUMENT }).s
 assert.equal(transitionFailure({ code: TRANSITION_ERRCODES.FORBIDDEN }).status, 403)
 assert.equal(transitionFailure({ code: TRANSITION_ERRCODES.NOT_FOUND }).status, 404)
 
+// PT429 (issue #137): the per-member open-offer cap in 0028's offer_create.
+// PTnnn, like PT409/PT425, so PostgREST sets the status itself; permanent
+// until the member cancels an offer, so never retryable.
+const limit = transitionFailure({ code: TRANSITION_ERRCODES.LIMIT_REACHED })
+assert.equal(TRANSITION_ERRCODES.LIMIT_REACHED, 'PT429')
+assert.equal(limit.status, 429)
+assert.equal(limit.body.error.kind, 'limit_reached')
+assert.equal(limit.body.error.retryable, false, 'a retry with the same key replays the same refusal; cancelling an offer is the fix')
+assert.match(limit.body.error.message, /cancel one/i, 'the message says what to do about it')
+
 // A refusal with no SQLSTATE is a transport failure, never a decision. This is
 // the D-29 shape: it must not be reported as a conflict.
 for (const codeless of [{}, { code: '40001' }, { message: 'upstream request timeout' }, null, 'boom']) {
