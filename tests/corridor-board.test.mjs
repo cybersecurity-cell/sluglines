@@ -184,4 +184,89 @@ assert.equal(
   '/board must read through lib/corridor-board.ts, not open its own Supabase client'
 )
 
+// -----------------------------------------------------------------------------
+// Issue #140 — the "mine" view, the undo controls, the 6am form, the live list.
+// -----------------------------------------------------------------------------
+{
+  // The view model splits the viewer's own offers and seats from everyone else's.
+  const mineRow = row({ id: 'offer-mine', poster_id: VIEWER })
+  const seatRow = row({ id: 'offer-seat', poster_id: OTHER })
+  const otherRow = row({ id: 'offer-other', poster_id: OTHER })
+  const board = buildCorridorBoard([mineRow, seatRow, otherRow], {
+    viewerId: VIEWER,
+    reservations: [{ offer_id: 'offer-seat', state: 'ACTIVE', seats: 2 }],
+  })
+  assert.deepEqual(board.yours.map((o) => o.id), ['offer-mine', 'offer-seat'], 'yours = posted by me or a seat I hold')
+  assert.deepEqual(board.others.map((o) => o.id), ['offer-other'], 'others = the rest, in the order fetched')
+  assert.equal(board.offers.length, 3, 'the full list is still available')
+  assert.deepEqual(board.yours[1].mySeat, { state: 'ACTIVE', seats: 2 }, 'my seat carries its state and seat count')
+  assert.equal(board.yours[0].mySeat, undefined, 'my own offer carries no seat of mine')
+  assert.equal(board.others[0].mySeat, undefined)
+  // Without reservations the split still works and nothing is fabricated.
+  const bare = buildCorridorBoard([otherRow], { viewerId: VIEWER })
+  assert.deepEqual(bare.yours, [])
+  assert.equal(bare.others.length, 1)
+}
+
+// Page order: the open list before the post form (riders are the majority
+// user), a live region on the list, the poll component, the "Yours" section
+// with both undo forms, outcome banners.
+assert.ok(
+  boardPage.indexOf('id="open-offers-heading"') < boardPage.indexOf('id="post-seat-form"'),
+  'the open offers come before the post form'
+)
+assert.ok(boardPage.indexOf('id="yours-heading"') < boardPage.indexOf('id="open-offers-heading"'), '"Yours" sits above the open list')
+assert.match(boardPage, /aria-live="polite"/, 'the list is a live region')
+assert.match(boardPage, /<LiveUpdated renderedLabel=\{renderedLabel\} \/>/, 'the board shows when it was rendered and polls')
+assert.match(boardPage, /const renderedLabel = new Date\(\)\.toLocaleTimeString\('en-US', \{\s*timeZone: BOARD_TIME_ZONE,/, 'the render time is formatted server-side in the board zone')
+assert.match(boardPage, /action=\{cancelOwnOffer\}/, 'a poster can cancel their own offer')
+assert.match(boardPage, /action=\{releaseOwnSeat\}/, 'a rider can release their own seat')
+assert.match(boardPage, /name="expected_revision" value=\{offer\.revision\}/, 'both undo forms carry the revision the member saw')
+assert.match(boardPage, /offer\.mySeat\?\.state === 'ACTIVE' \?/, 'release is offered for an ACTIVE seat only (a CONFIRMED seat has no rider path yet, #148)')
+assert.match(boardPage, /searchParams\?: Promise<\{ done\?: string; error\?: string \}>/, 'outcomes come back in the URL')
+assert.match(boardPage, /href="#post-seat-form"/, 'the empty state still anchors to the form')
+
+// The actions: server-only, both writers by name, deterministic keys derived
+// from (offer, revision) so a double tap replays rather than repeats, parsed
+// through the same validator the fetch routes use, no actor parameter.
+const boardActions = fs.readFileSync(path.join(root, 'src/app/board/actions.ts'), 'utf8')
+assert.match(boardActions, /'use server'/)
+assert.match(boardActions, /'offer_cancel'/)
+assert.match(boardActions, /'offer_release_seat'/)
+assert.match(boardActions, /parseTransitionInput\(/, 'the same validation the routes apply')
+assert.match(boardActions, /idempotency_key: `board-\$\{operation\}:\$\{String\(offerId\)\}:\$\{String\(expectedRevision\)\}`/, 'the key is derived from what is being asked, so a double tap replays')
+assert.equal(/p_actor|p_member_id|p_user_id|p_rider_id|p_poster_id/.test(boardActions), false, 'no actor parameter; auth.uid() decides')
+assert.equal(/\.update\(|\.delete\(\)|\.insert\(/.test(boardActions), false, 'no direct table write')
+assert.match(boardActions, /transitionFailure\(error\)\.body\.error\.kind/, 'failures are classified by the published mapping, not guessed')
+
+// The seat read is its own module, degrades to [] and scopes to the viewer.
+const seatRead = fs.readFileSync(path.join(root, 'src/lib/board-reservations.ts'), 'utf8')
+assert.match(seatRead, /\.from\('reservations'\)/)
+assert.match(seatRead, /\.eq\('rider_id', viewerId\)/, 'scoped to the viewer in the query, not only by policy')
+assert.match(seatRead, /\.in\('state', \['ACTIVE', 'CONFIRMED'\]\)/, 'live seats only')
+assert.match(seatRead, /if \(offerIds\.length === 0\) return \[\]/, 'no query for an empty board')
+
+// The 6am form: presets, defaults, a fixed window, end-after-start checked
+// before the round trip, seats default to a car.
+const postForm = fs.readFileSync(path.join(root, 'src/components/PostSeatForm.tsx'), 'utf8')
+assert.match(postForm, /LEAVING_IN_PRESETS_MINUTES = \[10, 20, 30, 45\]/, '"leaving in" presets')
+assert.match(postForm, /WINDOW_MINUTES = 30/, 'a fixed pickup window')
+assert.match(postForm, /DEFAULT_SEATS = 3/, 'seats default to a car, not one')
+assert.match(postForm, /useState\(initialWindow\.start\)/, 'the start is pre-filled')
+assert.match(postForm, /aria-pressed=\{leavingIn === minutes\}/, 'the chosen preset is announced')
+assert.match(postForm, /const windowInvalid =/, 'end-after-start is checked client-side')
+assert.match(postForm, /disabled=\{pending \|\| windowInvalid\}/, 'and blocks the submit')
+assert.match(postForm, /min=\{toLocalInputValue\(new Date\(\)\)\}/, 'the start cannot be in the past')
+
+// After "Reserved." the rider is told what happens next.
+const reserveButton = fs.readFileSync(path.join(root, 'src/components/ReserveSeatButton.tsx'), 'utf8')
+assert.match(reserveButton, /Reserved\. The driver confirms before the window/, 'the rider learns what happens next')
+
+// The poll is bounded, visibility-aware, and says when the board was rendered.
+const liveUpdated = fs.readFileSync(path.join(root, 'src/components/LiveUpdated.tsx'), 'utf8')
+assert.match(liveUpdated, /intervalMs = 30_000/, 'a 30s poll, not a firehose')
+assert.match(liveUpdated, /document\.visibilityState === 'visible'/, 'a hidden tab does not poll')
+assert.match(liveUpdated, /router\.refresh\(\)/, 'it re-renders the server board rather than fetching a second source of truth')
+assert.equal(/useState\(/.test(liveUpdated), false, 'no client state to hydrate; the label arrives formatted')
+
 console.log('corridor-board: ok')
