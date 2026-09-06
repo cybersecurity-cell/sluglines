@@ -17,6 +17,18 @@
 * { box-sizing: border-box; }
 html { scroll-behavior: smooth; }
 
+/*
+ * Issue #141: every motion on the site is decorative, so under
+ * prefers-reduced-motion it is simply off — smooth scrolling, the fade-up
+ * entrances and the live dot's pulse. WCAG 2.3.3.
+ */
+@media (prefers-reduced-motion: reduce) {
+  html { scroll-behavior: auto; }
+  .animate-fade-up { animation: none; opacity: 1; transform: none; }
+  .live-dot { animation: none; }
+  .card-hover { transition: none; }
+}
+
 body {
   background: var(--bg);
   color: var(--text);

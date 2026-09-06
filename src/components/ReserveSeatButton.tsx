@@ -95,7 +95,7 @@ export default function ReserveSeatButton({ offerId, expectedRevision, disabled 
         onClick={handleClick}
         disabled={disabled || pending}
         title={disabled ? 'You cannot reserve a seat on your own offer' : undefined}
-        className="whitespace-nowrap rounded-lg bg-sky-700 px-4 py-2 text-sm font-bold text-white transition-colors hover:bg-sky-800 disabled:cursor-not-allowed disabled:opacity-50"
+        className="inline-flex min-h-[44px] items-center whitespace-nowrap rounded-lg bg-sky-700 px-4 py-2 text-sm font-bold text-white transition-colors hover:bg-sky-800 disabled:cursor-not-allowed disabled:opacity-50"
       >
         {pending ? 'Reserving...' : disabled ? 'Your offer' : 'Reserve'}
       </button>

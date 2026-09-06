@@ -120,7 +120,7 @@ export default function PostSeatForm() {
             id="poster_role"
             value={posterRole}
             onChange={(event) => setPosterRole(event.target.value as 'driver' | 'rider')}
-            className="mt-2 w-full rounded-lg border border-slate-300 px-3 py-2 text-base text-slate-950 focus:border-sky-600 focus:outline-none focus:ring-2 focus:ring-sky-200"
+            className="mt-2 w-full rounded-lg border border-slate-500 px-3 py-2 text-base text-slate-950 focus:border-sky-600 focus:outline-none focus:ring-2 focus:ring-sky-600"
           >
             <option value="driver">Driving — offering seats</option>
             <option value="rider">Riding — requesting a seat</option>
@@ -135,7 +135,7 @@ export default function PostSeatForm() {
             id="direction"
             value={direction}
             onChange={(event) => setDirection(event.target.value as CorridorDirection)}
-            className="mt-2 w-full rounded-lg border border-slate-300 px-3 py-2 text-base text-slate-950 focus:border-sky-600 focus:outline-none focus:ring-2 focus:ring-sky-200"
+            className="mt-2 w-full rounded-lg border border-slate-500 px-3 py-2 text-base text-slate-950 focus:border-sky-600 focus:outline-none focus:ring-2 focus:ring-sky-600"
           >
             {directions.map((option) => (
               <option key={option.value} value={option.value}>
@@ -155,7 +155,7 @@ export default function PostSeatForm() {
             required
             value={windowStart}
             onChange={(event) => setWindowStart(event.target.value)}
-            className="mt-2 w-full rounded-lg border border-slate-300 px-3 py-2 text-base text-slate-950 focus:border-sky-600 focus:outline-none focus:ring-2 focus:ring-sky-200"
+            className="mt-2 w-full rounded-lg border border-slate-500 px-3 py-2 text-base text-slate-950 focus:border-sky-600 focus:outline-none focus:ring-2 focus:ring-sky-600"
           />
         </div>
 
@@ -169,7 +169,7 @@ export default function PostSeatForm() {
             required
             value={windowEnd}
             onChange={(event) => setWindowEnd(event.target.value)}
-            className="mt-2 w-full rounded-lg border border-slate-300 px-3 py-2 text-base text-slate-950 focus:border-sky-600 focus:outline-none focus:ring-2 focus:ring-sky-200"
+            className="mt-2 w-full rounded-lg border border-slate-500 px-3 py-2 text-base text-slate-950 focus:border-sky-600 focus:outline-none focus:ring-2 focus:ring-sky-600"
           />
         </div>
 
@@ -185,7 +185,7 @@ export default function PostSeatForm() {
             required
             value={seatsTotal}
             onChange={(event) => setSeatsTotal(Number(event.target.value))}
-            className="mt-2 w-full rounded-lg border border-slate-300 px-3 py-2 text-base text-slate-950 focus:border-sky-600 focus:outline-none focus:ring-2 focus:ring-sky-200"
+            className="mt-2 w-full rounded-lg border border-slate-500 px-3 py-2 text-base text-slate-950 focus:border-sky-600 focus:outline-none focus:ring-2 focus:ring-sky-600"
           />
         </div>
       </div>
