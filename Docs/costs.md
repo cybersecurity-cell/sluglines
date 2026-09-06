@@ -16,7 +16,7 @@ value instead of inventing one at the moment a gate is evaluated.
 |---|---|---|---|---|
 | C1 | Model spend per assistant turn | **≤ $0.10 / turn** | Alarm threshold | rev. 5.3 §11 Phase 5 — the AI verification gate checks per-turn cost against this file |
 | C2 | Model spend per month | **≤ $50 / month** | Alarm threshold | rev. 5.3 §13 "Spend"; surfaced as an alarm row on the moderator dashboard |
-| C3 | SMS sends per day | **500 sends / day** | Alarm threshold | rev. 5.3 §8 M2 / §13; bounds SMS-pumping abuse (risk 11) |
+| C3 | SMS sends per day | **500 sends / day** | Alarm threshold | rev. 5.3 §8 M2 / §13; bounds SMS-pumping abuse (risk 11); instrument is a provider-side billing/usage alert, not built yet — `Docs/DECISIONS.md` D-81 |
 | C4 | Model spend per assistant turn, hard stop | **≤ $0.15 / turn** | **Hard cap (enforced)** | issue #56; `src/lib/ai/cost.ts` `PER_TURN_COST_CEILING_USD`, checked mid-loop by `src/lib/ai/agent.ts` |
 | C5 | Assistant turns per member per day | **40 turns/member/day** | **Hard cap (enforced)** | issue #56; `0011`'s `ai_member_turn_count_today()`, checked before any model call |
 | C6 | Assistant turns, globally, per day | **2,000 turns/day** | **Hard cap (enforced)** | issue #56; `0011`'s `ai_global_turn_count_today()`, checked before any model call |
@@ -39,7 +39,10 @@ value instead of inventing one at the moment a gate is evaluated.
   cost-sheet alarm **two months running**.
 - **C3 (500 sends/day)** pairs with the §8 M2 OTP abuse controls (resend cooldown, verify-attempt
   caps, per-IP daily send cap, CAPTCHA). The caps bound the abuse; this alarm detects when the
-  bound is being tested.
+  bound is being tested. **The instrument is a provider-side billing/usage alert configured at the
+  SMS provider account** — not the §13 `manual_metrics`/`metrics_weekly`/moderator-dashboard path,
+  which is not built for this cap (`Docs/DECISIONS.md` D-81). **It is not yet configured**: no SMS
+  provider is integrated in this repo, so there is no account to configure it at.
 - **C4/C5/C6** are new pilot defaults recorded by issue #56 (Docs/DECISIONS.md D-65), the first caps
   in this table with an actual instrument behind them (see "Measurement" below). The two volume caps
   (C5, C6) are read from `agent_traces` via two SECURITY DEFINER functions in `0011`, checked before
@@ -61,7 +64,7 @@ value instead of inventing one at the moment a gate is evaluated.
 |---|---|---|
 | C1 | Per-turn cost recorded by the agent runtime / `agent_traces` | **RECORDED, not gated** — `agent_traces.estimated_cost_usd` (`0011`) is populated by every turn; nothing reviews it against C1 automatically yet, which is the human half of "alarm" |
 | C2 | `manual_metrics.model_cost_cents`, recorded weekly from the provider invoice | **PENDING** — `manual_metrics` table not created (deferred, see `Docs/DECISIONS.md` D-11) |
-| C3 | `manual_metrics.sms_sends`, recorded weekly from the provider dashboard | **PENDING** — no SMS provider integrated; SMS is Phase 5 |
+| C3 | Provider-side billing/usage alert at the SMS provider account (`Docs/DECISIONS.md` D-81) | **PENDING** — instrument is now chosen, not merely unspecified, but no SMS provider is integrated and the alert is not configured or test-fired |
 | C4 | Per-turn cost, enforced mid-loop | **ENFORCED** — `src/lib/ai/agent.ts`, from `response.usage` against `src/lib/ai/cost.ts`'s rate table |
 | C5 | Per-member daily turn count | **ENFORCED** — `0011`'s `ai_member_turn_count_today()` |
 | C6 | Global daily turn count | **ENFORCED** — `0011`'s `ai_global_turn_count_today()` |
@@ -92,3 +95,4 @@ These are provisional and expected to change once real usage data exists. When a
 |---|---|---|
 | 2026-08-14 | Initial provisional caps C1–C3 recorded. | rev. 5.3 §11 Phase 0 |
 | 2026-09-02 | C1 corrected from "hard cap" to "alarm threshold" (it never had an instrument to be a hard cap with). Added C4 (≤$0.15/turn hard stop), C5 (40 turns/member/day) and C6 (2,000 turns/day), all enforced by the AI runtime transplant. | issue #56, Docs/DECISIONS.md D-65 |
+| 2026-09-05 | C3's instrument named as a provider-side billing/usage alert at the SMS provider account, not the §13 `manual_metrics`/`metrics_weekly`/moderator-dashboard path. Value unchanged (500 sends/day); status remains PENDING — the alert is not yet configured or test-fired. | issue #119, Docs/DECISIONS.md D-81 |

@@ -432,9 +432,35 @@ const definerRevokedAcrossMigrations = lintMigrations([
 ])
 assert.deepEqual(rulesOf(definerRevokedAcrossMigrations), [])
 
-// R12 does not fire on a SECURITY DEFINER function granted to authenticated
-// — that is the legitimate client entry point, governed by R10 instead.
-const definerGrantedToAuthenticated = lintMigrations([
+// R12 — a SECURITY DEFINER function granted to authenticated is no longer
+// exempted outright (Docs/DECISIONS.md, the D-79 entry: that exemption is
+// exactly how `get_leaderboard` shipped anon-reachable with zero body checks
+// while R12 called the tree clean). Granted-to-authenticated plus no revoke
+// from anon plus no detected auth.uid() guard must still fire.
+const definerGrantedToAuthenticatedUnguarded = rulesOf(
+  lintMigrations([
+    analyzeSql(
+      '0001_client_fn.sql',
+      `create or replace function public.client_write()
+       returns void
+       language plpgsql
+       security definer
+       set search_path = public, pg_temp
+       as $$ begin null; end; $$;
+       revoke all on function public.client_write() from public;
+       grant execute on function public.client_write() to authenticated;`
+    ),
+  ])
+)
+assert.deepEqual(
+  definerGrantedToAuthenticatedUnguarded,
+  ['R12'],
+  'granted-to-authenticated is not by itself proof the body checks the caller'
+)
+
+// R12 is satisfied for a granted-to-authenticated function once it is ALSO
+// explicitly revoked from anon — the explicit-revoke half of the new rule.
+const definerGrantedToAuthenticatedRevokedFromAnon = lintMigrations([
   analyzeSql(
     '0001_client_fn.sql',
     `create or replace function public.client_write()
@@ -444,10 +470,62 @@ const definerGrantedToAuthenticated = lintMigrations([
      set search_path = public, pg_temp
      as $$ begin null; end; $$;
      revoke all on function public.client_write() from public;
+     grant execute on function public.client_write() to authenticated;
+     revoke all on function public.client_write() from anon;`
+  ),
+])
+assert.deepEqual(rulesOf(definerGrantedToAuthenticatedRevokedFromAnon), [])
+
+// R12 is also satisfied, with no revoke from anon at all, once the body
+// itself contains a detected auth.uid() call — the guard half of the new
+// rule, and the shape `offer_create`/`presence_checkin`/etc. already use
+// throughout 0001-0024 (`v_actor uuid := auth.uid();` then a null check).
+const definerGrantedToAuthenticatedGuarded = lintMigrations([
+  analyzeSql(
+    '0001_client_fn.sql',
+    `create or replace function public.client_write()
+     returns void
+     language plpgsql
+     security definer
+     set search_path = public, pg_temp
+     as $$
+     declare
+       v_actor uuid := auth.uid();
+     begin
+       if v_actor is null then
+         raise exception 'authentication required' using errcode = '42501';
+       end if;
+     end;
+     $$;
+     revoke all on function public.client_write() from public;
      grant execute on function public.client_write() to authenticated;`
   ),
 ])
-assert.deepEqual(rulesOf(definerGrantedToAuthenticated), [])
+assert.deepEqual(rulesOf(definerGrantedToAuthenticatedGuarded), [])
+
+// R12's own R10 allowlist carve-out: a function on ANON_CALLABLE_FUNCTIONS is
+// deliberately granted to anon (rev. 5.3 sec.8 M1) and must not be forced
+// into an auth.uid() guard or an anon revoke it was never meant to carry.
+assert.deepEqual(
+  rulesOf(
+    lintMigrations([
+      analyzeSql(
+        '0001_public_aggregates.sql',
+        `create or replace function public.get_public_spot_counts()
+         returns table (location_id uuid, active_count bigint)
+         language sql
+         security definer
+         stable
+         set search_path = public, pg_temp
+         as $$ select id, 0::bigint from public.locations $$;
+         revoke all on function public.get_public_spot_counts() from public;
+         grant execute on function public.get_public_spot_counts() to anon, authenticated;`
+      ),
+    ])
+  ),
+  [],
+  'ANON_CALLABLE_FUNCTIONS entries are exempt from the anon-revoke/auth.uid() requirement'
+)
 
 // R1 / R2 — filename and ordinal conventions.
 assert.deepEqual(rulesOf(lintMigrations([analyzeSql('setup.sql', '')])), ['R1'])

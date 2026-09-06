@@ -5292,3 +5292,288 @@ closes the gap between what D-13 promised and what actually happened.
 **Status:** ADOPTED. D-13 is narrowed to the M1–M4 core effective this entry. `AGENTS.md`'s opening
 paragraph is corrected in the same change (PR 1, `fix/public-surface-honesty`) to stop asserting the
 whole application core is rebuilt-not-transplanted.
+
+## D-79 — SECURITY FIX: D-74/R12's own exemption left 46 SECURITY DEFINER functions anon-reachable, including a member-directory leak (`get_leaderboard`). `0026` (written, NOT applied), hardens `scripts/sql-lint.mjs` (R12)
+
+**Date:** 2026-09-05
+**Scope:** `supabase/migrations/0026_revoke_anon_execute.sql` (new, **not applied to any target**),
+`scripts/sql-lint.mjs` (R12 rewritten), `supabase/migrations/README.md` (R12 section and "Adding a
+migration" updated, an overload-blindness limit note broadened), `tests/sql-migration-harness.test.mjs`
+(the R12 fixture that locked in the old exemption rewritten to three fixtures), `tests/lock-down-definer-functions.test.mjs`
+(extended to cover `0026`), and the baseline-N header in `Docs/consolidated-architecture.md`.
+
+### D-77's "fully closed" was true of 18 functions, not of the tree
+
+D-77 states "the D-74 vulnerability is fully closed" after applying `0025` to production. That is
+correct **for the 18 functions `0025` revokes**. It is not correct for the tree: `0025`'s own R12 rule
+(`scripts/sql-lint.mjs`) reads "every SECURITY DEFINER function **not** granted to `authenticated` must
+be revoked from anon and authenticated" and exempts a function granted to `authenticated` outright, on
+the stated premise that it is "the legitimate client entry point (RLS/actor checks live inside it)".
+That premise is a claim about the function's *body*. R12 never inspected the body — only the grant
+statement. **46 more SECURITY DEFINER functions in this tree carry `grant execute ... to authenticated`
+and nothing else**, and R12 called every one of them clean by construction, regardless of what their
+bodies actually did.
+
+### The finding: `get_leaderboard` has no authorization check at all
+
+`public.get_leaderboard(uuid)` (`0023_ride_history_leaderboard.sql:375-401`) is `SECURITY DEFINER`
+**specifically so it can bypass** `completed_rides`' RLS restriction to `member_id = auth.uid()` — its
+own file header says so (`0023:367-374`). Its body contains **no `auth.uid()` reference, no null check,
+and no `caller_is_moderator()` call.** Its only protection was
+`grant execute on function public.get_leaderboard(uuid) to authenticated`, which `0025`'s own header
+(lines 17-22) already documents as insufficient on Supabase: `anon` and `authenticated` are not the
+`PUBLIC` pseudo-role there, so Supabase's own default privileges hand `anon` `EXECUTE` on every new
+`public`-schema function independent of whatever `PUBLIC` holds, and `revoke ... from public` never
+touches that grant.
+
+Concretely: the public anon key (shipped to every browser) plus any `location_id` UUID was enough to
+pull one row per member who ever completed a ride at that lot — `member_id`, a partially masked real
+name, ride count, cumulative savings. Iterating the 41 active spots (`/api/health`) yields a member
+roster keyed by physical commuter lot — exactly the "member directory" rev. 5.3's product invariant
+(`0001:80-84`) says must not exist. `get_dashboard_summary` (`0024:65-70`), shipped in the *same* slice,
+DOES gate on `caller_is_moderator()`. The inconsistency between two functions in one PR is the bug, and
+it is exactly the shape a rule that checks grants instead of bodies cannot catch.
+
+Two more functions carry the identical shape with a smaller payload: `ai_global_turn_count_today()`
+(`0011:376-390`, no `auth.uid()` at all — leaks the global daily AI usage counter to anyone holding the
+anon key) and `ai_skill_enabled(text)` (`0011:269-281`, no `auth.uid()` — leaks which AI kill switches
+are on).
+
+### Why `tests/lock-down-definer-functions.test.mjs` and `sql:check` did not catch this
+
+The test hardcoded `LOCKED_DOWN_FUNCTIONS.length === 18` and its own "tree lints clean" check ran
+against the *old* R12, which is precisely the rule with the gap — a test asserting a flawed rule finds
+nothing wrong, by construction. `sql:check` passed on every run since `0025` landed for the same reason.
+Neither tool was lying; both were checking a property ("granted to authenticated ⇒ safe") that was never
+actually verified anywhere in this codebase.
+
+### Enumeration: 46 functions, computed, not counted by hand
+
+Every function `0026` revokes from `anon` was produced by running `scripts/sql-lint.mjs`'s own
+`loadMigrations`/`classifyStatement` over `supabase/migrations/*.sql` and taking the set difference: every
+`SECURITY DEFINER` function (`create_function` with `securityDefiner: true`) that also has a
+`grant execute ... to authenticated` statement and does **not** already have a `revoke ... from anon`
+statement anywhere in the sequence. Four functions are excluded from that set even though they match the
+shape — `get_public_spot_counts`, `get_public_open_offer_counts`, `get_scheduled_job_health`,
+`get_public_location` — because they are also explicitly granted to `anon`
+(`scripts/sql-lint.mjs`'s `ANON_CALLABLE_FUNCTIONS`, R10's own carve-out for rev. 5.3 sec.8 M1's public
+aggregates and the `/api/health` probe); revoking `anon` from those would break the public surface, not
+fix a hole. `tests/lock-down-definer-functions.test.mjs` re-runs this exact computation and asserts it
+against `0026`'s actual `revoke_function` statements, so the enumeration and the migration cannot drift
+apart silently. The 46, by originating migration: `0001` (3), `0002` (12), `0006` (1), `0011` (4),
+`0015` (4), `0016` (3), `0017` (7), `0020` (5), `0022` (4), `0023` (2), `0024` (1).
+
+`revoke` is overload-sensitive — a mismatched argument list silently no-ops instead of erroring
+(`supabase/migrations/README.md:101`) — so every `revoke` in `0026` carries the exact identity argument
+list its function's own `grant execute` statement uses, not a hand-typed guess.
+
+### `get_leaderboard`'s scoping decision
+
+Beyond the minimum (reject if `auth.uid()` is null), `get_leaderboard` now also rejects unless
+`p_location_id` equals the caller's own `members.location_id`. An authentication-only fix would still
+let any signed-in member enumerate every OTHER lot's roster by varying `p_location_id` — the 41-spot
+enumeration risk the finding describes does not care whether the caller is anonymous or merely a member
+with no reason to see a different lot's names. Scoping to the caller's own home spot removes the
+"roster keyed by physical location" shape itself rather than just gating it behind a login. A moderator
+bypass (letting `caller_is_moderator()` see any lot, matching `get_dashboard_summary`'s pattern) was
+considered and declined: `get_dashboard_summary` already gives moderators a cross-location view with no
+member identities in it, and extending moderator reach to per-member-identified rosters across every lot
+is a larger grant than this fix needs to make — nothing in the finding asked for it, and it is an easy
+follow-up if a real moderator workflow needs it later.
+
+`ai_global_turn_count_today()` and `ai_skill_enabled(text)` get the minimum only: neither took a
+member-scoped argument before this fix and neither does now, so there is nothing to scope beyond
+"a live session exists" — the same reasoning `0011`'s own header already gives for why neither function
+takes a `p_member_id` argument (a global counter has no member dimension to leak by member, and the
+per-member counter already reads `auth.uid()` for the *count*, just never checked it for null).
+
+### `scripts/sql-lint.mjs` R12, rewritten
+
+R12 no longer treats "granted to `authenticated`" as sufficient by itself. A `SECURITY DEFINER` function
+granted to `authenticated` must now carry **either** an explicit `revoke ... from anon` **or** a detected
+`auth.uid()` call in its most recent body (a later `create or replace`, in a later migration, supersedes
+an earlier body — the same "0025 can close a gap 0011 left open" cross-file evaluation R12 already used).
+`ANON_CALLABLE_FUNCTIONS` (R10's own allowlist) is exempted from this new check, since those functions
+are deliberately anon-callable and forcing an anon revoke onto them would be a false positive, not a fix.
+The `auth.uid()` guard is a text match, not control-flow analysis — documented as a new "Known limits"
+bullet in `supabase/migrations/README.md` alongside the existing "shape, not semantics" caveat, along
+with the concrete case it misses: `get_dashboard_summary` calls `caller_is_moderator()`, which does check
+`auth.uid()`, just not in `get_dashboard_summary`'s own body, so it passes R12 only via the explicit-revoke
+branch (which `0026` also gives it), never the guard branch.
+
+Overload-blindness (`supabase/migrations/README.md`, "Known limits") was **not** addressed. R9, R10 and
+R12 all key their internal maps by qualified function name alone, ignoring argument lists — a
+pre-existing gap this session inherited rather than introduced. No function in this tree is currently
+overloaded, so the gap is latent, not exploited; fixing it means re-keying every one of those maps by
+full signature, which is a larger, separable change from closing the specific anon-exec hole this entry
+records. Left as a noted follow-up rather than folded in here.
+
+`tests/sql-migration-harness.test.mjs`'s single `definerGrantedToAuthenticated` fixture — which asserted
+**zero** violations for a granted-to-authenticated function with no revoke and no guard — was exactly the
+old, wrong behavior encoded as a test. It is replaced with four fixtures: granted + unguarded +
+unrevoked fires R12; granted + revoked-from-anon passes; granted + `auth.uid()`-guarded passes; and an
+`ANON_CALLABLE_FUNCTIONS` entry passes without either. `tests/lock-down-definer-functions.test.mjs` gained
+a section asserting `0026` exists, is `APPLIED: no`, carries no `TARGET` line, re-creates exactly the
+three named functions (still `SECURITY DEFINER`, still pinning `search_path`, each provably referencing
+`auth.uid()` and raising `42501`), that `get_leaderboard`'s guard specifically checks
+`p_location_id` against the caller's own `members.location_id`, that the 46-function enumeration computed
+independently matches `0026`'s actual revokes exactly, that none of the 46 loses its `authenticated`
+grant, that the `alter default privileges` statement is present, and that `0011`/`0023`/`0025` remain
+unedited.
+
+### What `0026` does not do
+
+It does not edit `0011`, `0023`, `0025`, or any other file marked `APPLIED: production` — append-only,
+per `supabase/migrations/README.md`. It creates no table. It revokes nothing from `authenticated`: every
+one of the 46 functions stays exactly as callable by a signed-in member as before this migration; only
+anon-reachability is closed. `rate_limit_hit`'s `service_role` grant is untouched and not referenced —
+`0025` already covers it.
+
+### Gates
+
+`npm run sql:check`: 26 contiguous migrations, R12 (rewritten) included, 0 violations — confirmed this is
+not a weakened rule by removing `0026` in memory and re-running the same analyser: 4 `R12` violations
+reappear (`ai_skill_enabled`, `ai_global_turn_count_today`, `get_leaderboard`, `get_dashboard_summary` —
+the fourth catches R12's own text-match limit correctly, since `get_dashboard_summary`'s guard is
+delegated to `caller_is_moderator()` rather than inline, and `0026` closes it via the explicit-revoke
+branch). `npm run test`: baseline N is now **49 test files / 1,541 assertion call sites** (from 49/1,521,
+D-74) — `tests/baseline-n.test.mjs` and the `Docs/consolidated-architecture.md` header agree; `PASS=49
+FAIL=0` (the four `live-*` suites skip without preview credentials, as they do outside a session with
+`.env.preview.local`, and are not counted as failures). `npm run lint`: 0 errors, 2 pre-existing warnings
+in `eslint.config.mjs`/`postcss.config.js`, both unrelated to this change. `npm run typecheck`: clean.
+`npm run build`: succeeds (`next build`, 419 static paths, all API routes compiled). `npm run e2e`: 34/34
+Playwright specs pass across desktop and mobile Chromium. This worktree had no `node_modules` at session
+start (a pre-existing setup gap, not caused by this change); `npm install` was run once, in this worktree
+only, before any gate.
+
+### What this entry does not claim
+
+**`0026` is written but NOT applied to any target — not preview, not production.** No production or
+preview database was touched, queried, or had any grant changed by this session. Writing the migration is
+the whole scope of this change; applying it is a separate, explicitly authorised act, same as `0025`
+before it (D-74). Production remains at `0001`–`0025` (D-77) with the 46-function gap this entry
+describes still live until `0026` is applied. `0011`, `0023` and `0025` were not edited.
+
+**Status:** `0026` WRITTEN, NOT APPLIED. The 18-function D-74 hole stays closed (D-77, unaffected — this
+entry touches no already-applied file). The 46-function gap this entry describes is closed in the
+committed SQL and proven by the static analyser and the test suite; it remains live on any database
+until a future, explicitly authorised session applies `0026`.
+
+---
+
+## D-80 — The per-IP OTP send cap stays where it already runs, in the route handler; the specified edge-middleware placement is superseded. Issue #118
+
+**Date:** 2026-09-05
+
+**Decision:** §8 M2's "≤10 OTP sends per IP per day" control is enforced by the route-handler
+limiters already built and running in `src/lib/api/send-otp-route.ts`. The edge-middleware placement
+that §8 M2 and §11 Phase 0 specify for this cap is superseded and will not be built.
+
+**Evidence:**
+- `send-otp-route.ts` runs two limiters keyed on `ip:${clientIp(request)}`: `ipDailyLimiter`, an
+  in-memory `createFixedWindowLimiter({ max: 10, windowMs: DAY_MS })` pre-check, and
+  `durableIpDailyLimiter`, a `createDurableRateLimiter({ max: 10, windowMs: DAY_MS })` backed by the
+  `rate_limit_hit()` Postgres function (issue #55, D-45) — a fixed window that coordinates across
+  every serverless instance and survives a redeploy. Both apply D-8's daily figure; the durable one
+  is the source of truth, the in-memory one a zero-round-trip pre-check in front of it.
+- `src/middleware.ts` contains no rate-limiting logic of any kind. Its only concern is the legacy
+  URL handler (§8 M1: 301s and the branded 410), and its `matcher` explicitly excludes `api/` — this
+  middleware never runs on `/api/auth/send-otp` in the first place.
+- PR #112 (merged 2026-09-05T10:36:33Z) made `clientIp()` read the platform-set
+  `x-vercel-forwarded-for` header first, falling back to the rightmost `x-forwarded-for` hop, rather
+  than the forgeable leftmost entry a client controls. The issue's own blocking precondition — that
+  the IP bucketing this cap keys on be trustworthy — is satisfied.
+
+**Reasoning, including the rejected alternative:** building the specified edge-middleware cap was
+considered and rejected. The durable limiter coordinates across instances through Postgres, which
+Vercel edge middleware cannot easily do — edge functions run per-region with no equivalent low-
+latency path back to a stateful store on every request without themselves re-deriving something
+like the existing RPC. An edge cap would therefore be *weaker* than what already runs: per-instance,
+in-memory, reset on every redeploy — exactly the gap D-45 already recorded and closed for this same
+control. Adding it in front of the existing pair would also add a middleware invocation to every
+matched request for no gain: a second, weaker cap ahead of a stronger one buys nothing, since the
+stronger one still has to run and still has to be correct on its own.
+
+**What this decision does NOT claim:** it does not give `/api/csp-report`, or any future public
+endpoint, an inherited rate-limit cap. There is no edge control after this decision, and there was
+none of any strength before it, for any route other than `/api/auth/send-otp`. Each endpoint that
+needs a cap must adopt a limiter explicitly, the way `send-otp-route.ts` does. This is the one real
+thing the edge placement would have bought — a single choke point ahead of every matched route — and
+it is being given up knowingly, not overlooked.
+
+**Status:** ADOPTED.
+
+---
+
+## D-81 — C3's instrument is a provider-side billing/usage alert, not the §13 `manual_metrics` path. Issue #119
+
+**Date:** 2026-09-05
+
+### The decision
+
+`Docs/costs.md` C3 sets an alarm threshold of 500 SMS sends/day. The instrument that watches that
+threshold is a **provider-side billing/usage alert configured at the SMS provider account** — not
+the rev. 5.3 §13 path of `manual_metrics.sms_sends` joining `metrics_weekly` for display on a
+moderator dashboard. The `manual_metrics`/`metrics_weekly`/moderator-dashboard machinery is **not
+built for this cap** and this entry does not open building it.
+
+### The evidence that there is no instrument today
+
+- `manual_metrics` exists in this repo only as a comment —
+  `supabase/migrations/0001_rebuild_foundation.sql:26` lists it alongside `product_events` and
+  `metrics_weekly` as a future §8 M10 concern, not as a table. There is no migration that creates it.
+- D-11 item 1 already assigned the real work — `0025_product_events.sql` (+ `manual_metrics`,
+  `metrics_weekly`) — **DEFERRED**, on the grounds that numbering a migration `0025` would imply a
+  sequence that did not exist yet in this repo. That reasoning no longer even applies unmodified:
+  the ordinal is now taken by a different, shipped file, `0025_lock_down_definer_functions.sql`
+  (D-74/D-77, applied to production). Reusing D-11's plan would require renumbering past `0025`
+  under a name that already means something else on production.
+- `metrics_weekly` does not exist anywhere in this repo — no migration, no schema reference outside
+  `Docs/consolidated-architecture.md`'s own description of the never-built table.
+- There is no `/moderator` route under `src/app/` — the string "moderator" appears only in
+  `src/app/dashboard/page.tsx` and `src/app/api/agent/route.ts` as ordinary prose/identifiers, not as
+  a route segment. rev. 5.3 §13's "alarm rows on the moderator dashboard" has no dashboard to put a
+  row on.
+
+### The rejected alternative, and why
+
+Building `manual_metrics` + `metrics_weekly` + a moderator-facing surface to display one weekly
+integer is a large amount of schema, RLS and UI machinery for a single number during a pilot with no
+SMS provider integrated yet (C3's own Measurement row in `Docs/costs.md` has said this since D-9).
+Being in-repo, that machinery is also something a bug or a bad migration in *this* repo could break
+or silence without anyone noticing until the weekly review runs. A provider-side account alert needs
+no code here at all: it lives at the SMS provider, fires independent of anything this repo's next
+commit does, and cannot be defeated by a regression in `sluglines`. For a threshold whose entire job
+is catching abuse of a public endpoint, an instrument outside the abuse surface is the stronger
+property, not just the cheaper one.
+
+### Why C3 is treated differently from C1/C2
+
+C1 and C2 are both model-spend alarms, and model spend already has a hard backstop: C4
+(`src/lib/ai/cost.ts`'s `PER_TURN_COST_CEILING_USD`, enforced mid-loop by `src/lib/ai/agent.ts`, D-65)
+stops a runaway turn before it can spend past a fixed ceiling, so an unmonitored C1/C2 degrades
+gracefully to "found out at invoice time" rather than to unbounded spend. C3 has no such backstop.
+`POST /api/auth/send-otp` is a public, unauthenticated endpoint that spends real money — an SMS
+send — per request, gated only by the §8 M2 abuse controls (resend cooldown, verify-attempt caps,
+per-IP daily send cap, CAPTCHA) that `Docs/costs.md`'s C3 note already describes as bounding the
+abuse rather than eliminating it. §14 risk 11 (SMS-pumping) names this as an automated,
+financially-motivated attack, not a hypothetical. A cap that bounds a live, adversarial, per-request
+cost with no hard stop behind it is exactly the one that should not sit on an unverified "PENDING"
+instrument indefinitely — hence recording the instrument now, even before it is configured.
+
+### What this entry does not claim
+
+**This is a documentation decision, not a working alarm.** No SMS provider is integrated in this
+repo yet, so there is nothing to configure the alert against, and configuring the alert and
+test-firing it are owner actions at an external provider account — neither can be done from a
+session in this repo. C3 is not enforced, wired, or done by this entry. Nothing under `src/`,
+`supabase/`, or `tests/` changes.
+
+**Status:** PENDING. The decision made here is *which* instrument C3 uses, not that the instrument
+exists. This entry moves to DONE when the provider-side alert is configured at 500 sends/day and has
+been test-fired, with that evidence (date, provider, what was observed) recorded on issue #119 —
+per `AGENTS.md`'s Definition of Done, an owner-only check that stays open until someone states they
+performed it. Issue #119 must close **before or with** issue #52, never after: #52 is what gives
+`POST /api/auth/send-otp` the ability to send a real SMS at all (this repo has no provider wired in
+yet), and an endpoint that can spend money without any account-level alarm watching it is the
+precise gap this entry exists to close before it opens.

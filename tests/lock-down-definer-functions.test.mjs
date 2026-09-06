@@ -1,18 +1,30 @@
-// 0025_lock_down_definer_functions.sql -- static (no DB) proof that the
-// anon/authenticated-exec hole recorded in Docs/DECISIONS.md (the 0025
-// entry) is closed in the committed SQL text itself, independent of whether
-// a live preview is reachable. tests/live-definer-grants.test.mjs proves the
-// same guarantee against a real database when preview credentials exist;
-// this file is what still runs, everywhere, when they don't.
+// 0025_lock_down_definer_functions.sql and 0026_revoke_anon_execute.sql --
+// static (no DB) proof that the anon-exec hole recorded in Docs/DECISIONS.md
+// is closed in the committed SQL text itself, independent of whether a live
+// preview is reachable. tests/live-definer-grants.test.mjs proves the same
+// guarantee against a real database when preview credentials exist; this
+// file is what still runs, everywhere, when they don't.
 //
-// Covers all 18 functions 0025 revokes: the 10 the live suite first caught
-// (0011-0024) plus the 8 more the new sql-lint R12 rule surfaced across the
-// rest of the sequence, including two already-applied-to-production
-// migrations (0001, 0002).
+// THIS FILE USED TO CLAIM MORE THAN IT PROVED. It covered exactly the 18
+// functions 0025 revokes (the 10 the live suite first caught, plus 8 more
+// sql-lint R12 surfaced) and its final "tree lints clean" check relied on the
+// OLD R12 rule, which exempted every function granted to `authenticated`
+// outright -- a premise about the function's body R12 never verified. That
+// premise was false for `get_leaderboard` (Docs/DECISIONS.md, the D-79
+// entry): shipped with the grant and zero body checks, anon-reachable the
+// whole time 0025+R12 called the tree clean. 0026 revokes anon execute from
+// the other 46 SECURITY DEFINER functions carrying only
+// `grant execute ... to authenticated`, adds `auth.uid()` guards to the
+// three with none at all, and sql-lint's R12 rule itself was rewritten
+// (`scripts/sql-lint.mjs`) to require proof -- an explicit anon revoke or a
+// detected `auth.uid()` guard -- rather than assuming a grant to
+// `authenticated` proves anything. This file now covers both migrations: 18
+// (0025) + 46 (0026) = every SECURITY DEFINER function in the tree, either
+// revoked from anon explicitly or provably guarded.
 
 import { strict as assert } from 'node:assert'
 import path from 'node:path'
-import { DEFAULT_MIGRATIONS_DIR, loadMigrations, lintMigrations } from '../scripts/sql-lint.mjs'
+import { ANON_CALLABLE_FUNCTIONS, DEFAULT_MIGRATIONS_DIR, loadMigrations, lintMigrations } from '../scripts/sql-lint.mjs'
 
 const root = process.cwd()
 const migrationsDir = path.join(root, DEFAULT_MIGRATIONS_DIR)
@@ -107,12 +119,140 @@ for (const untouched of ['0001', '0002', '0003', '0011', '0012', '0015', '0017',
 }
 
 // -----------------------------------------------------------------------------
-// The whole tree, 0025 included, lints clean -- restated directly here (not
-// only relied on via tests/sql-migration-harness.test.mjs) because this is
-// the property the entire finding is about: R12 run over 0001-0025 finds
-// nothing left to fix.
+// 0026_revoke_anon_execute.sql -- the migration that closes the 46-function
+// gap. Written but NOT applied to any target (Docs/DECISIONS.md, D-79):
+// asserted directly here, not just implied by it existing.
+// -----------------------------------------------------------------------------
+const revokeAnon = migrations.find((m) => m.file === '0026_revoke_anon_execute.sql')
+assert.ok(revokeAnon, '0026_revoke_anon_execute.sql must exist')
+assert.equal(revokeAnon.ordinal, 26)
+assert.match(
+  revokeAnon.sql,
+  /--\s*APPLIED:\s*no\b/,
+  '0026 must ship APPLIED: no -- writing it is the job, applying it is a separate authorised act'
+)
+assert.equal(
+  /--\s*TARGET:/.test(revokeAnon.sql),
+  false,
+  '0026 carries no TARGET line -- it has not been applied anywhere to have a target'
+)
+
+// 0011, 0023 and 0025 are APPLIED: production / carry statements 0026 must
+// not disturb. 0026 may only re-create a function via create-or-replace
+// (never edit the file that first created it) and may only add revokes.
+for (const untouched of ['0011', '0023', '0025']) {
+  assert.ok(
+    migrations.some((m) => m.file.startsWith(`${untouched}_`)),
+    `${untouched}_*.sql must still exist unedited`
+  )
+}
+assert.match(
+  migrations.find((m) => m.file.startsWith('0023_')).sql,
+  /grant execute on function public\.get_leaderboard\(uuid\) to authenticated;/,
+  '0023 must still carry its original grant to authenticated -- 0026 does not edit 0023'
+)
+
+// 0026's three create_function statements are exactly the three functions
+// the finding names, each still SECURITY DEFINER with search_path pinned
+// (R8), and each now provably guarded: a detected auth.uid() call in its own
+// body, not a delegated helper -- the same bar sql-lint's rewritten R12
+// applies (scripts/sql-lint.mjs).
+const GUARDED_FUNCTIONS = ['public.ai_skill_enabled', 'public.ai_global_turn_count_today', 'public.get_leaderboard']
+const guardedCreates = revokeAnon.statements.filter((s) => s.kind === 'create_function')
+assert.deepEqual(
+  guardedCreates.map((s) => s.fn).sort(),
+  [...GUARDED_FUNCTIONS].sort(),
+  '0026 must re-create exactly the three functions the finding names, nothing else'
+)
+for (const stmt of guardedCreates) {
+  assert.equal(stmt.securityDefiner, true, `${stmt.fn} must remain SECURITY DEFINER`)
+  assert.equal(stmt.pinsSearchPath, true, `${stmt.fn} must still pin search_path`)
+  assert.match(stmt.flat, /auth\.uid\s*\(\s*\)/i, `${stmt.fn} must reference auth.uid() in its own body`)
+  assert.match(stmt.flat, /42501/, `${stmt.fn} must reject with 42501 (insufficient_privilege), not a bare exception`)
+}
+
+// get_leaderboard's guard is stricter than "any session": it must also scope
+// p_location_id to the caller's own members.location_id, not accept an
+// arbitrary location — the PR-body decision this test locks in.
+const leaderboardCreate = guardedCreates.find((s) => s.fn === 'public.get_leaderboard')
+assert.match(
+  leaderboardCreate.flat,
+  /location_id\s+into\s+v_home_location\s+from\s+public\.members/i,
+  'get_leaderboard must read the caller\'s own members.location_id'
+)
+assert.match(
+  leaderboardCreate.flat,
+  /p_location_id\s+is\s+distinct\s+from\s+v_home_location/i,
+  'get_leaderboard must reject a p_location_id that does not match the caller\'s own location'
+)
+
+// The 46-function enumeration: every SECURITY DEFINER function in the tree
+// that carries `grant execute ... to authenticated` and is not on R10's own
+// ANON_CALLABLE_FUNCTIONS allowlist must be revoked from anon by 0026 —
+// computed the same way sql-lint.mjs itself computes it (classifyStatement
+// over every migration), not hand-copied, so this test breaks the moment the
+// enumeration and the migration disagree.
+const allStatements = migrations.flatMap((m) => m.statements)
+const securityDefinerFns = new Set(
+  allStatements.filter((s) => s.kind === 'create_function' && s.securityDefiner).map((s) => s.fn)
+)
+// Named for what it holds (function names carrying the member-role grant), not
+// for the role: CodeQL's clear-text-logging heuristic reads an identifier
+// containing "authenticated" as a credential and flagged the count logged at
+// the bottom of this file as sensitive data.
+const memberRoleGrantedFns = new Set(
+  allStatements.filter((s) => s.kind === 'grant_function' && s.roles.includes('authenticated')).map((s) => s.fn)
+)
+const expectedAnonRevokes = [...memberRoleGrantedFns]
+  .filter((fn) => securityDefinerFns.has(fn) && !ANON_CALLABLE_FUNCTIONS.has(fn))
+  .sort()
+
+assert.equal(expectedAnonRevokes.length, 46, 'the enumerated set must be exactly the 46 the finding names')
+
+const anonRevokesIn0026 = revokeAnon.statements
+  .filter((s) => s.kind === 'revoke_function' && s.roles.includes('anon'))
+  .map((s) => s.fn)
+  .sort()
+
+assert.deepEqual(
+  anonRevokesIn0026,
+  expectedAnonRevokes,
+  '0026 must revoke anon from exactly the enumerated set — no more, no fewer'
+)
+
+// None of the 46 loses its authenticated grant — 0026 only ever adds a
+// revoke of anon, never touches the authenticated client entry point.
+for (const stmt of revokeAnon.statements.filter((s) => s.kind === 'revoke_function')) {
+  assert.deepEqual(stmt.roles, ['anon'], `${stmt.fn}: 0026 must revoke anon only, never authenticated or public`)
+}
+
+// 0026 also closes the recurrence path: a bare `alter default privileges`
+// statement, not caught by classifyStatement's specific kinds (it falls
+// through to 'other'), checked directly against the flattened SQL text.
+assert.equal(
+  revokeAnon.statements.some(
+    (s) =>
+      s.kind === 'other' &&
+      /alter\s+default\s+privileges\s+in\s+schema\s+public\s+revoke\s+execute\s+on\s+functions\s+from\s+anon/i.test(
+        s.flat
+      )
+  ),
+  true,
+  '0026 must alter default privileges so a future migration cannot silently reopen this hole'
+)
+
+// -----------------------------------------------------------------------------
+// The whole tree, 0025 AND 0026 included, lints clean under the rewritten
+// R12 -- restated directly here (not only relied on via
+// tests/sql-migration-harness.test.mjs) because this is the property the
+// entire finding is about: every SECURITY DEFINER function in the tree is
+// now either explicitly revoked from anon or provably guarded, not merely
+// assumed to be because it happens to be granted to authenticated.
 // -----------------------------------------------------------------------------
 const violations = lintMigrations(migrations)
 assert.deepEqual(violations, [], `0001-0025 must lint clean; got:\n${violations.map((v) => `[${v.rule}] ${v.file}: ${v.message}`).join('\n')}`)
 
-console.log(`lock-down-definer-functions: 0025 revokes anon+authenticated from all ${LOCKED_DOWN_FUNCTIONS.length} functions; tree lints clean`)
+console.log(
+  `lock-down-definer-functions: 0025 revokes anon+authenticated from ${LOCKED_DOWN_FUNCTIONS.length} functions, ` +
+    `0026 revokes anon from ${expectedAnonRevokes.length} more and guards ${GUARDED_FUNCTIONS.length} with auth.uid(); tree lints clean`
+)

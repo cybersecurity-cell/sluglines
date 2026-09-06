@@ -76,7 +76,7 @@ legacy `supabase/schema.sql` (`Docs/DECISIONS.md` D-24).
 | R9 | Every created function has an explicit `revoke ... on function ... from public` | Postgres grants `execute` to `PUBLIC` by default — without this, R4/R7 are bypassable through the function |
 | R10 | No `grant execute on function ... to anon` or `to public` | §8 M1 — anonymous-callable functions arrive in P2 with their own review |
 | R11 | Every created table is explicitly revoked from `anon` | defence in depth behind RLS |
-| R12 | Every `security definer` function not granted to `authenticated` is explicitly revoked from **both** `anon` and `authenticated`, somewhere in the migration sequence | Supabase default privileges (`Docs/DECISIONS.md`, the `0025` entry) — R9 alone is not enough |
+| R12 | Every `security definer` function not granted to `authenticated` is explicitly revoked from **both** `anon` and `authenticated`; one granted to `authenticated` must carry **either** an explicit revoke from `anon` **or** a detected `auth.uid()` call in its body — somewhere in the migration sequence | Supabase default privileges (`Docs/DECISIONS.md`, the `0025` entry and the D-79 entry) — R9 alone is not enough, and a grant to `authenticated` is not proof of anything by itself |
 
 R9 is the non-obvious one and the reason this analyser is worth having: a migration can satisfy
 every RLS rule and still hand anonymous clients a write path, because `CREATE FUNCTION` grants
@@ -88,18 +88,42 @@ are not the `PUBLIC` pseudo-role — Supabase configures its own default privile
 `PUBLIC` holds. `revoke ... from public` (R9) never removes that grant, so a `security definer`
 function meant to be called by nobody (an internal helper or scheduler sweep) or by `service_role`
 only stayed reachable by `anon`/`authenticated` the whole time — the defect `0025` fixes and
-`Docs/DECISIONS.md` records. A function that *is* granted to `authenticated` is exempt from R12: it
-is the legitimate client entry point, and R10 already governs the shape of that grant. R12 is
-evaluated across the **whole sequence**, not just the file that creates the function, so a later
-migration (like `0025`) can close a gap an earlier one left open without editing that earlier file —
-append-only migrations, but the property still gets proven for the whole tree.
+`Docs/DECISIONS.md` records. R12 is evaluated across the **whole sequence**, not just the file that
+creates the function, so a later migration (like `0025` or `0026`) can close a gap an earlier one
+left open without editing that earlier file — append-only migrations, but the property still gets
+proven for the whole tree.
+
+A function that *is* granted to `authenticated` **used to be exempt from R12 outright**, on the
+premise that it is the legitimate client entry point and RLS/actor checks live inside it. That
+premise is about the function's *body*, and R12 never looked at the body — only the grant. It was
+false for `public.get_leaderboard` (`0023`): shipped with `grant execute ... to authenticated` and
+no `auth.uid()` reference, no null check, nothing, and R12 called the tree clean anyway
+(`Docs/DECISIONS.md`, the D-79 entry — 46 functions across the tree carried the identical
+unverified-exemption shape). So R12 no longer takes a grant to `authenticated` as sufficient by
+itself: such a function must carry **either** an explicit `revoke ... from anon`, closing the
+Supabase default-grant gap directly, **or** a detected `auth.uid()` call in its most recent body,
+proof it does not skip the authorization question — one narrow, named allowlist aside
+(`ANON_CALLABLE_FUNCTIONS` in `scripts/sql-lint.mjs`, R10's own carve-out for the handful of
+functions deliberately callable by `anon`).
 
 ### Known limits of the analyser
 
 Stated so a later session does not over-trust it:
 
-- **Overload-blind.** R9 matches functions by qualified name, ignoring the argument list. Two
-  overloads of the same name are treated as one.
+- **Overload-blind.** R9, R10 and R12 all match functions by qualified name, ignoring the argument
+  list. Two overloads of the same name are treated as one function — a `revoke`/`grant` naming the
+  wrong argument list silently no-ops instead of erroring (see "Correcting a migration" below), and
+  the analyser has no way to notice, because its own model of "this function" never carried argument
+  types either. No overload of any function in this tree exists today, so this is a latent gap, not
+  a known-exploited one; fixing it means keying every one of R9/R10/R12's internal maps by the full
+  signature, not the name, which is a larger change than any single rule fix.
+- **R12's `auth.uid()` guard is a text match, not control-flow analysis.** It proves the literal
+  string `auth.uid(` appears in the function's own body — it does not prove that call gates
+  anything, and it does not see through a call to a *helper* that itself checks `auth.uid()` (e.g.
+  `get_dashboard_summary` calling `caller_is_moderator()`, which does check `auth.uid()`, just not in
+  `get_dashboard_summary`'s own body). A function like that still passes R12, but only via the
+  explicit-anon-revoke branch, never the guard branch — which is the correct outcome, just not for
+  the reason a quick read of "guarded" might suggest.
 - **Shape, not semantics.** It cannot tell a correct `using` predicate from an incorrect one. It
   only rejects the unconditional `true`.
 - **No cross-schema reasoning.** It analyses statement text, not a catalogue.
@@ -114,9 +138,12 @@ Stated so a later session does not over-trust it:
 2. Route every client write through a `security definer` function; give the table no write policy.
 3. `revoke all on table ... from anon, authenticated;` then grant back only what is needed.
 4. `revoke all on function ...(...) from public;` then `grant execute ... to authenticated;` for a
-   client entry point. For an internal function nobody or only `service_role` should call, there is
-   no step 4 grant — instead `revoke all on function ...(...) from anon, authenticated;` explicitly
-   (R12). `revoke ... from public` alone is not enough on Supabase; see R12 above.
+   client entry point — and either `revoke all on function ...(...) from anon;` explicitly, too, or
+   have the function itself call `auth.uid()` and reject a null result (R12; see above for why the
+   grant to `authenticated` is not by itself enough). For an internal function nobody or only
+   `service_role` should call, there is no step 4 grant — instead
+   `revoke all on function ...(...) from anon, authenticated;` explicitly (R12). `revoke ... from
+   public` alone is not enough on Supabase; see R12 above.
 5. Run `npm run sql:check` (or `npm run test`).
 6. Record the migration and its rationale in `Docs/DECISIONS.md`.
 

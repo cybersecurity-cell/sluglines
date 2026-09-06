@@ -309,6 +309,11 @@ export function lintMigrations(migrations) {
   const revokedFromAnonFn = new Set()
   const revokedFromAuthenticatedFn = new Set()
   const grantedToAuthenticatedFn = new Set()
+  // fn -> boolean, overwritten by each create_function statement in file order,
+  // so a later `create or replace` (a new migration adding a guard to a
+  // function an earlier, APPLIED migration cannot be edited to fix) is what
+  // R12 judges, not the original, unguarded body.
+  const authGuardedFn = new Map()
 
   for (const m of migrations) {
     for (const s of m.statements) {
@@ -316,8 +321,9 @@ export function lintMigrations(migrations) {
       if (s.kind === 'enable_rls') rlsEnabled.add(s.table)
       if (s.kind === 'revoke_table' && s.roles.includes('anon')) revokedFromAnon.add(s.table)
       if (s.kind === 'create_function' && !createdFunctions.has(s.fn)) createdFunctions.set(s.fn, m.file)
-      if (s.kind === 'create_function' && s.securityDefiner && !securityDefinerFunctions.has(s.fn)) {
-        securityDefinerFunctions.set(s.fn, m.file)
+      if (s.kind === 'create_function' && s.securityDefiner) {
+        if (!securityDefinerFunctions.has(s.fn)) securityDefinerFunctions.set(s.fn, m.file)
+        authGuardedFn.set(s.fn, /\bauth\.uid\s*\(\s*\)/i.test(s.flat))
       }
       if (s.kind === 'revoke_function') {
         if (s.roles.includes('public')) revokedFromPublic.add(s.fn)
@@ -407,9 +413,8 @@ export function lintMigrations(migrations) {
     }
   }
 
-  // R12 -- every SECURITY DEFINER function not granted to `authenticated`
-  // must be explicitly revoked from BOTH `anon` and `authenticated`, in this
-  // migration or a later one in the sequence.
+  // R12 -- every SECURITY DEFINER function must be provably safe against
+  // anonymous execution, not merely assumed to be.
   //
   // R9's blind spot: on a Supabase project, `anon` and `authenticated` are
   // NOT the `PUBLIC` pseudo-role -- Supabase's own default privileges grant
@@ -419,13 +424,44 @@ export function lintMigrations(migrations) {
   // "nobody" or "service_role only" stays reachable by anon/authenticated
   // no matter how clean R9 looks (Docs/DECISIONS.md, the 0025 entry).
   //
-  // A function granted to `authenticated` is the legitimate client entry
-  // point (RLS/actor checks live inside it) and is exempted here -- R10
-  // already governs what that grant may look like. Checked across the whole
-  // migration sequence, not just the creating file, so a later migration
-  // (like 0025) can close a gap left by an earlier one without editing it.
+  // A function NOT granted to `authenticated` must be explicitly revoked from
+  // BOTH `anon` and `authenticated`, in this migration or a later one.
+  //
+  // A function granted to `authenticated` -- the legitimate client entry
+  // point R10 governs the shape of -- USED to be exempted here outright, on
+  // the premise that "RLS/actor checks live inside it". That premise is about
+  // the function's BODY and this rule never inspected the body, only the
+  // grant; `public.get_leaderboard` (`0023`) shipped with the grant and no
+  // such check and was reachable by anon the entire time R12 called it clean
+  // (Docs/DECISIONS.md, the D-79 entry). So a function granted to
+  // `authenticated` must now show ONE of two things: an explicit
+  // `revoke ... from anon`, or a detected `auth.uid()` call in its (most
+  // recent) body -- proof it gates on the caller itself rather than relying
+  // on the grant alone. This is still a shape check, not a semantic one: it
+  // does not verify the `auth.uid()` call actually gates anything, only that
+  // the function does not skip the question entirely.
+  //
+  // Checked across the whole migration sequence, not just the creating file,
+  // so a later migration (like 0025 or 0026) can close a gap an earlier one
+  // left open without editing it.
   for (const [fn, file] of securityDefinerFunctions) {
-    if (grantedToAuthenticatedFn.has(fn)) continue
+    if (grantedToAuthenticatedFn.has(fn)) {
+      // ANON_CALLABLE_FUNCTIONS is R10's own allowlist: these are granted to
+      // anon deliberately (rev. 5.3 sec.8 M1's public aggregates and
+      // /api/health), so "not revoked from anon" is the intended state, not
+      // a gap R12 should flag.
+      if (ANON_CALLABLE_FUNCTIONS.has(fn)) continue
+      if (!revokedFromAnonFn.has(fn) && !authGuardedFn.get(fn)) {
+        add(
+          'R12',
+          file,
+          `SECURITY DEFINER function ${fn} is granted to authenticated but is neither explicitly revoked ` +
+            'from anon nor guarded by a detected auth.uid() call in its body (a grant to authenticated is ' +
+            'not by itself proof the body checks the caller -- Docs/DECISIONS.md, the D-79 entry)'
+        )
+      }
+      continue
+    }
     if (!revokedFromAnonFn.has(fn) || !revokedFromAuthenticatedFn.has(fn)) {
       add(
         'R12',
