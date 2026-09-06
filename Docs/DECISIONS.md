@@ -6235,3 +6235,42 @@ a CONFIRMED seat (#148). No Realtime.
 **Status:** PENDING. DONE when a signed-in person on the deployed `/board` posts with a preset, sees
 the offer under "Yours", cancels it; reserves someone else's, sees it under "Yours", releases it;
 and sees the list refresh on its own — evidence on #140 (needs #47).
+
+## D-91 — The accessibility findings axe and the token gate could not see: keyboard-reachable About menu, 3:1 form-control borders and focus rings, 24px+ targets, one `<main>`, a skip link and `<header>`, reduced motion honoured, 12px label floor. Issue #141
+
+**Date:** 2026-09-06
+
+### The decision
+
+- **About menu** (`Navbar`): opens on click, Enter, Space and ArrowDown as well as hover; `aria-haspopup="menu"`,
+  `aria-controls`, `role="menu"`/`menuitem`; Escape closes it and the mobile sheet; focus leaving the
+  menu closes it. About Slugging and About Us are also in the footer.
+- **Form controls**: borders `slate-300`/`stone-300` (≈1.5:1) become `slate-500`/`stone-500`; focus
+  rings `sky-200`/`#EAF2ED` (≈1.3:1) become `sky-600`/`#2E7D46`, on `LoginForm`, `VerifyForm`,
+  `OnboardingForm`, `PostSeatForm` and `SpotSearch`. The four pairs are pinned in
+  `scripts/contrast-check.mjs`; `sky-600` on white is 4.10:1 and is pinned as `large` with the reason
+  (a focus ring is non-text UI, WCAG 1.4.11's 3:1 bar; it is never used for text). Decorative card
+  and divider borders are not raised: 1.4.11 covers component boundaries needed to identify a
+  control, and a card's edge is not one.
+- **Target sizes**: directory rows carry a 28px link (was 20px); footer links get a tap height;
+  the Reserve button is 44px (was 32px). WCAG 2.5.8.
+- **Landmarks**: the nav is inside `<header>`; `<main id="main">` is the skip target; a skip link,
+  visible on focus, precedes the nav; the spot page's nested `<main>` is a `<div>`.
+- **Motion**: `prefers-reduced-motion: reduce` turns off smooth scrolling, the fade-up entrances, the
+  live dot's pulse and the card hover transition. Every motion on the site is decorative.
+- **Labels**: the hero's three 11px mono labels are 12px (`text-xs`); the floor.
+
+### The evidence
+
+Issue #141's axe and keyboard pass (17 routes, 375px and 1280px). `tests/a11y-surface.test.mjs`
+(new) pins each item in source; `tests/theme-contrast.test.mjs` holds the four new pairs;
+`tests/e2e/accessibility.spec.ts` still passes on every gated route.
+
+### Not done here
+
+`/app`'s alt-less images and unnamed links (the same finding D-84 recorded): authored content the
+legacy site never had, still #141's open bullet. The hover-only menu also existed on the mobile
+sheet's About section, which was already a plain list of links and is unchanged.
+
+**Status:** PENDING. DONE when a person on the deployed site reaches About Us by keyboard alone,
+tabs to the skip link, and sees a focused input's ring — evidence on #141 (needs #47).

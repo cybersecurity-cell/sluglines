@@ -44,8 +44,17 @@ export default function RootLayout({
   return (
     <html lang="en" className={`${syne.variable} ${outfit.variable} ${mono.variable}`}>
       <body>
-        <Navbar />
-        <main className="min-h-screen relative z-10">
+        {/* Issue #141: a skip link, visible on focus, ahead of the nav. */}
+        <a
+          href="#main"
+          className="sr-only focus:not-sr-only focus:fixed focus:left-4 focus:top-4 focus:z-[60] focus:rounded-md focus:bg-[#2E7D46] focus:px-4 focus:py-3 focus:text-sm focus:font-bold focus:text-white"
+        >
+          Skip to content
+        </a>
+        <header>
+          <Navbar />
+        </header>
+        <main id="main" className="min-h-screen relative z-10">
           {children}
         </main>
         <footer className="relative z-10 border-t" style={{ borderColor: 'var(--border)', background: 'var(--surface)' }}>
@@ -60,20 +69,22 @@ export default function RootLayout({
               </div>
               <div>
                 <h2 className="text-white font-semibold text-sm mb-4" style={{ fontFamily: 'var(--font-syne), sans-serif' }}>Quick Links</h2>
-                <ul className="space-y-2.5 text-sm" style={{ color: 'var(--muted)' }}>
-                  <li><Link href="/metroshutdown-2019" className="hover:text-white transition-colors">Metro Shutdown 2019</Link></li>
-                  <li><Link href="/slugging-rules-and-etiquette" className="hover:text-white transition-colors">Slugging Rules and Etiquette</Link></li>
+                <ul className="space-y-1 text-sm" style={{ color: 'var(--muted)' }}>
+                  <li><Link href="/metroshutdown-2019" className="inline-block py-1.5 hover:text-white transition-colors">Metro Shutdown 2019</Link></li>
+                  <li><Link href="/slugging-rules-and-etiquette" className="inline-block py-1.5 hover:text-white transition-colors">Slugging Rules and Etiquette</Link></li>
+                  <li><Link href="/about-slugging" className="inline-block py-1.5 hover:text-white transition-colors">About Slugging</Link></li>
+                  <li><Link href="/about-us" className="inline-block py-1.5 hover:text-white transition-colors">About Us</Link></li>
                 </ul>
               </div>
               <div>
                 <h2 className="text-white font-semibold text-sm mb-4" style={{ fontFamily: 'var(--font-syne), sans-serif' }}>About Sluglines</h2>
-                <ul className="space-y-2.5 text-sm" style={{ color: 'var(--muted)' }}>
-                  <li><Link href="/slug_pickup" className="hover:text-white transition-colors">SLUG PICKUP</Link></li>
-                  <li><Link href="/app" className="hover:text-white transition-colors">APP</Link></li>
-                  <li><Link href="/blog" className="hover:text-white transition-colors">BLOG</Link></li>
-                  <li><Link href="/news" className="hover:text-white transition-colors">NEWS</Link></li>
-                  <li><Link href="/login" className="hover:text-white transition-colors">LOGIN</Link></li>
-                  <li><Link href="/login" className="hover:text-white transition-colors">REGISTER</Link></li>
+                <ul className="space-y-1 text-sm" style={{ color: 'var(--muted)' }}>
+                  <li><Link href="/slug_pickup" className="inline-block py-1.5 hover:text-white transition-colors">SLUG PICKUP</Link></li>
+                  <li><Link href="/app" className="inline-block py-1.5 hover:text-white transition-colors">APP</Link></li>
+                  <li><Link href="/blog" className="inline-block py-1.5 hover:text-white transition-colors">BLOG</Link></li>
+                  <li><Link href="/news" className="inline-block py-1.5 hover:text-white transition-colors">NEWS</Link></li>
+                  <li><Link href="/login" className="inline-block py-1.5 hover:text-white transition-colors">LOGIN</Link></li>
+                  <li><Link href="/login" className="inline-block py-1.5 hover:text-white transition-colors">REGISTER</Link></li>
                 </ul>
               </div>
               <div>
@@ -94,10 +105,10 @@ export default function RootLayout({
                   Search pickup locations
                 </Link>
                 <h2 className="text-white font-semibold text-sm mb-4" style={{ fontFamily: 'var(--font-syne), sans-serif' }}>Social media</h2>
-                <ul className="space-y-2.5 text-sm" style={{ color: 'var(--muted)' }}>
-                  <li><a href="http://facebook.com/sluglines" target="_blank" rel="noopener noreferrer" className="hover:text-white transition-colors">Facebook</a></li>
-                  <li><a href="https://twitter.com/sluglines" target="_blank" rel="noopener noreferrer" className="hover:text-white transition-colors">Twitter / X</a></li>
-                  <li><a href="https://www.youtube.com/sluglines" target="_blank" rel="noopener noreferrer" className="hover:text-white transition-colors">YouTube</a></li>
+                <ul className="space-y-1 text-sm" style={{ color: 'var(--muted)' }}>
+                  <li><a href="http://facebook.com/sluglines" target="_blank" rel="noopener noreferrer" className="inline-block py-1.5 hover:text-white transition-colors">Facebook</a></li>
+                  <li><a href="https://twitter.com/sluglines" target="_blank" rel="noopener noreferrer" className="inline-block py-1.5 hover:text-white transition-colors">Twitter / X</a></li>
+                  <li><a href="https://www.youtube.com/sluglines" target="_blank" rel="noopener noreferrer" className="inline-block py-1.5 hover:text-white transition-colors">YouTube</a></li>
                 </ul>
               </div>
             </div>

@@ -68,7 +68,8 @@ export default function SpotDetailLayout({
         </Link>
 
         <div className="grid grid-cols-1 gap-6 lg:grid-cols-[minmax(0,1fr)_360px]">
-          <main className="space-y-5">
+          {/* Not a <main>: the root layout already has one, and a nested landmark is an axe finding (issue #141). */}
+          <div className="space-y-5">
             <section className="rounded-lg border border-stone-200 bg-white">
               <div className="border-b border-stone-200 px-5 py-4">
                 <div className="flex flex-wrap gap-2">
@@ -175,7 +176,7 @@ export default function SpotDetailLayout({
                 </div>
               )}
             </section>
-          </main>
+          </div>
 
           <aside className="space-y-4">
             <SpotPhoto image={location.image} spotName={location.name} />

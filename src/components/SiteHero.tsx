@@ -63,7 +63,7 @@ export default function SiteHero({ statuses, availability }: SiteHeroProps) {
             <dl className="mt-8 grid max-w-md grid-cols-3 gap-6 border-t border-stone-200 pt-6">
               {HOMEPAGE_STATS.map((stat) => (
                 <div key={stat.label}>
-                  <dt className="font-mono text-[11px] uppercase tracking-wide text-slate-500">{stat.label}</dt>
+                  <dt className="font-mono text-xs uppercase tracking-wide text-slate-500">{stat.label}</dt>
                   <dd className="mt-1 text-sm font-bold text-[#17202A]">{stat.value}</dd>
                 </div>
               ))}
@@ -73,10 +73,10 @@ export default function SiteHero({ statuses, availability }: SiteHeroProps) {
           <div className="lg:col-span-5">
             <div className="rounded-lg border border-stone-200 bg-white shadow-sm">
               <div className="flex items-center justify-between border-b border-dashed border-stone-300 px-5 py-3">
-                <span className="font-mono text-[11px] font-bold uppercase tracking-[0.15em] text-slate-500">
+                <span className="font-mono text-xs font-bold uppercase tracking-[0.15em] text-slate-500">
                   Corridor directory
                 </span>
-                <span className="font-mono text-[11px] font-semibold text-slate-500">{activeSpots} active lines</span>
+                <span className="font-mono text-xs font-semibold text-slate-500">{activeSpots} active lines</span>
               </div>
               <div className="divide-y divide-dashed divide-stone-200">
                 {statuses.map((status) => (

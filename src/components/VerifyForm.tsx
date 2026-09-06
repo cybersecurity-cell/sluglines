@@ -131,7 +131,7 @@ export default function VerifyForm({ phone, next }: VerifyFormProps) {
           aria-describedby={lockedOut ? 'verify-locked' : undefined}
           value={token}
           onChange={(event) => setToken(event.target.value.replace(/\D/g, ''))}
-          className="mt-2 w-full rounded-lg border border-slate-300 px-3 py-2 text-center text-2xl tracking-[0.5em] text-slate-950 focus:border-sky-600 focus:outline-none focus:ring-2 focus:ring-sky-200"
+          className="mt-2 w-full rounded-lg border border-slate-500 px-3 py-2 text-center text-2xl tracking-[0.5em] text-slate-950 focus:border-sky-600 focus:outline-none focus:ring-2 focus:ring-sky-600"
         />
       </div>
 
