@@ -66,7 +66,7 @@ export default function RootLayout({
                 </div>
                 <p className="text-sm leading-relaxed mb-4" style={{ color: 'var(--muted)' }}>Connecting drivers and riders for better commute</p>
                 <p className="text-xs" style={{ color: 'var(--muted)' }}>
-                  <a href="mailto:admin@sluglines.com" className="hover:text-white transition-colors">admin@sluglines.com</a>
+                  <a href="mailto:admin@sluglines.com" className="inline-block py-1.5 hover:text-white transition-colors">admin@sluglines.com</a>
                 </p>
               </div>
               <div>
@@ -74,6 +74,8 @@ export default function RootLayout({
                 <ul className="space-y-1 text-sm" style={{ color: 'var(--muted)' }}>
                   <li><Link href="/lostfound" className="inline-block py-1.5 hover:text-white transition-colors">Lost &amp; Found</Link></li>
                   <li><Link href="/slugging-rules-and-etiquette" className="inline-block py-1.5 hover:text-white transition-colors">Slugging Rules and Etiquette</Link></li>
+                  <li><Link href="/about-slugging" className="inline-block py-1.5 hover:text-white transition-colors">About Slugging</Link></li>
+                  <li><Link href="/about-us" className="inline-block py-1.5 hover:text-white transition-colors">About Us</Link></li>
                 </ul>
               </div>
               <div>
