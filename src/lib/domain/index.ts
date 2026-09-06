@@ -126,6 +126,8 @@ export type { LocationRow, PublicLocation, PublicLocationSource } from './public
 export {
   PRESENCE_CHECKIN_COLUMNS,
   PRESENCE_CLEAR_FUNCTION,
+  PRESENCE_CHECKIN_FUNCTION,
+  toPresenceDirection,
   SIGNED_OUT_PRESENCE,
   NO_PRESENCE,
   isPresenceLive,
