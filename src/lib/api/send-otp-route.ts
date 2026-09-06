@@ -23,6 +23,7 @@
 import { NextResponse } from 'next/server'
 import type { NextRequest } from 'next/server'
 import { normalizePhone } from '@/lib/domain/phone.ts'
+import { OTP_PHONE_COOKIE, OTP_PHONE_COOKIE_MAX_AGE_SECONDS } from '@/lib/domain/auth-return.ts'
 import { createClient } from '@/lib/supabase/server.ts'
 import { createServiceClient } from '@/lib/supabase/service.ts'
 import { createDurableRateLimiter } from './durable-rate-limit.ts'
@@ -109,5 +110,17 @@ export async function sendOtpHandler(request: NextRequest): Promise<NextResponse
     return NextResponse.json(otpError(kind), { status: otpStatus(kind) })
   }
 
-  return NextResponse.json({ ok: true })
+  // The phone rides to `/verify` in a short-lived httpOnly cookie, not the
+  // query string (issue #136): out of browser history, referrers and request
+  // logs. Cleared by verify-otp-route.ts on success; expires on its own
+  // otherwise. `secure` follows the environment so local http still works.
+  const response = NextResponse.json({ ok: true })
+  response.cookies.set(OTP_PHONE_COOKIE, phone, {
+    httpOnly: true,
+    sameSite: 'lax',
+    secure: process.env.NODE_ENV === 'production',
+    path: '/',
+    maxAge: OTP_PHONE_COOKIE_MAX_AGE_SECONDS,
+  })
+  return response
 }
