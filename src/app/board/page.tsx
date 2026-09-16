@@ -3,7 +3,7 @@ import BoardActionButton from '@/components/BoardActionButton'
 import LiveUpdated from '@/components/LiveUpdated'
 import PostSeatForm from '@/components/PostSeatForm'
 import ReserveSeatButton from '@/components/ReserveSeatButton'
-import { cancelOwnOffer, releaseOwnSeat } from '@/app/board/actions'
+import { cancelOwnOffer, promoteWaitlist, releaseOwnSeat, withdrawConfirmedSeat } from '@/app/board/actions'
 import { getCorridorBoardOffers } from '@/lib/corridor-board.ts'
 import { readViewerReservations } from '@/lib/board-reservations.ts'
 import { buildCorridorBoard } from '@/lib/domain/board.ts'
@@ -69,6 +69,8 @@ export const metadata = {
 const DONE_COPY: Record<string, string> = {
   cancelled: 'Your offer is cancelled. Anyone holding a seat on it has been released.',
   released: 'Your seat is released. The driver sees one more seat open.',
+  withdrawn: 'Your confirmed seat is withdrawn. The driver sees one more seat open.',
+  waitlist_checked: 'The next waiting rider was offered the open seat if anyone was waiting.',
 }
 
 const ERROR_COPY: Record<string, string> = {
@@ -219,16 +221,31 @@ export default async function BoardPage({ searchParams }: { searchParams?: Promi
                     )}
                   </div>
                   {offer.isMine ? (
-                    <form action={cancelOwnOffer}>
-                      <input type="hidden" name="offer_id" value={offer.id} />
-                      <input type="hidden" name="expected_revision" value={offer.revision} />
-                      <BoardActionButton label="Cancel offer" pendingLabel="Cancelling…" tone="danger" />
-                    </form>
+                    <div className="flex flex-wrap gap-2">
+                      <form action={cancelOwnOffer}>
+                        <input type="hidden" name="offer_id" value={offer.id} />
+                        <input type="hidden" name="expected_revision" value={offer.revision} />
+                        <BoardActionButton label="Cancel offer" pendingLabel="Cancelling…" tone="danger" />
+                      </form>
+                      {(offer.state === 'OPEN' || offer.state === 'PARTIALLY_RESERVED') && (
+                        <form action={promoteWaitlist}>
+                          <input type="hidden" name="offer_id" value={offer.id} />
+                          <input type="hidden" name="expected_revision" value={offer.revision} />
+                          <BoardActionButton label="Offer next waiting rider" pendingLabel="Offering…" />
+                        </form>
+                      )}
+                    </div>
                   ) : offer.mySeat?.state === 'ACTIVE' ? (
                     <form action={releaseOwnSeat}>
                       <input type="hidden" name="offer_id" value={offer.id} />
                       <input type="hidden" name="expected_revision" value={offer.revision} />
                       <BoardActionButton label="Release seat" pendingLabel="Releasing…" />
+                    </form>
+                  ) : offer.mySeat?.state === 'CONFIRMED' ? (
+                    <form action={withdrawConfirmedSeat}>
+                      <input type="hidden" name="offer_id" value={offer.id} />
+                      <input type="hidden" name="expected_revision" value={offer.revision} />
+                      <BoardActionButton label="Withdraw confirmed seat" pendingLabel="Withdrawing…" tone="danger" />
                     </form>
                   ) : null}
                 </div>

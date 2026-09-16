@@ -201,12 +201,13 @@ export const OFFER_TRANSITION_OPERATIONS: readonly OfferTransitionOperation[] = 
     edges: [
       ['PARTIALLY_RESERVED', 'RELEASED'],
       ['RESERVED', 'RELEASED'],
+      ['CONFIRMED', 'RELEASED'],
       ['RELEASED', 'OPEN'],
       ['RELEASED', 'PARTIALLY_RESERVED'],
     ],
     actor: 'rider',
     clientCallable: true,
-    source: '§8 M3 "RESERVED -> RELEASED -> OPEN"',
+    source: '§8 M3 "RESERVED | CONFIRMED -> RELEASED -> OPEN" (D-96)',
   },
   {
     fn: 'offer_confirm',

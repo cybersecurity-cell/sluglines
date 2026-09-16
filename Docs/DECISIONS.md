@@ -6441,3 +6441,43 @@ committed; the saving is larger than the 1,396 bytes the budget was over by and 
 
 **Status:** DONE. The Lighthouse job passed at 180,224 on PR #161's head with the figures above, which
 are also on #160; the rendered markup is verifiable in the build.
+
+---
+
+## D-96 — A confirmed rider may withdraw only their own seat before ARRIVING; reopening never auto-promotes the waitlist
+
+**Date:** 2026-09-16
+**Scope:** `0031_confirmed_reservation_withdrawal.sql`, the M3 domain graph and operations, `/board`, and `Docs/intent/coordination-board.md`. Issue #148.
+
+### Decision
+
+Issue #133 correctly removed a rider's authority to cancel the driver's offer, but left a rider with a
+CONFIRMED seat unable to withdraw it. Before the driver advances the offer to ARRIVING, that rider may
+withdraw only their own reservation. The reservation becomes `CANCELLED`; the offer reaches its reopened
+state through the legal `CONFIRMED -> RELEASED -> (OPEN | PARTIALLY_RESERVED)` ledger hops, based on the
+remaining occupied seats. The actor is always derived from `auth.uid()`; no caller can name a rider or
+change another reservation.
+
+The withdrawal does not invoke `promote_from_waitlist()` and does not schedule or wire
+`promote_waitlist_sweep()`. If a seat opens, the poster decides whether to invoke the new poster-only
+manual promotion entry point. That function delegates selection to the existing per-offer FIFO primitive,
+which takes the oldest ACTIVE waitlist entry and cannot select a later rider. With no ACTIVE entry, the
+seat remains open for ordinary reservation.
+
+No notification/outbox work is included: this repository has no delivery system to extend, and external
+notification would be a separate decision and slice.
+
+### Rejected alternatives
+
+- **Restore rider access to `offer_cancel`.** Rejected: cancelling an offer cancels every rider's seat;
+  D-83 established that authority belongs to the poster or a moderator.
+- **Direct `CONFIRMED -> OPEN` or `CONFIRMED -> PARTIALLY_RESERVED` edges.** Rejected: the M3 machine
+  records seat release through transient `RELEASED`, preserving one revision-checked ledger hop per move.
+- **Automatic promotion when the rider withdraws.** Rejected: the poster chooses when the newly open
+  seat reaches the waitlist, while FIFO prevents choosing a later rider.
+
+**Evidence:** Issue #148 documents the gap created by #133; the owner selected this rider-scoped,
+manual-FIFO outcome. The migration remains `APPLIED: no`; applying it and observing a named deployment
+remain owner-authorised work.
+
+**Status:** ADOPTED.

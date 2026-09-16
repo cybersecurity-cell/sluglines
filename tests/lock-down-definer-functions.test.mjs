@@ -192,7 +192,11 @@ assert.match(
 // computed the same way sql-lint.mjs itself computes it (classifyStatement
 // over every migration), not hand-copied, so this test breaks the moment the
 // enumeration and the migration disagree.
-const allStatements = migrations.flatMap((m) => m.statements)
+// This is a historical assertion about the 0026 lockdown's fixed inventory.
+// Later append-only migrations must secure their own functions (and the whole
+// current tree is checked by lintMigrations below); they cannot retroactively
+// add a revoke statement to 0026.
+const allStatements = migrations.filter((m) => m.ordinal <= 26).flatMap((m) => m.statements)
 const securityDefinerFns = new Set(
   allStatements.filter((s) => s.kind === 'create_function' && s.securityDefiner).map((s) => s.fn)
 )
