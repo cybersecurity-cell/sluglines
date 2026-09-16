@@ -56,10 +56,20 @@ revoke all on function public.offer_transition_allowed(text, text) from public;
 revoke all on function public.offer_transition_allowed(text, text) from anon, authenticated;
 
 
+-- A confirmed withdrawal opens a seat only when the poster decides it should
+-- reach the FIFO queue. The existing periodic sweep continues to serve ordinary
+-- ACTIVE-seat releases, but skips an offer carrying this marker.
+alter table public.offers
+  add column if not exists manual_waitlist_promotion_only boolean not null default false;
+
+
 -- ACTIVE release remains unchanged in outcome. CONFIRMED withdrawal is allowed
--- only while the offer itself is CONFIRMED; after ARRIVING, the rider has no
--- withdrawal path. The reservation state is CANCELLED for the confirmed case,
--- which also ends pickup-detail visibility through the existing RLS predicate.
+-- while the rider is confirmed and the offer is not yet ARRIVING. A first
+-- withdrawal can leave other confirmed riders on a PARTIALLY_RESERVED offer,
+-- and a manual promotion can make it RESERVED again, so neither state may
+-- strand those riders. The reservation state is CANCELLED for the confirmed
+-- case, which also ends pickup-detail visibility through the existing RLS
+-- predicate.
 create or replace function public.offer_release_seat(
   p_offer_id          uuid,
   p_expected_revision integer,
@@ -112,7 +122,7 @@ begin
     raise exception 'no active or confirmed reservation to release' using errcode = 'P0002';
   end if;
 
-  if v_reservation_state = 'CONFIRMED' and v_state <> 'CONFIRMED' then
+  if v_reservation_state = 'CONFIRMED' and v_state not in ('CONFIRMED', 'PARTIALLY_RESERVED', 'RESERVED') then
     raise exception 'confirmed seats may be withdrawn only before arriving, state=%', v_state using errcode = '55000';
   end if;
 
@@ -125,6 +135,12 @@ begin
          revision   = revision + 1,
          updated_at = now()
    where id = v_reservation_id;
+
+  if v_reservation_state = 'CONFIRMED' then
+    update public.offers
+       set manual_waitlist_promotion_only = true
+     where id = p_offer_id;
+  end if;
 
   v_remaining := v_taken - v_seats;
 
@@ -219,3 +235,44 @@ $fn$;
 revoke all on function public.offer_promote_waitlist(uuid, integer, text) from public;
 revoke all on function public.offer_promote_waitlist(uuid, integer, text) from anon;
 grant execute on function public.offer_promote_waitlist(uuid, integer, text) to authenticated;
+
+
+-- Keep ordinary ACTIVE-seat releases on the established periodic FIFO path, but
+-- never let that scheduler override a poster's decision after a confirmed rider
+-- withdraws. The poster-only offer_promote_waitlist() above remains the sole
+-- promotion entry point for marked offers.
+create or replace function public.promote_waitlist_sweep()
+returns integer
+language plpgsql
+security definer
+set search_path = public, pg_temp
+as $fn$
+declare
+  v_offer   record;
+  v_count   integer := 0;
+  v_promoted boolean;
+begin
+  for v_offer in
+    select distinct o.id
+      from public.offers o
+      join public.offer_waitlist w on w.offer_id = o.id and w.state = 'ACTIVE'
+     where o.state in ('OPEN', 'PARTIALLY_RESERVED')
+       and not o.manual_waitlist_promotion_only
+     order by o.id
+  loop
+    begin
+      v_promoted := public.promote_from_waitlist(v_offer.id);
+      if v_promoted then
+        v_count := v_count + 1;
+      end if;
+    exception when others then
+      null;
+    end;
+  end loop;
+
+  return v_count;
+end;
+$fn$;
+
+revoke all on function public.promote_waitlist_sweep() from public;
+revoke all on function public.promote_waitlist_sweep() from anon, authenticated;

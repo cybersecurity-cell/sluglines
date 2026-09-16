@@ -13,7 +13,6 @@ const root = process.cwd()
 const read = (...parts) => fs.readFileSync(path.join(root, ...parts), 'utf8')
 
 const migration = read('supabase', 'migrations', '0031_confirmed_reservation_withdrawal.sql')
-const migrationCode = migration.replace(/^--.*$/gm, '')
 const domain = read('src', 'lib', 'domain', 'offer-state.ts')
 const operations = read('src', 'lib', 'domain', 'offer-transitions.ts')
 const actions = read('src', 'app', 'board', 'actions.ts')
@@ -56,14 +55,18 @@ assert.ok(withdrawalBody, '0031 must define the effective offer_release_seat bod
 assert.match(withdrawalBody, /v_actor\s+uuid\s*:=\s*auth\.uid\(\)/i)
 assert.equal(/p_(?:actor|rider|member|user)_id\s+uuid/i.test(migration), false, 'the caller must not name the rider')
 assert.match(withdrawalBody, /and rider_id = v_actor\s+and state in \('ACTIVE', 'CONFIRMED'\)/i)
-assert.match(withdrawalBody, /v_reservation_state = 'CONFIRMED' and v_state <> 'CONFIRMED'/i)
+// `offer_confirm()` marks every live reservation CONFIRMED. After one rider
+// withdraws the offer is PARTIALLY_RESERVED, and later a manual promotion can
+// make it RESERVED again; neither state may strand the other confirmed riders.
+assert.match(withdrawalBody, /v_reservation_state = 'CONFIRMED' and v_state not in \('CONFIRMED', 'PARTIALLY_RESERVED', 'RESERVED'\)/i)
 assert.match(withdrawalBody, /set state\s*=\s*case when v_reservation_state = 'CONFIRMED' then 'CANCELLED'/i)
+assert.match(withdrawalBody, /set manual_waitlist_promotion_only = true/i)
 assert.match(withdrawalBody, /apply_offer_transition\(\s*p_offer_id, 'RELEASED'/i)
 assert.match(withdrawalBody, /case when v_remaining = 0 then 'OPEN' else 'PARTIALLY_RESERVED' end/i)
 assert.match(withdrawalBody, /claim_offer_operation\(/i)
 assert.match(withdrawalBody, /complete_offer_operation\(/i)
 assert.equal(/promote_from_waitlist\(/i.test(withdrawalBody), false, 'withdrawal must not automatically promote a waiting rider')
-assert.equal(/promote_waitlist_sweep\(/i.test(migrationCode), false, '0031 must not schedule or wire the global sweep')
+assert.equal(/promote_waitlist_sweep\(/i.test(withdrawalBody), false, 'withdrawal itself must not call the global sweep')
 assert.match(migration, /revoke all on function public\.offer_release_seat\(uuid, integer, text\) from public;/i)
 assert.match(migration, /revoke all on function public\.offer_release_seat\(uuid, integer, text\) from anon;/i)
 assert.match(migration, /grant execute on function public\.offer_release_seat\(uuid, integer, text\) to authenticated;/i)
@@ -88,6 +91,14 @@ assert.equal(/update\s+public\.offers\s+set\s+state/i.test(manualPromotionBody),
 assert.match(migration, /revoke all on function public\.offer_promote_waitlist\(uuid, integer, text\) from public;/i)
 assert.match(migration, /revoke all on function public\.offer_promote_waitlist\(uuid, integer, text\) from anon;/i)
 assert.match(migration, /grant execute on function public\.offer_promote_waitlist\(uuid, integer, text\) to authenticated;/i)
+
+// A withdrawal-opened seat is deliberately manual-only. Re-creating the
+// existing scheduled sweep must preserve its broad behaviour while excluding
+// just these offers; otherwise it would auto-promote on the next cron run.
+assert.match(migration, /add column if not exists manual_waitlist_promotion_only boolean not null default false/i)
+const promotionSweepBody = /create or replace function public\.promote_waitlist_sweep\(\)[\s\S]*?\$fn\$([\s\S]*?)\$fn\$/i.exec(migration)?.[1]
+assert.ok(promotionSweepBody, '0031 must define the effective scheduled waitlist sweep')
+assert.match(promotionSweepBody, /and not o\.manual_waitlist_promotion_only/i)
 
 // The board exposes both actions only through server actions: no client table
 // writer is introduced, and the completed rider's participant-only access ends

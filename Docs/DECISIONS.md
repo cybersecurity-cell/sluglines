@@ -6458,11 +6458,11 @@ state through the legal `CONFIRMED -> RELEASED -> (OPEN | PARTIALLY_RESERVED)` l
 remaining occupied seats. The actor is always derived from `auth.uid()`; no caller can name a rider or
 change another reservation.
 
-The withdrawal does not invoke `promote_from_waitlist()` and does not schedule or wire
-`promote_waitlist_sweep()`. If a seat opens, the poster decides whether to invoke the new poster-only
-manual promotion entry point. That function delegates selection to the existing per-offer FIFO primitive,
-which takes the oldest ACTIVE waitlist entry and cannot select a later rider. With no ACTIVE entry, the
-seat remains open for ordinary reservation.
+The withdrawal does not invoke `promote_from_waitlist()`. It marks the offer so the existing scheduled
+`promote_waitlist_sweep()` skips its withdrawal-opened seats; the poster decides whether to invoke the
+new poster-only manual promotion entry point. That function delegates selection to the existing per-offer
+FIFO primitive, which takes the oldest ACTIVE waitlist entry and cannot select a later rider. With no
+ACTIVE entry, the seat remains open for ordinary reservation.
 
 No notification/outbox work is included: this repository has no delivery system to extend, and external
 notification would be a separate decision and slice.
