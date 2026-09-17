@@ -1,7 +1,12 @@
 -- =============================================================================
 -- 0026_revoke_anon_execute.sql
 --
--- APPLIED: no
+-- APPLIED: preview
+-- TARGET:  Supabase preview branch phase-3-4-staging (project ref xqonrogwwytkmqfinszp),
+--          applied 2026-09-06 through the Supabase MCP connector's apply_migration, one
+--          file per apply, as the rehearsal for the production apply. Recovered from
+--          commit e9230a0 and catalog-reconciled in Docs/DECISIONS.md D-98. Production
+--          has NOT run this file.
 --
 -- SECURITY FIX. `Docs/DECISIONS.md` D-79. Closes the anon-exec hole `0025`
 -- (D-74) left open by construction, not by oversight.

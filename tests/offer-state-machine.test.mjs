@@ -64,6 +64,10 @@ const SPEC_EDGES = [
   // depended on them while the diagram was missing them)
   ['CONFIRMED', 'CANCELLED'],
   ['ARRIVING', 'CANCELLED'],
+  // A rider's own confirmed seat can be withdrawn before ARRIVING (D-96), but
+  // it still recomputes through transient RELEASED rather than inventing a
+  // direct confirmed-to-open edge.
+  ['CONFIRMED', 'RELEASED'],
   // OPEN | PARTIALLY_RESERVED -> EXPIRED
   ['OPEN', 'EXPIRED'],
   ['PARTIALLY_RESERVED', 'EXPIRED'],
@@ -383,6 +387,7 @@ const M3_MIGRATIONS = [
   readMigration('0003_resolve_transition_conflicts.sql'),
   readMigration('0027_offer_cancel_poster_or_moderator.sql'),
   readMigration('0028_offer_create_bounds_and_indexes.sql'),
+  readMigration('0031_confirmed_reservation_withdrawal.sql'),
 ]
 
 const migration = M3_MIGRATIONS.map((m) => m.sql).join('\n')
@@ -720,7 +725,11 @@ assert.equal(isConflictError({ code: stale.errcode }), true, 'the predicted code
   assert.match(sql0027, /revoke all on function public\.offer_cancel\(uuid, integer, text\) from public;/)
   assert.match(sql0027, /revoke all on function public\.offer_cancel\(uuid, integer, text\) from anon;/)
   assert.match(sql0027, /grant execute on function public\.offer_cancel\(uuid, integer, text\) to authenticated;/)
-  assert.match(sql0027, /--\s*APPLIED:\s*no\b/, '0027 ships unapplied; applying it is a separate authorised act')
+  assert.match(
+    sql0027,
+    /--\s*APPLIED:\s*preview\b[\s\S]*?--\s*TARGET:[\s\S]{0,400}?xqonrogwwytkmqfinszp[\s\S]{0,400}?2026-09-06/,
+    '0027 must record its preview rehearsal target and date'
+  )
 }
 
 // =============================================================================
@@ -790,7 +799,11 @@ assert.equal(isConflictError({ code: stale.errcode }), true, 'the predicted code
   assert.match(sql0028, new RegExp(`revoke all on function public\\.${sig} from public;`))
   assert.match(sql0028, new RegExp(`revoke all on function public\\.${sig} from anon;`))
   assert.match(sql0028, new RegExp(`grant execute on function public\\.${sig} to authenticated;`))
-  assert.match(sql0028, /--\s*APPLIED:\s*no\b/, '0028 ships unapplied; applying it is a separate authorised act')
+  assert.match(
+    sql0028,
+    /--\s*APPLIED:\s*preview\b[\s\S]*?--\s*TARGET:[\s\S]{0,400}?xqonrogwwytkmqfinszp[\s\S]{0,400}?2026-09-06/,
+    '0028 must record its preview rehearsal target and date'
+  )
 
   // The three indexes, each `if not exists`, each on the columns a reader
   // actually filters on.

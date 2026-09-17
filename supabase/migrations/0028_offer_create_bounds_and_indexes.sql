@@ -1,7 +1,12 @@
 -- =============================================================================
 -- 0028_offer_create_bounds_and_indexes.sql
 --
--- APPLIED: no
+-- APPLIED: preview
+-- TARGET:  Supabase preview branch phase-3-4-staging (project ref xqonrogwwytkmqfinszp),
+--          applied 2026-09-06 through the Supabase MCP connector's apply_migration, one
+--          file per apply, as the rehearsal for the production apply. Recovered from
+--          commit e9230a0 and catalog-reconciled in Docs/DECISIONS.md D-98. Production
+--          has NOT run this file.
 --
 -- Issue #137, `Docs/DECISIONS.md` D-87. Two things `0002` left out of the
 -- offers table and its one client entry point:

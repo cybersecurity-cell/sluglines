@@ -190,8 +190,8 @@ Current state:
 
 | Target | Status |
 |---|---|
-| Preview branch `phase-3-4-staging` (`xqonrogwwytkmqfinszp`) | `0001`–`0003` applied 2026-08-14 (D-28, D-30); `0004`–`0008` applied 2026-08-22, each as the rehearsal for its production apply |
-| **Production `bwpguotjzczmieeepczf`** | **`0001`–`0010` applied** — `0001`–`0007` on 2026-08-22 under the owner's authorisation of 2026-08-21 (D-41); `0008` on 2026-08-22 (D-46). `tests/live-public-surface.test.mjs` verifies the anonymous surface against it |
+| Preview branch `phase-3-4-staging` (`xqonrogwwytkmqfinszp`) | **`0001`–`0031` applied** — `0001`–`0003` on 2026-08-14 (D-28, D-30); `0004`–`0008` on 2026-08-22; `0011`–`0025` on 2026-09-02; `0009`, `0010`, and `0026`–`0030` on 2026-09-06 (recovered rehearsal record, D-98); `0031` on 2026-09-16 (D-97, D-98). |
+| **Production `bwpguotjzczmieeepczf`** | **`0001`–`0025` applied** — `0001`–`0007` on 2026-08-22 under the owner's authorisation of 2026-08-21 (D-41); `0008` on 2026-08-22 (D-46); `0009`–`0010` on 2026-08-23 (D-61); `0011`–`0025` on 2026-09-03 (D-77). `0026`–`0031` are preview-only. `tests/live-public-surface.test.mjs` verifies the anonymous surface against it |
 
 `tests/sql-migration-harness.test.mjs` no longer refuses `APPLIED: production` — that tripwire was
 relaxed by the session that earned it, visibly, in the same diff as the apply. What it enforces now

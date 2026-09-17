@@ -6441,3 +6441,85 @@ committed; the saving is larger than the 1,396 bytes the budget was over by and 
 
 **Status:** DONE. The Lighthouse job passed at 180,224 on PR #161's head with the figures above, which
 are also on #160; the rendered markup is verifiable in the build.
+
+---
+
+## D-96 — A confirmed rider may withdraw only their own seat before ARRIVING; reopening never auto-promotes the waitlist
+
+**Date:** 2026-09-16
+**Scope:** `0031_confirmed_reservation_withdrawal.sql`, the M3 domain graph and operations, `/board`, and `Docs/intent/coordination-board.md`. Issue #148.
+
+### Decision
+
+Issue #133 correctly removed a rider's authority to cancel the driver's offer, but left a rider with a
+CONFIRMED seat unable to withdraw it. Before the driver advances the offer to ARRIVING, that rider may
+withdraw only their own reservation. The reservation becomes `CANCELLED`; the offer reaches its reopened
+state through the legal `CONFIRMED -> RELEASED -> (OPEN | PARTIALLY_RESERVED)` ledger hops, based on the
+remaining occupied seats. The actor is always derived from `auth.uid()`; no caller can name a rider or
+change another reservation.
+
+The withdrawal does not invoke `promote_from_waitlist()`. It marks the offer so the existing scheduled
+`promote_waitlist_sweep()` skips its withdrawal-opened seats; the poster decides whether to invoke the
+new poster-only manual promotion entry point. That function delegates selection to the existing per-offer
+FIFO primitive, which takes the oldest ACTIVE waitlist entry and cannot select a later rider. With no
+ACTIVE entry, the seat remains open for ordinary reservation.
+
+No notification/outbox work is included: this repository has no delivery system to extend, and external
+notification would be a separate decision and slice.
+
+### Rejected alternatives
+
+- **Restore rider access to `offer_cancel`.** Rejected: cancelling an offer cancels every rider's seat;
+  D-83 established that authority belongs to the poster or a moderator.
+- **Direct `CONFIRMED -> OPEN` or `CONFIRMED -> PARTIALLY_RESERVED` edges.** Rejected: the M3 machine
+  records seat release through transient `RELEASED`, preserving one revision-checked ledger hop per move.
+- **Automatic promotion when the rider withdraws.** Rejected: the poster chooses when the newly open
+  seat reaches the waitlist, while FIFO prevents choosing a later rider.
+
+**Evidence:** Issue #148 documents the gap created by #133; the owner selected this rider-scoped,
+manual-FIFO outcome. The migration remains `APPLIED: no`; applying it and observing a named deployment
+remain owner-authorised work.
+
+**Status:** ADOPTED.
+
+---
+
+## D-97 — 0031 ran on preview, but the committed migration ledger cannot yet record that fact
+
+**Date:** 2026-09-16
+**Scope:** `0031_confirmed_reservation_withdrawal.sql`, the preview target `xqonrogwwytkmqfinszp`, and issue #148 / PR #169.
+
+### What was observed
+
+Under explicit owner authorisation, `0031_confirmed_reservation_withdrawal.sql` executed in one transaction against the named non-production preview target. A direct read-back confirmed the `offers.manual_waitlist_promotion_only` column and the effective grants required by the migration: `anon` cannot execute `offer_release_seat`, `offer_promote_waitlist`, or `promote_waitlist_sweep`; `authenticated` can execute the two client entry points and cannot execute the scheduler. The required credential-gated suites then passed without skips: `live-definer-grants`, `live-public-surface`, `live-rate-limit`, and `live-rls` (85 assertions).
+
+### Why the header remains unchanged
+
+`0031` still says `APPLIED: no` because every predecessor from `0026` through `0030` is also recorded `APPLIED: no`. The migration harness deliberately rejects a later `APPLIED: preview` marker when an earlier ordinal claims a lower state. Changing only `0031` would therefore make the committed ledger fail and would not describe a coherent database sequence. Conversely, changing the earlier markers from source inspection or partial behavioral evidence would invent application history.
+
+### What closes this record
+
+A read-only reconciliation must establish, for each of `0026`–`0030`, whether the target's effective schema matches its migration, and whether any predecessor needs an authorised application. Once that evidence exists, the records may be updated together in ordinal order, with each target and date named in its header. Until then, CI cannot be made green by claiming a migration history that has not been verified.
+
+**Status:** BLOCKED.
+
+---
+
+## D-98 — The preview migration ledger for 0026–0031 is restored from authoritative evidence
+
+**Date:** 2026-09-16
+**Scope:** preview branch `phase-3-4-staging` (`xqonrogwwytkmqfinszp`); migration headers `0026`–`0031`; `supabase/migrations/README.md`; and PR #169.
+
+### Decision
+
+The `APPLIED:` and `TARGET:` header comments for `0026`–`0030` are restored to their actual preview state: applied to `xqonrogwwytkmqfinszp` on 2026-09-06, one file per apply, with no production application. `0031` records its owner-authorised preview application on 2026-09-16. These are header-only corrections; no migration statement changes.
+
+### Evidence
+
+Commit `e9230a0a0a1498e6d0184b6ee5963aed5b200a34` on `origin/rehearse/0027-0030-preview`, authored and committed at `2026-09-06T23:17:03Z`, records the sequential preview rehearsal: `0009`, `0010`, and `0026` had not reached the target, then `0027`–`0030` each ran as their own apply. Its diff includes the dated header records and `Docs/2026-09-06-rehearsal-0027-0030-preview.md`. That commit is not an ancestor of PR #169, explaining why its record disappeared from the current branch without the database state changing.
+
+Read-only catalog reconciliation against the named preview target verified the effective `0026`–`0030` function bodies, grants, policy, indexes, and the migration owner's default privileges. The authorised `0031` transaction was read back directly, then `live-definer-grants`, `live-public-surface`, `live-rate-limit`, and `live-rls` passed without skips (85 RLS assertions). No production target was contacted.
+
+D-97's evidence condition is therefore satisfied. GitHub Actions still lacks the preview credentials required to execute those suites in CI; that availability is a separate CI configuration blocker, not a reason to falsify this migration ledger.
+
+**Status:** DONE.

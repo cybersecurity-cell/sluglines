@@ -46,7 +46,11 @@ export const OFFER_TRANSITIONS: Readonly<Record<OfferState, readonly OfferState[
   OPEN: ['PARTIALLY_RESERVED', 'CANCELLED', 'EXPIRED'],
   PARTIALLY_RESERVED: ['RESERVED', 'RELEASED', 'CANCELLED', 'EXPIRED'],
   RESERVED: ['CONFIRMED', 'RELEASED', 'CANCELLED'],
-  CONFIRMED: ['ARRIVING', 'CANCELLED'],
+  // A rider's own confirmed-seat withdrawal goes through RELEASED, then the
+  // remaining-seat recompute. It is legal only before the poster marks the
+  // offer ARRIVING; the SQL writer additionally requires the caller's own
+  // CONFIRMED reservation.
+  CONFIRMED: ['ARRIVING', 'CANCELLED', 'RELEASED'],
   ARRIVING: ['PICKED_UP', 'CANCELLED'],
   PICKED_UP: ['COMPLETED'],
   RELEASED: ['OPEN', 'PARTIALLY_RESERVED'],

@@ -5,8 +5,10 @@ import { createClient } from '@/lib/supabase/server'
 import { parseTransitionInput, transitionFailure } from '@/lib/api/transition-http.ts'
 
 /**
- * The two member-owned undo controls `/board` lacked (issue #140): a poster
- * cancels their own offer, a rider gives back their own seat. Server actions,
+ * The member-owned board controls: a poster cancels their own offer or
+ * deliberately offers a newly open seat to the FIFO waitlist head; a rider
+ * gives back an ACTIVE seat or withdraws their own CONFIRMED seat before the
+ * driver advances to ARRIVING. Server actions,
  * for the reasons `dashboard/actions.ts` measured — no Supabase client in the
  * browser, the form posts without JavaScript — and because rev. 5.3 §8 M3
  * names exactly thirteen POST routes and a release endpoint is not one of
@@ -16,8 +18,11 @@ import { parseTransitionInput, transitionFailure } from '@/lib/api/transition-ht
  * ---------------------------------------------------------------------------
  * `offer_cancel(uuid, integer, text)` — the poster (or a moderator, once
  * `0027` lands; a rider is refused 42501 by the function itself, never by
- * this file). `offer_release_seat(uuid, integer, text)` — the rider holding
- * an ACTIVE seat on the offer; a CONFIRMED seat is refused by design (#148).
+ * `offer_release_seat(uuid, integer, text)` — the rider holding an ACTIVE
+ * seat, or their own CONFIRMED seat while the offer is still CONFIRMED. The
+ * database, not this action, enforces both the owner and ARRIVING cutoff.
+ * `offer_promote_waitlist(uuid, integer, text)` — the poster alone requests
+ * the existing FIFO primitive to promote the oldest ACTIVE entry, if any.
  * Both take the actor from `auth.uid()` and the offer's revision from the
  * caller, so a stale button (someone else moved the offer) is refused as a
  * conflict rather than applied to a state the member never saw.
@@ -34,13 +39,18 @@ import { parseTransitionInput, transitionFailure } from '@/lib/api/transition-ht
  * OUTCOMES RETURN IN THE URL. `redirect()` stays outside the `try`.
  */
 
-export type BoardActionOutcome = 'cancelled' | 'released'
+export type BoardActionOutcome = 'cancelled' | 'released' | 'withdrawn' | 'waitlist_checked'
 
-const DONE = { cancel: 'cancelled', release: 'released' } as const
+const DONE = {
+  cancel: 'cancelled',
+  release: 'released',
+  withdraw: 'withdrawn',
+  promote: 'waitlist_checked',
+} as const
 
 async function transition(
-  operation: 'cancel' | 'release',
-  fn: 'offer_cancel' | 'offer_release_seat',
+  operation: 'cancel' | 'release' | 'withdraw' | 'promote',
+  fn: 'offer_cancel' | 'offer_release_seat' | 'offer_promote_waitlist',
   formData: FormData
 ): Promise<never> {
   const offerId = formData.get('offer_id')
@@ -80,4 +90,12 @@ export async function cancelOwnOffer(formData: FormData) {
 
 export async function releaseOwnSeat(formData: FormData) {
   return transition('release', 'offer_release_seat', formData)
+}
+
+export async function withdrawConfirmedSeat(formData: FormData) {
+  return transition('withdraw', 'offer_release_seat', formData)
+}
+
+export async function promoteWaitlist(formData: FormData) {
+  return transition('promote', 'offer_promote_waitlist', formData)
 }
