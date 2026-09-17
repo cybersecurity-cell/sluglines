@@ -1,7 +1,12 @@
 -- =============================================================================
 -- 0027_offer_cancel_poster_or_moderator.sql
 --
--- APPLIED: no
+-- APPLIED: preview
+-- TARGET:  Supabase preview branch phase-3-4-staging (project ref xqonrogwwytkmqfinszp),
+--          applied 2026-09-06 through the Supabase MCP connector's apply_migration, one
+--          file per apply, as the rehearsal for the production apply. Recovered from
+--          commit e9230a0 and catalog-reconciled in Docs/DECISIONS.md D-98. Production
+--          has NOT run this file.
 --
 -- SECURITY FIX. Issue #133, `Docs/DECISIONS.md` D-83. Re-creates
 -- `public.offer_cancel(uuid, integer, text)` so that only the offer's poster

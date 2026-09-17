@@ -45,7 +45,12 @@ assert.deepEqual(
 
 // The append-only correction replaces, rather than overloads, the existing
 // client writer. Actor identity comes from auth.uid(), not a supplied rider id.
-assert.match(migration, /--\s*APPLIED:\s*no\b/)
+assert.match(migration, /--\s*APPLIED:\s*preview\b/)
+assert.match(
+  migration,
+  /--\s*TARGET:[\s\S]{0,400}?xqonrogwwytkmqfinszp[\s\S]{0,400}?2026-09-16/,
+  '0031 must name the preview target and verified application date'
+)
 assert.match(
   migration,
   /create or replace function public\.offer_release_seat\(\s*p_offer_id\s+uuid,\s*p_expected_revision\s+integer,\s*p_idempotency_key\s+text\s*\)/i

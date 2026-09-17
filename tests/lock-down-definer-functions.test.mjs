@@ -120,21 +120,21 @@ for (const untouched of ['0001', '0002', '0003', '0011', '0012', '0015', '0017',
 
 // -----------------------------------------------------------------------------
 // 0026_revoke_anon_execute.sql -- the migration that closes the 46-function
-// gap. Written but NOT applied to any target (Docs/DECISIONS.md, D-79):
-// asserted directly here, not just implied by it existing.
+// gap. Rehearsed on the named preview target on 2026-09-06 (D-98): asserted
+// directly here, not just implied by it existing.
 // -----------------------------------------------------------------------------
 const revokeAnon = migrations.find((m) => m.file === '0026_revoke_anon_execute.sql')
 assert.ok(revokeAnon, '0026_revoke_anon_execute.sql must exist')
 assert.equal(revokeAnon.ordinal, 26)
 assert.match(
   revokeAnon.sql,
-  /--\s*APPLIED:\s*no\b/,
-  '0026 must ship APPLIED: no -- writing it is the job, applying it is a separate authorised act'
+  /--\s*APPLIED:\s*preview\b/,
+  '0026 must record its preview rehearsal'
 )
-assert.equal(
-  /--\s*TARGET:/.test(revokeAnon.sql),
-  false,
-  '0026 carries no TARGET line -- it has not been applied anywhere to have a target'
+assert.match(
+  revokeAnon.sql,
+  /--\s*TARGET:[\s\S]{0,400}?xqonrogwwytkmqfinszp[\s\S]{0,400}?2026-09-06/,
+  '0026 must name its preview target and rehearsal date'
 )
 
 // 0011, 0023 and 0025 are APPLIED: production / carry statements 0026 must

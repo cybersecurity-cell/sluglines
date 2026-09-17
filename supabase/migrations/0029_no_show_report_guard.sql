@@ -1,7 +1,12 @@
 -- =============================================================================
 -- 0029_no_show_report_guard.sql
 --
--- APPLIED: no
+-- APPLIED: preview
+-- TARGET:  Supabase preview branch phase-3-4-staging (project ref xqonrogwwytkmqfinszp),
+--          applied 2026-09-06 through the Supabase MCP connector's apply_migration, one
+--          file per apply, as the rehearsal for the production apply. Recovered from
+--          commit e9230a0 and catalog-reconciled in Docs/DECISIONS.md D-98. Production
+--          has NOT run this file.
 --
 -- Issue #138, `Docs/DECISIONS.md` D-88. Three changes to how a no-show is
 -- reported, all append-only over `0021`/`0022`:

@@ -6502,3 +6502,24 @@ Under explicit owner authorisation, `0031_confirmed_reservation_withdrawal.sql` 
 A read-only reconciliation must establish, for each of `0026`–`0030`, whether the target's effective schema matches its migration, and whether any predecessor needs an authorised application. Once that evidence exists, the records may be updated together in ordinal order, with each target and date named in its header. Until then, CI cannot be made green by claiming a migration history that has not been verified.
 
 **Status:** BLOCKED.
+
+---
+
+## D-98 — The preview migration ledger for 0026–0031 is restored from authoritative evidence
+
+**Date:** 2026-09-16
+**Scope:** preview branch `phase-3-4-staging` (`xqonrogwwytkmqfinszp`); migration headers `0026`–`0031`; `supabase/migrations/README.md`; and PR #169.
+
+### Decision
+
+The `APPLIED:` and `TARGET:` header comments for `0026`–`0030` are restored to their actual preview state: applied to `xqonrogwwytkmqfinszp` on 2026-09-06, one file per apply, with no production application. `0031` records its owner-authorised preview application on 2026-09-16. These are header-only corrections; no migration statement changes.
+
+### Evidence
+
+Commit `e9230a0a0a1498e6d0184b6ee5963aed5b200a34` on `origin/rehearse/0027-0030-preview`, authored and committed at `2026-09-06T23:17:03Z`, records the sequential preview rehearsal: `0009`, `0010`, and `0026` had not reached the target, then `0027`–`0030` each ran as their own apply. Its diff includes the dated header records and `Docs/2026-09-06-rehearsal-0027-0030-preview.md`. That commit is not an ancestor of PR #169, explaining why its record disappeared from the current branch without the database state changing.
+
+Read-only catalog reconciliation against the named preview target verified the effective `0026`–`0030` function bodies, grants, policy, indexes, and the migration owner's default privileges. The authorised `0031` transaction was read back directly, then `live-definer-grants`, `live-public-surface`, `live-rate-limit`, and `live-rls` passed without skips (85 RLS assertions). No production target was contacted.
+
+D-97's evidence condition is therefore satisfied. GitHub Actions still lacks the preview credentials required to execute those suites in CI; that availability is a separate CI configuration blocker, not a reason to falsify this migration ledger.
+
+**Status:** DONE.

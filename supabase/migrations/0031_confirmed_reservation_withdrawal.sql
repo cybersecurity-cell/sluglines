@@ -1,7 +1,11 @@
 -- =============================================================================
 -- 0031_confirmed_reservation_withdrawal.sql
 --
--- APPLIED: no
+-- APPLIED: preview
+-- TARGET:  Supabase preview branch phase-3-4-staging (project ref xqonrogwwytkmqfinszp),
+--          applied 2026-09-16 in one owner-authorised transaction. Direct catalog/grant
+--          read-back and all four credential-gated live suites passed; see
+--          Docs/DECISIONS.md D-97 and D-98. Production has NOT run this file.
 --
 -- Issue #148, decision D-96. A rider may withdraw only their own CONFIRMED
 -- reservation before the poster advances the offer to ARRIVING. The existing
