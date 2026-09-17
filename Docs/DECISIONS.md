@@ -6481,3 +6481,24 @@ manual-FIFO outcome. The migration remains `APPLIED: no`; applying it and observ
 remain owner-authorised work.
 
 **Status:** ADOPTED.
+
+---
+
+## D-97 — 0031 ran on preview, but the committed migration ledger cannot yet record that fact
+
+**Date:** 2026-09-16
+**Scope:** `0031_confirmed_reservation_withdrawal.sql`, the preview target `xqonrogwwytkmqfinszp`, and issue #148 / PR #169.
+
+### What was observed
+
+Under explicit owner authorisation, `0031_confirmed_reservation_withdrawal.sql` executed in one transaction against the named non-production preview target. A direct read-back confirmed the `offers.manual_waitlist_promotion_only` column and the effective grants required by the migration: `anon` cannot execute `offer_release_seat`, `offer_promote_waitlist`, or `promote_waitlist_sweep`; `authenticated` can execute the two client entry points and cannot execute the scheduler. The required credential-gated suites then passed without skips: `live-definer-grants`, `live-public-surface`, `live-rate-limit`, and `live-rls` (85 assertions).
+
+### Why the header remains unchanged
+
+`0031` still says `APPLIED: no` because every predecessor from `0026` through `0030` is also recorded `APPLIED: no`. The migration harness deliberately rejects a later `APPLIED: preview` marker when an earlier ordinal claims a lower state. Changing only `0031` would therefore make the committed ledger fail and would not describe a coherent database sequence. Conversely, changing the earlier markers from source inspection or partial behavioral evidence would invent application history.
+
+### What closes this record
+
+A read-only reconciliation must establish, for each of `0026`–`0030`, whether the target's effective schema matches its migration, and whether any predecessor needs an authorised application. Once that evidence exists, the records may be updated together in ordinal order, with each target and date named in its header. Until then, CI cannot be made green by claiming a migration history that has not been verified.
+
+**Status:** BLOCKED.
